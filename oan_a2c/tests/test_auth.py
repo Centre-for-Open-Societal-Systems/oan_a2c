@@ -2,8 +2,7 @@ import frappe
 import unittest
 import jwt
 import datetime
-from oan_a2c.api.auth import login, forgot_password, reset_password
-from oan_a2c.api.middleware import validate_jwt_request
+from oan_a2c.api.loan_app_api import login, forgot_password, reset_password, _validate_jwt as validate_jwt_request
 
 
 class TestAuthAPI(unittest.TestCase):

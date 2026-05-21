@@ -1,0 +1,342 @@
+{
+	"info": {
+		"_postman_id": "d74cfc8d-6ab3-445e-8551-7f9a8b1c4d7e",
+		"name": "A2C Loan Application API",
+		"description": "API Contracts for the Open Agri Loan Application workflow (Steps 1, 2, 3, 5, 6) secured under the oan_a2c JWT authorization space.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "0. Secure Login",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"usr\": \"test_agent@coopbank.com\",\n    \"pwd\": \"test_agent@1234\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.login",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.login"
+					]
+				},
+				"description": "Authenticates the agent and issues a stateless JWT token."
+			},
+			"response": []
+		},
+		{
+			"name": "1. Loan Details (Step 1)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"save\",\n    \"loan_type\": \"Input Financing\",\n    \"purpose_of_loan\": \"Agro-processing\",\n    \"requested_loan_amount\": 45000,\n    \"loan_duration_months\": \"12 Months (1 Year)\",\n    \"nearest_branch\": \"Standard Branch\",\n    \"primary_crop\": \"Wheat\",\n    \"region\": \"Oromia\",\n    \"woreda\": \"Bishoftu\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.loan_details",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.loan_details"
+					]
+				},
+				"description": "Creates or updates the loan requirement details."
+			},
+			"response": []
+		},
+		{
+			"name": "2. Bank Details (Step 2)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"save\",\n    \"application_id\": \"{{application_id}}\",\n    \"bank_account_name\": \"John Doe\",\n    \"bank_account_number\": \"10002930291\",\n    \"bank_name\": \"Cooperative Bank\",\n    \"total_amount_borrowing\": 45000\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.bank_details",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.bank_details"
+					]
+				},
+				"description": "Saves bank and mobile payment details."
+			},
+			"response": []
+		},
+		{
+			"name": "3. Supporting Documents - Upload (Step 3)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "action",
+							"value": "upload",
+							"type": "text"
+						},
+						{
+							"key": "application_id",
+							"value": "{{application_id}}",
+							"type": "text"
+						},
+						{
+							"key": "document_type",
+							"value": "Identity Document",
+							"type": "text"
+						},
+						{
+							"key": "file",
+							"type": "file",
+							"src": []
+						}
+					]
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.supporting_documents",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.supporting_documents"
+					]
+				},
+				"description": "Uploads a supporting document. Valid document_type values: 'Marriage Certificate', 'Identity Document', 'Land Ownership Proof'."
+			},
+			"response": []
+		},
+		{
+			"name": "3. Supporting Documents - List (Step 3)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"list\",\n    \"application_id\": \"{{application_id}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.supporting_documents",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.supporting_documents"
+					]
+				},
+				"description": "Lists all documents uploaded for an application."
+			},
+			"response": []
+		},
+		{
+			"name": "5. Farmer Details (Step 5)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"save\",\n    \"application_id\": \"{{application_id}}\",\n    \"full_name\": \"John\",\n    \"last_name\": \"Doe\",\n    \"mobile_phone\": \"0911123456\",\n    \"gender\": \"Male\",\n    \"marital_status\": \"Married\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.farmer_details",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.farmer_details"
+					]
+				},
+				"description": "Saves farmer profile and socio-economic/agronomic data."
+			},
+			"response": []
+		},
+		{
+			"name": "6. Application Manager - Review (Step 6)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"review\",\n    \"application_id\": \"{{application_id}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.application_manager",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.application_manager"
+					]
+				},
+				"description": "Returns completeness status of all sections."
+			},
+			"response": []
+		},
+		{
+			"name": "6. Application Manager - Submit (Step 6)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"submit\",\n    \"application_id\": \"{{application_id}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.application_manager",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.application_manager"
+					]
+				},
+				"description": "Submits the application. Requires consent approved and at least one document uploaded."
+			},
+			"response": []
+		},
+		{
+			"name": "6. Application Manager - Tracking",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"tracking\",\n    \"application_id\": \"{{application_id}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.application_manager",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.application_manager"
+					]
+				},
+				"description": "Returns the timeline of application progress."
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "application_id",
+			"value": "APP-YYYY-00001"
+		},
+		{
+			"key": "jwt_token",
+			"value": "PASTE_YOUR_JWT_TOKEN_HERE"
+		}
+	]
+}
