@@ -1,0 +1,13 @@
+{
+  "doctype": "DocType",
+  "name": "Consent Data Field",
+  "module": "OAN A2C",
+  "custom": 0,
+  "istable": 1,
+  "fields": [
+    {"fieldname":"field_group","fieldtype":"Data","label":"Field Group"}
+  ],
+  "permissions": [
+    {"role":"System Manager","read":1,"write":1,"create":1,"delete":1}
+  ]
+}

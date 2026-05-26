@@ -1,0 +1,307 @@
+{
+	"info": {
+		"_postman_id": "f5d721b3-4f5e-dbf8-d4f7-cf35a9464183",
+		"name": "Open AgriNet Decoupled Loan APIs",
+		"description": "Postman Collection for testing the decoupled Loan Application workflow APIs. Pre-configured to support both API Key (direct stateless) and stateless JWT authentication.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Loan Details (Step 1)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"description": "Direct API key authentication (decoupled, no login required)"
+					},
+					{
+						"key": "X-Frappe-Site-Name",
+						"value": "development.localhost"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"save\",\n    \"loan_type\": \"Agricultural Loan\",\n    \"purpose_of_loan\": \"Postman Test\",\n    \"requested_loan_amount\": 75000,\n    \"primary_crop\": \"Wheat\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/method/oan_a2c.api.loan_app_api.loan_details",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.loan_details"
+					]
+				},
+				"description": "Saves loan requirements and returns the unique application_id."
+			},
+			"response": []
+		},
+		{
+			"name": "2. Bank Details (Step 2)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "X-Frappe-Site-Name",
+						"value": "development.localhost"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"save\",\n    \"application_id\": \"APP-2026-00108\",\n    \"bank_account_name\": \"Jane Doe\",\n    \"bank_account_number\": \"9876543210\",\n    \"bank_name\": \"Cooperative Bank of Oromia\",\n    \"total_amount_borrowing\": 75000\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/method/oan_a2c.api.loan_app_api.bank_details",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.bank_details"
+					]
+				},
+				"description": "Saves banking details for the loan application."
+			},
+			"response": []
+		},
+		{
+			"name": "3. Supporting Documents - Upload (Step 3)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "X-Frappe-Site-Name",
+						"value": "development.localhost"
+					}
+				],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "action",
+							"value": "upload",
+							"type": "text"
+						},
+						{
+							"key": "application_id",
+							"value": "APP-2026-00108",
+							"type": "text"
+						},
+						{
+							"key": "document_type",
+							"value": "Identity Document",
+							"type": "text"
+						},
+						{
+							"key": "file",
+							"type": "file",
+							"src": []
+						}
+					]
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/method/oan_a2c.api.loan_app_api.supporting_documents",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.supporting_documents"
+					]
+				},
+				"description": "Uploads supporting files for the application using form-data mode."
+			},
+			"response": []
+		},
+		{
+			"name": "4. Supporting Documents - List (Step 3)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "X-Frappe-Site-Name",
+						"value": "development.localhost"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"list\",\n    \"application_id\": \"APP-2026-00108\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/method/oan_a2c.api.loan_app_api.supporting_documents",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.supporting_documents"
+					]
+				},
+				"description": "Retrieves the list of uploaded supporting documents for an application."
+			},
+			"response": []
+		},
+		{
+			"name": "5. Farmer Details (Step 5)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "X-Frappe-Site-Name",
+						"value": "development.localhost"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"save\",\n    \"application_id\": \"APP-2026-00108\",\n    \"full_name\": \"John\",\n    \"last_name\": \"Doe\",\n    \"mobile_phone\": \"0911223344\",\n    \"gender\": \"Male\",\n    \"woreda\": \"Woreda A\",\n    \"kebele\": \"Kebele B\",\n    \"marital_status\": \"Married\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/method/oan_a2c.api.loan_app_api.farmer_details",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.farmer_details"
+					]
+				},
+				"description": "Saves biographical, agronomic, and farming details for the farmer."
+			},
+			"response": []
+		},
+		{
+			"name": "6. Application Manager - Review",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "X-Frappe-Site-Name",
+						"value": "development.localhost"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"review\",\n    \"application_id\": \"APP-2026-00108\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/method/oan_a2c.api.loan_app_api.application_manager",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.application_manager"
+					]
+				},
+				"description": "Reviews the completion status of all wizard steps."
+			},
+			"response": []
+		},
+		{
+			"name": "7. Application Manager - Submit",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}"
+					},
+					{
+						"key": "X-Frappe-Site-Name",
+						"value": "development.localhost"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"action\": \"submit\",\n    \"application_id\": \"APP-2026-00108\"\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8000/api/method/oan_a2c.api.loan_app_api.application_manager",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8000",
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.loan_app_api.application_manager"
+					]
+				},
+				"description": "Finalizes and submits the completed loan application."
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "jwt_token",
+			"value": "PASTE_YOUR_TOKEN_HERE"
+		}
+	]
+}

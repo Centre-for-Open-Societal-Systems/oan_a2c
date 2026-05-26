@@ -1,0 +1,22 @@
+{
+  "doctype": "DocType",
+  "name": "Consent Data Field",
+  "module": "OpenAgriNet Access to Credit",
+  "custom": 0,
+  "istable": 1,
+  "fields": [
+    {
+      "fieldname": "field_name",
+      "fieldtype": "Data",
+      "label": "Field Name",
+      "in_list_view": 1
+    },
+    {
+      "fieldname": "field_value",
+      "fieldtype": "Data",
+      "label": "Field Value",
+      "in_list_view": 1
+    }
+  ],
+  "permissions": []
+}

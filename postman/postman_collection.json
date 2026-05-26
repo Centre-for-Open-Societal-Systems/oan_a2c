@@ -1,151 +1,255 @@
 {
-	"info": {
-		"_postman_id": "b3e9a51d-9f2d-4116-8db8-1c42f0b7c5b1",
-		"name": "OAN Access to Credit (A2C)",
-		"description": "API Contracts for the OpenAgriNet Access to Credit DPG Module. These endpoints use a stateless JWT authentication architecture.",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	},
-	"item": [
-		{
-			"name": "Authentication & IAM",
-			"item": [
-				{
-					"name": "1. Login (Generate JWT)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"usr\": \"agent.ethiopia@coopbank.com\",\n    \"pwd\": \"SuperSecurePassword123!\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/method/oan_a2c.api.auth.login",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"method",
-								"oan_a2c.api.auth.login"
-							]
-						},
-						"description": "Authenticates the user using standard Frappe credentials and returns a short-lived JSON Web Token (JWT) intended for frontend stateless session management."
-					},
-					"response": []
-				},
-				{
-					"name": "2. Forgot Password Request",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"email\": \"agent.ethiopia@coopbank.com\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/method/oan_a2c.api.auth.forgot_password",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"method",
-								"oan_a2c.api.auth.forgot_password"
-							]
-						},
-						"description": "Triggers an email to the user with a reset password link containing a temporary cryptographic key."
-					},
-					"response": []
-				},
-				{
-					"name": "3. Reset Password (Bridge)",
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json",
-								"type": "text"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"email\": \"agent.ethiopia@coopbank.com\",\n    \"key\": \"{{reset_key_from_email}}\",\n    \"new_password\": \"NewSuperSecurePassword987!\"\n}"
-						},
-						"url": {
-							"raw": "{{base_url}}/api/method/oan_a2c.api.auth.reset_password",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"method",
-								"oan_a2c.api.auth.reset_password"
-							]
-						},
-						"description": "Sets a new password using the temporary key. Expected to be called by the Headless Frontend after a user clicks the reset link in their email."
-					},
-					"response": []
-				}
-			]
-		},
-		{
-			"name": "Business API (Requires JWT)",
-			"item": [
-				{
-					"name": "Sample Protected Endpoint",
-					"request": {
-						"method": "GET",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer {{jwt_token}}",
-								"type": "text",
-								"description": "Insert the token received from the Login API."
-							}
-						],
-						"url": {
-							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.get_leads",
-							"host": [
-								"{{base_url}}"
-							],
-							"path": [
-								"api",
-								"method",
-								"oan_a2c.api.v1.get_leads"
-							]
-						},
-						"description": "Any endpoint starting with /api/method/oan_a2c.* requires a valid Bearer token."
-					},
-					"response": []
-				}
-			]
-		}
-	],
-	"variable": [
-		{
-			"key": "base_url",
-			"value": "http://localhost:8000"
-		},
-		{
-			"key": "jwt_token",
-			"value": "PASTE_YOUR_TOKEN_HERE"
-		},
-		{
-			"key": "reset_key_from_email",
-			"value": "PASTE_YOUR_KEY_HERE"
-		}
-	]
+    "info": {
+        "_postman_id": "b3e9a51d-9f2d-4116-8db8-1c42f0b7c5b1",
+        "name": "OAN Access to Credit (A2C)",
+        "description": "API Contracts for the OpenAgriNet Access to Credit DPG Module. These endpoints use a stateless JWT authentication architecture.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Authentication & IAM",
+            "item": [
+                {
+                    "name": "1. Login (Generate JWT)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"usr\": \"agent.ethiopia@coopbank.com\",\n    \"pwd\": \"SuperSecurePassword123!\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.login",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.login"
+                            ]
+                        },
+                        "description": "Authenticates the user using standard Frappe credentials and returns a short-lived JSON Web Token (JWT) intended for frontend stateless session management."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2. Forgot Password Request",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"agent.ethiopia@coopbank.com\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.forgot_password",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.forgot_password"
+                            ]
+                        },
+                        "description": "Triggers an email to the user with a reset password link containing a temporary cryptographic key."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "3. Reset Password (Bridge)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"agent.ethiopia@coopbank.com\",\n    \"key\": \"{{reset_key_from_email}}\",\n    \"new_password\": \"NewSuperSecurePassword987!\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.reset_password",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.reset_password"
+                            ]
+                        },
+                        "description": "Sets a new password using the temporary key. Expected to be called by the Headless Frontend after a user clicks the reset link in their email."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Business API (Requires JWT)",
+            "item": [
+                {
+                    "name": "Sample Protected Endpoint",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text",
+                                "description": "Insert the token received from the Login API."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.get_leads",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.get_leads"
+                            ]
+                        },
+                        "description": "Any endpoint starting with /api/method/oan_a2c.* requires a valid Bearer token."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Consent Management (Requires JWT)",
+            "item": [
+                {
+                    "name": "1. Create Consent Request",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"farmer\": \"FAYDA-123\",\n    \"partner\": \"Test Partner\",\n    \"consent_type\": \"specific\",\n    \"purpose\": \"Testing Consent API\",\n    \"validity_from\": \"2026-06-01 00:00:00\",\n    \"validity_to\": \"2027-06-01 00:00:00\",\n    \"requested_data_fields\": []\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.create_consent_request",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.consent.consent.create_consent_request"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "2. Send OTP",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"consent_request\": \"<CONSENT_REQUEST_ID_FROM_PREVIOUS_STEP>\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.send_otp",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.consent.consent.send_otp"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "3. Verify OTP",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"consent_request\": \"<CONSENT_REQUEST_ID>\",\n    \"otp_code\": \"123456\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.verify_otp",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.consent.consent.verify_otp"
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000"
+        },
+        {
+            "key": "jwt_token",
+            "value": "PASTE_YOUR_TOKEN_HERE"
+        },
+        {
+            "key": "reset_key_from_email",
+            "value": "PASTE_YOUR_KEY_HERE"
+        }
+    ]
 }

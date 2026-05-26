@@ -1,0 +1,27 @@
+{
+  "doctype": "DocType",
+  "name": "Consent Request",
+  "module": "OAN A2C",
+  "custom": 0,
+  "istable": 0,
+  "fields": [
+    {"fieldname":"farmer","fieldtype":"Link","label":"Farmer","options":"Farmer"},
+    {"fieldname":"partner","fieldtype":"Link","label":"Partner","options":"Consent Partner Config"},
+    {"fieldname":"consent_type","fieldtype":"Data","label":"Consent Type"},
+    {"fieldname":"purpose","fieldtype":"Data","label":"Purpose"},
+    {"fieldname":"validity_from","fieldtype":"Date","label":"Validity From"},
+    {"fieldname":"validity_to","fieldtype":"Date","label":"Validity To"},
+    {"fieldname":"consent_form_attachment","fieldtype":"File","label":"Consent Form Attachment"},
+    {"fieldname":"loan_application","fieldtype":"Link","label":"Loan Application","options":"Loan Application"},
+    {"fieldname":"openg2p_consent_id","fieldtype":"Data","label":"OpenG2P Consent ID"},
+    {"fieldname":"status","fieldtype":"Select","label":"Status","options":"Draft\nPending OTP\nApproved"},
+    {"fieldname":"otp_transaction_id","fieldtype":"Data","label":"OTP Transaction ID"},
+    {"fieldname":"otp_verified_at","fieldtype":"Datetime","label":"OTP Verified At"},
+    {"fieldname":"websub_delivered","fieldtype":"Check","label":"WebSub Delivered"},
+    {"fieldname":"websub_delivered_at","fieldtype":"Datetime","label":"WebSub Delivered At"}
+  ],
+  "permissions": [
+    {"role":"System Manager","read":1,"write":1,"create":1,"delete":1},
+    {"role":"Website User","read":1}
+  ]
+}

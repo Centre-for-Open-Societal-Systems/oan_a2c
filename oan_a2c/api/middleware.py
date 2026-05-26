@@ -20,7 +20,8 @@ def validate_jwt_request(request=None):
     if path in [
         "/api/method/oan_a2c.api.auth.login",
         "/api/method/oan_a2c.api.auth.forgot_password",
-        "/api/method/oan_a2c.api.auth.reset_password"
+        "/api/method/oan_a2c.api.auth.reset_password",
+        "/api/method/oan_a2c.api.webhook_api.receive_consent_data"
     ]:
         return
 

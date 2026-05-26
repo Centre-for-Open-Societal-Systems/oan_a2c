@@ -1,0 +1,118 @@
+{
+    "info": {
+        "name": "OAN A2C Consent API",
+        "description": "API Contracts specifically for the Consent Management lifecycle.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Create Consent Request",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{jwt_token}}",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"farmer\": \"FAYDA-123\",\n    \"partner\": \"Test Partner\",\n    \"consent_type\": \"specific\",\n    \"purpose\": \"Testing Consent API\",\n    \"validity_from\": \"2026-06-01 00:00:00\",\n    \"validity_to\": \"2027-06-01 00:00:00\",\n    \"requested_data_fields\": []\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.create_consent_request",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "method",
+                        "oan_a2c.consent.consent.create_consent_request"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "2. Send OTP",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{jwt_token}}",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"consent_request\": \"<CONSENT_REQUEST_ID_FROM_PREVIOUS_STEP>\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.send_otp",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "method",
+                        "oan_a2c.consent.consent.send_otp"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "3. Verify OTP",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Authorization",
+                        "value": "Bearer {{jwt_token}}",
+                        "type": "text"
+                    },
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json",
+                        "type": "text"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n    \"consent_request\": \"<CONSENT_REQUEST_ID>\",\n    \"otp_code\": \"123456\"\n}"
+                },
+                "url": {
+                    "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.verify_otp",
+                    "host": [
+                        "{{base_url}}"
+                    ],
+                    "path": [
+                        "api",
+                        "method",
+                        "oan_a2c.consent.consent.verify_otp"
+                    ]
+                }
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000"
+        },
+        {
+            "key": "jwt_token",
+            "value": "PASTE_YOUR_TOKEN_HERE"
+        }
+    ]
+}

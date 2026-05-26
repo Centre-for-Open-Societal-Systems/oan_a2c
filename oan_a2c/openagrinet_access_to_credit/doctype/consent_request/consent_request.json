@@ -1,0 +1,38 @@
+{
+  "doctype": "DocType",
+  "name": "Consent Request",
+  "module": "OpenAgriNet Access to Credit",
+  "custom": 0,
+  "istable": 0,
+  "fields": [
+    {"fieldname": "farmer", "fieldtype": "Data", "label": "Farmer"},
+    {"fieldname": "farmer_fayda_id", "fieldtype": "Data", "label": "Farmer Fayda ID"},
+    {"fieldname": "partner", "fieldtype": "Data", "label": "Partner"},
+    {"fieldname": "consent_type", "fieldtype": "Data", "label": "Consent Type"},
+    {"fieldname": "purpose", "fieldtype": "Data", "label": "Purpose"},
+    {"fieldname": "validity_from", "fieldtype": "Date", "label": "Validity From"},
+    {"fieldname": "validity_to", "fieldtype": "Date", "label": "Validity To"},
+    {"fieldname": "consent_form_attachment", "fieldtype": "Data", "label": "Consent Form Attachment"},
+    {"fieldname": "loan_application", "fieldtype": "Data", "label": "Loan Application"},
+    {
+      "fieldname": "requested_data_fields",
+      "fieldtype": "Table",
+      "label": "Requested Data Fields",
+      "options": "Consent Data Field"
+    },
+    {"fieldname": "openg2p_consent_id", "fieldtype": "Data", "label": "OpenG2P Consent ID"},
+    {
+      "fieldname": "status",
+      "fieldtype": "Select",
+      "label": "Status",
+      "options": "Draft\nPending OTP\nApproved"
+    },
+    {"fieldname": "otp_transaction_id", "fieldtype": "Data", "label": "OTP Transaction ID"},
+    {"fieldname": "otp_verified_at", "fieldtype": "Datetime", "label": "OTP Verified At"},
+    {"fieldname": "websub_delivered", "fieldtype": "Check", "label": "WebSub Delivered"},
+    {"fieldname": "websub_delivered_at", "fieldtype": "Datetime", "label": "WebSub Delivered At"}
+  ],
+  "permissions": [
+    {"role": "System Manager", "read": 1, "write": 1, "create": 1, "delete": 1}
+  ]
+}
