@@ -321,6 +321,71 @@ class TestLeadListAPI(unittest.TestCase):
 		self.assertEqual(by_status["Not Interested"], 0)
 		self.assertEqual(by_status["Processed"], 2)
 
+	def test_get_lead_metadata(self):
+		"""Verifies get_lead_metadata dynamically parses Select field options."""
+		from oan_a2c.api.v1.leads import get_lead_metadata
+		res = get_lead_metadata()
+		self.assertEqual(res["status"], "success")
+		self.assertIn("Open", res["statuses"])
+		self.assertIn("Initiated", res["statuses"])
+		self.assertIn("Missed Call", res["sources"])
+		self.assertIn("Agent Entry", res["sources"])
+
+	def test_comments_and_timeline_workflow(self):
+		"""Verifies that adding a comment works and is correctly reflected on the lead's timeline."""
+		from oan_a2c.api.v1.leads import add_lead_comment, get_lead_timeline
+		
+		target_lead = self.leads[0]
+		
+		# 1. Add comment
+		res_add = add_lead_comment(lead_id=target_lead, content="Test comment from field officer.")
+		self.assertEqual(res_add["status"], "success")
+		self.assertTrue(res_add["comment_id"])
+
+		# 2. Verify in timeline
+		res_timeline = get_lead_timeline(lead_id=target_lead)
+		self.assertEqual(res_timeline["status"], "success")
+		self.assertEqual(res_timeline["lead_id"], target_lead)
+		self.assertTrue(len(res_timeline["timeline"]) >= 1)
+		
+		found_comment = next((c for c in res_timeline["timeline"] if c["name"] == res_add["comment_id"]), None)
+		self.assertIsNotNone(found_comment)
+		self.assertEqual(found_comment["content"], "Test comment from field officer.")
+
+	def test_get_lead_call_logs(self):
+		"""Verifies that call notes are correctly retrieved and parsed into structured call logs."""
+		from oan_a2c.api.v1.leads import get_lead_call_logs
+		
+		target_lead = self.leads[0]
+		
+		# Set raw call notes to simulate multiple calls recorded by webhooks
+		frappe.db.set_value(
+			"A2C Lead", 
+			target_lead, 
+			"call_notes", 
+			"Source: IVR | Ref ID: REF-IVR-101 | Timestamp: 2026-05-27T10:00:00Z\n\nSource: Missed Call | Ref ID: REF-MC-202 | Timestamp: 2026-05-27T10:05:00Z"
+		)
+		frappe.db.commit()
+
+		res = get_lead_call_logs(lead_id=target_lead)
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(res["lead_id"], target_lead)
+		
+		call_logs = res["call_logs"]
+		self.assertEqual(len(call_logs), 2)
+		
+		first_call = call_logs[0]
+		self.assertEqual(first_call["source"], "IVR")
+		self.assertEqual(first_call["ref_id"], "REF-IVR-101")
+		self.assertEqual(first_call["timestamp"], "2026-05-27T10:00:00Z")
+		
+		second_call = call_logs[1]
+		self.assertEqual(second_call["source"], "Missed Call")
+		self.assertEqual(second_call["ref_id"], "REF-MC-202")
+		self.assertEqual(second_call["timestamp"], "2026-05-27T10:05:00Z")
+
+
+
 
 
 class TestLeadCreationAPI(unittest.TestCase):

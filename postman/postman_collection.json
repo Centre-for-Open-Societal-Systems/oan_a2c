@@ -22,7 +22,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"usr\": \"agent.ethiopia@coopbank.com\",\n    \"pwd\": \"SuperSecurePassword123!\"\n}"
+							"raw": "{\n    \"usr\": \"test_agent@coopbank.com\",\n    \"pwd\": \"test_agent@1234\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/method/oan_a2c.api.auth.login",
@@ -52,7 +52,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"email\": \"agent.ethiopia@coopbank.com\"\n}"
+							"raw": "{\n    \"email\": \"test_agent@coopbank.com\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/method/oan_a2c.api.auth.forgot_password",
@@ -82,7 +82,7 @@
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"email\": \"agent.ethiopia@coopbank.com\",\n    \"key\": \"{{reset_key_from_email}}\",\n    \"new_password\": \"NewSuperSecurePassword987!\"\n}"
+							"raw": "{\n    \"email\": \"test_agent@coopbank.com\",\n    \"key\": \"{{reset_key_from_email}}\",\n    \"new_password\": \"NewSuperSecurePassword987!\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/api/method/oan_a2c.api.auth.reset_password",
@@ -219,6 +219,131 @@
 							]
 						},
 						"description": "Returns aggregated lead counts: total count and status-wise counts. Enforces JWT session validation and native role-based permissions (RBAC)."
+					},
+					"response": []
+				},
+				{
+					"name": "4. Get Lead Metadata (Forms Dropdown Options)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_metadata",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.get_lead_metadata"
+							]
+						},
+						"description": "Returns dynamic select option values for lead forms and search filters."
+					},
+					"response": []
+				},
+				{
+					"name": "5. Add Lead Comment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"lead_id\": \"LEAD-2026-00001\",\n    \"content\": \"Field agent discussed agricultural profiles with farmer.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.add_lead_comment",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.add_lead_comment"
+							]
+						},
+						"description": "Attaches a new timeline comment to the specified A2C Lead."
+					},
+					"response": []
+				},
+				{
+					"name": "6. Get Lead Timeline (History Log)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_timeline?lead_id=LEAD-2026-00001",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.get_lead_timeline"
+							],
+							"query": [
+								{
+									"key": "lead_id",
+									"value": "LEAD-2026-00001"
+								}
+							]
+						},
+						"description": "Fetches a chronologically sorted history of comments and audit trails for a lead."
+					},
+					"response": []
+				},
+				{
+					"name": "7. Get Lead Call Logs (Call History)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_call_logs?lead_id=LEAD-2026-00001",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.get_lead_call_logs"
+							],
+							"query": [
+								{
+									"key": "lead_id",
+									"value": "LEAD-2026-00001"
+								}
+							]
+						},
+						"description": "Retrieves and parses raw multiline call notes into a structured list of call log objects."
 					},
 					"response": []
 				}
