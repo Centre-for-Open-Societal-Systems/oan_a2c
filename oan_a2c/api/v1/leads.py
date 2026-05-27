@@ -176,3 +176,119 @@ def get_lead_summary():
 		"by_status": counts_by_status
 	}
 
+
+@frappe.whitelist(allow_guest=False)
+def get_lead_metadata():
+	"""
+	Returns dynamic options for dropdown fields in A2C Lead forms.
+	Enforces JWT session validation and native role-based permissions (RBAC).
+	"""
+	frappe.has_permission("A2C Lead", "read", throw=True)
+
+	meta = frappe.get_meta("A2C Lead")
+	status_field = meta.get_field("status")
+	source_field = meta.get_field("lead_source")
+
+	statuses = status_field.options.split("\n") if status_field else []
+	sources = source_field.options.split("\n") if source_field else []
+
+	return {
+		"status": "success",
+		"statuses": statuses,
+		"sources": sources
+	}
+
+
+@frappe.whitelist(allow_guest=False)
+def add_lead_comment(lead_id=None, content=None):
+	"""
+	Decoupled API bridge to attach a comment or manual timeline note to a specific A2C Lead.
+	Enforces JWT session validation, write permissions, and input validation.
+	"""
+	if not lead_id:
+		frappe.throw(_("lead_id is required"), frappe.MandatoryError)
+	if not content:
+		frappe.throw(_("content is required"), frappe.MandatoryError)
+
+	# Verify user has write permissions on this specific lead document
+	frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
+
+	comment = frappe.new_doc("Comment")
+	comment.comment_type = "Comment"
+	comment.reference_doctype = "A2C Lead"
+	comment.reference_name = lead_id
+	comment.content = content
+	comment.insert(ignore_permissions=False)
+
+	return {
+		"status": "success",
+		"comment_id": comment.name,
+		"message": _("Comment added successfully.")
+	}
+
+
+@frappe.whitelist(allow_guest=False)
+def get_lead_timeline(lead_id=None):
+	"""
+	Retrieves the historical timeline of comments and system activities for a specific lead.
+	Enforces JWT session validation and explicit document-level read permissions.
+	"""
+	if not lead_id:
+		frappe.throw(_("lead_id is required"), frappe.MandatoryError)
+
+	# Verify user has read permissions on this specific lead document
+	frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
+
+	comments = frappe.get_list(
+		"Comment",
+		fields=["name", "comment_by", "content", "creation", "comment_type"],
+		filters={
+			"reference_doctype": "A2C Lead",
+			"reference_name": lead_id
+		},
+		order_by="creation desc"
+	)
+
+	return {
+		"status": "success",
+		"lead_id": lead_id,
+		"timeline": comments
+	}
+
+
+@frappe.whitelist(allow_guest=False)
+def get_lead_call_logs(lead_id=None):
+	"""
+	Retrieves and parses the call history/event logs for a specific A2C Lead.
+	Enforces JWT session validation and document-level read permissions.
+	"""
+	if not lead_id:
+		frappe.throw(_("lead_id is required"), frappe.MandatoryError)
+
+	# Verify user has read permissions on this specific lead document
+	frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
+
+	call_notes = frappe.db.get_value("A2C Lead", lead_id, "call_notes") or ""
+
+	parsed_logs = []
+	raw_lines = [line.strip() for line in call_notes.split("\n") if line.strip()]
+
+	for line in raw_lines:
+		# A line looks like: "Source: Missed Call | Ref ID: TELCO-778899 | Timestamp: 2026-05-27T12:00:00Z"
+		parts = [p.strip() for p in line.split(" | ")]
+		log_entry = {}
+		for part in parts:
+			if ":" in part:
+				key, val = part.split(":", 1)
+				log_entry[key.strip().lower().replace(" ", "_")] = val.strip()
+		if log_entry:
+			parsed_logs.append(log_entry)
+
+	return {
+		"status": "success",
+		"lead_id": lead_id,
+		"call_logs": parsed_logs
+	}
+
+
+

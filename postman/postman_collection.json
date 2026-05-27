@@ -782,3 +782,419 @@
         }
     ]
 }
+	"info": {
+		"_postman_id": "b3e9a51d-9f2d-4116-8db8-1c42f0b7c5b1",
+		"name": "OAN Access to Credit (A2C)",
+		"description": "API Contracts for the OpenAgriNet Access to Credit DPG Module. Endpoints are divided into stateless interactive APIs and background system webhooks.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Authentication & IAM",
+			"item": [
+				{
+					"name": "1. Login (Generate JWT)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"usr\": \"test_agent@coopbank.com\",\n    \"pwd\": \"test_agent@1234\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.auth.login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.auth.login"
+							]
+						},
+						"description": "Authenticates the user using standard Frappe credentials and returns a short-lived JSON Web Token (JWT) intended for frontend stateless session management."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Forgot Password Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test_agent@coopbank.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.auth.forgot_password",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.auth.forgot_password"
+							]
+						},
+						"description": "Triggers an email to the user with a reset password link containing a temporary cryptographic key."
+					},
+					"response": []
+				},
+				{
+					"name": "3. Reset Password (Bridge)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test_agent@coopbank.com\",\n    \"key\": \"{{reset_key_from_email}}\",\n    \"new_password\": \"NewSuperSecurePassword987!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.auth.reset_password",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.auth.reset_password"
+							]
+						},
+						"description": "Sets a new password using the temporary key. Expected to be called by the Headless Frontend after a user clicks the reset link in their email."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Business API (Requires JWT)",
+			"item": [
+				{
+					"name": "1. Get Leads (Paginated Search & Filter)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text",
+								"description": "Insert the token received from the Login API."
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&start_date=&end_date=",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.get_leads"
+							],
+							"query": [
+								{
+									"key": "start",
+									"value": "0"
+								},
+								{
+									"key": "page_length",
+									"value": "20"
+								},
+								{
+									"key": "search_query",
+									"value": ""
+								},
+								{
+									"key": "status",
+									"value": ""
+								},
+								{
+									"key": "lead_source",
+									"value": ""
+								},
+								{
+									"key": "start_date",
+									"value": ""
+								},
+								{
+									"key": "end_date",
+									"value": ""
+								}
+							]
+						},
+						"description": "Fetches a paginated, filtered, and searchable list of A2C leads. Automatically applies multi-tenant RBAC and User Permissions at the query layer."
+					},
+					"response": []
+				},
+				{
+					"name": "2. Create Lead Natively",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"phone_number\": \"+251911000003\",\n    \"first_name\": \"Abebe\",\n    \"last_name\": \"Bikila\",\n    \"email\": \"abebe@coopbank.com\",\n    \"lead_source\": \"Agent Entry\",\n    \"external_id\": \"PARTNER-990011\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.create_lead",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.create_lead"
+							]
+						},
+						"description": "Natively registers a new A2C Lead document in the system using JWT field agent context."
+					},
+					"response": []
+				},
+				{
+					"name": "3. Get Lead Summary (Metrics Dashboard)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_summary",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.get_lead_summary"
+							]
+						},
+						"description": "Returns aggregated lead counts: total count and status-wise counts. Enforces JWT session validation and native role-based permissions (RBAC)."
+					},
+					"response": []
+				},
+				{
+					"name": "4. Get Lead Metadata (Forms Dropdown Options)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.
+              data",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.get_lead_metadata"
+							]
+						},
+						"description": "Returns dynamic select option values for lead forms and search filters."
+					},
+					"response": []
+				},
+				{
+					"name": "5. Add Lead Comment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"lead_id\": \"LEAD-2026-00001\",\n    \"content\": \"Field agent discussed agricultural profiles with farmer.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.add_lead_comment",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.add_lead_comment"
+							]
+						},
+						"description": "Attaches a new timeline comment to the specified A2C Lead."
+					},
+					"response": []
+				},
+				{
+					"name": "6. Get Lead Timeline (History Log)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_timeline?lead_id=LEAD-2026-00001",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.get_lead_timeline"
+							],
+							"query": [
+								{
+									"key": "lead_id",
+									"value": "LEAD-2026-00001"
+								}
+							]
+						},
+						"description": "Fetches a chronologically sorted history of comments and audit trails for a lead."
+					},
+					"response": []
+				},
+				{
+					"name": "7. Get Lead Call Logs (Call History)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_call_logs?lead_id=LEAD-2026-00001",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.leads.get_lead_call_logs"
+							],
+							"query": [
+								{
+									"key": "lead_id",
+									"value": "LEAD-2026-00001"
+								}
+							]
+						},
+						"description": "Retrieves and parses raw multiline call notes into a structured list of call log objects."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "System Webhooks (Requires API Key/Secret)",
+			"item": [
+				{
+					"name": "Inbound Telco Webhook (Idempotent Ingestion)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text",
+								"description": "Standard Frappe API Key and API Secret token."
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"phone_number\": \"+251911000003\",\n    \"lead_source\": \"Missed Call\",\n    \"external_ref_id\": \"TELCO-778899\",\n    \"timestamp\": \"2026-05-26T12:00:00Z\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"method",
+								"oan_a2c.api.v1.webhooks.lead_inbound"
+							]
+						},
+						"description": "Automated ingestion callback for external telecommunication IVR / missed call nodes. Bypasses JWT gateway and authenticates system-to-system via API Token."
+					},
+					"response": []
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "jwt_token",
+			"value": "PASTE_YOUR_JWT_TOKEN_HERE"
+		},
+		{
+			"key": "api_key",
+			"value": "PASTE_YOUR_API_KEY_HERE"
+		},
+		{
+			"key": "api_secret",
+			"value": "PASTE_YOUR_API_SECRET_HERE"
+		},
+		{
+			"key": "reset_key_from_email",
+			"value": "PASTE_YOUR_KEY_HERE"
+		}
+	]
+}
