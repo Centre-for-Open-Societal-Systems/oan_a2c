@@ -79,13 +79,19 @@ The `A2C Lead` DocType acts as the absolute top of the funnel. It is designed to
 | Field ID | Label | Field Type | Parameters / Options | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `phone_number` | Phone Number | Data (Phone) | Mandatory, Unique (active leads) | The primary identifier captured from the missed call or IVR system. |
+| `external_id` | External Reference ID | Data | Optional, Indexed, Programmatically Unique | The correlation ID supplied by the external telco/IVR system. Used for O(1) deduplication. |
+| `first_name` | First Name | Data | Optional | The farmer's first name. |
+| `last_name` | Last Name | Data | Optional | The farmer's last name. |
+| `email` | Email | Data | Optional, Email format | The farmer's email address. |
 | `lead_source` | Source | Select | `Missed Call`, `IVR`, `SMS`, `Agent Entry` | Origin of the lead (defaults to Missed Call). |
-| `status` | Lead Status | Select | `Open`, `Contacted`, `Interested`, `Not Interested`, `Converted` | Workflow state of the initial discovery call. |
+| `status` | Lead Status | Select | `Open`, `Initiated`, `Qualified`, `Not Interested`, `Processed` | Workflow state of the initial discovery call. |
 | `assigned_to` | Assigned Agent | Link | `User` (DocType) | The call center agent or DA tasked with calling the farmer back. |
 | `call_notes` | Initial Call Notes | Text | Multiline | Brief summary of the initial discovery call. |
 | `linked_credit_case`| Converted Credit Case | Link | `A2C Credit Case` (DocType) | Read-only reference populated automatically when the lead expresses interest. |
 
-**Lead Lifecycle Constraint:** The sole purpose of this DocType is to track whether the farmer is interested. Once the `status` reaches **`Interested`** and the `A2C Credit Case` is initialized, this Lead document becomes immutable (locked). All subsequent heavy data gathering (names, addresses, farm details) happens entirely inside the `A2C Credit Case`.
+**Lead Lifecycle Constraint:** Once the `status` reaches **`Processed`** and the `A2C Credit Case` is initialized, this Lead document becomes immutable (locked). All subsequent heavy data gathering (names, addresses, farm details) happens entirely inside the `A2C Credit Case`.
+
+**Conditional Uniqueness Policy:** Internal agents can create manual leads directly via the Desk without an `external_id`. To allow this while preventing duplicate external ingestions, the system enforces database-level indexing for $O(1)$ lookup speeds but handles the unique constraint programmatically in the controller (`before_save`).
 
 ---
 
@@ -291,7 +297,89 @@ To support automated intake from external telecommunication systems (e.g., IVR o
       }
     }
     ```
-*   **Idempotency & Deduplication Logic:** If the external system fires multiple webhooks for the same `phone_number` and there is an existing `A2C Lead` with a status of `Open` or `Contacted`, the system will **not** create a duplicate. It will append the new `timestamp` and `external_ref_id` to the existing lead's `call_notes` and return a successful 200 OK.
+*   **Idempotency & Dual-ID Deduplication Logic:** 
+    1. **Primary Check (External Reference):** If `external_ref_id` is supplied, the webhook queries the indexed `external_id` field. If a match is found (even if closed or processed), it is updated idempotently rather than duplicated.
+    2. **Secondary Check (Active Funnel):** If no `external_ref_id` matches but an active lead (status `Open` or `Initiated`) already exists for the supplied `phone_number`, the system updates the existing lead's `call_notes` with the new event data.
+    3. **Ingest & Creation:** If both checks fail, a new `A2C Lead` is created with the `external_id` set to `external_ref_id` to preserve lineage.
+
+---
+
+### **4.5 Paginated Lead Search & Filtering API**
+Exposes a secure, JWT-authenticated endpoint to query and retrieve leads with multi-faceted filtering, elastic offset pagination, and bounded limits to prevent memory-exhaustion attacks.
+
+*   **Endpoint:** `GET /api/method/oan_a2c.api.v1.leads.get_leads`
+*   **Authentication Required:** Yes (JWT Bearer Token inside standard `Authorization: Bearer <token>` header).
+*   **Request Parameters:**
+    *   `start` *(Optional Int)*: Offset index to begin slice retrieval (defaults to `0`).
+    *   `page_length` *(Optional Int)*: Max slice count to return (defaults to `20`, hard-capped at `100`).
+    *   `search_query` *(Optional String)*: Fuzzy match substring querying across `name` (Lead ID), `phone_number`, and `external_id`.
+    *   `status` *(Optional String)*: Filter matching strict schema values (`Open`, `Initiated`, `Qualified`, `Not Interested`, `Processed`).
+    *   `lead_source` *(Optional String)*: Filter matching source (`Missed Call`, `IVR`, `SMS`, `Agent Entry`).
+    *   `start_date` / `end_date` *(Optional String, YYYY-MM-DD)*: Boundary range matching Lead creation dates.
+*   **Success Response (HTTP 200):**
+    ```json
+    {
+      "message": {
+        "status": "success",
+        "start": 0,
+        "page_length": 2,
+        "total_count": 142,
+        "results": [
+          {
+            "name": "LEAD-2026-00001",
+            "phone_number": "+251911000001",
+            "external_id": "TELCO-778899",
+            "lead_source": "Missed Call",
+            "status": "Qualified",
+            "assigned_to": "agent.ethiopia@coopbank.com",
+            "creation": "2026-05-26 12:00:00"
+          },
+          {
+            "name": "LEAD-2026-00002",
+            "phone_number": "+251911000002",
+            "external_id": null,
+            "lead_source": "Agent Entry",
+            "status": "Open",
+            "assigned_to": null,
+            "creation": "2026-05-26 12:05:00"
+          }
+        ]
+      }
+    }
+    ```
+
+---
+
+### **4.6 Native Lead Creation API**
+Exposes a secure, JWT-authenticated endpoint to create a new `A2C Lead` natively from the A2C field agent interface.
+
+*   **Endpoint:** `POST /api/method/oan_a2c.api.v1.leads.create_lead`
+*   **Authentication Required:** Yes (JWT Bearer Token inside standard `Authorization: Bearer <token>` header).
+*   **Request Payload:**
+    ```json
+    {
+      "phone_number": "+251911000003",
+      "first_name": "Abebe",
+      "last_name": "Bikila",
+      "email": "abebe.bikila@coopbank.com",
+      "lead_source": "Agent Entry",
+      "external_id": "PARTNER-990011"
+    }
+    ```
+*   **Success Response (HTTP 200):**
+    ```json
+    {
+      "message": {
+        "status": "success",
+        "lead_id": "LEAD-2026-00003",
+        "message": "Lead created successfully."
+      }
+    }
+    ```
+*   **Validation Rules:**
+    1. **Role Permissions:** Authenticated user must have create permission on `A2C Lead`.
+    2. **Phone & External ID Duplication:** Conditional uniqueness rules on active phone numbers and external IDs are evaluated natively by the controller.
+    3. **Email Formatting:** Enforces strict regex validation on the email address.
 
 ---
 

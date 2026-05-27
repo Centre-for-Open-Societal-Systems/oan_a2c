@@ -8,7 +8,7 @@ from frappe.core.doctype.user.user import update_password
 
 
 @frappe.whitelist(allow_guest=True)
-def login(usr, pwd):
+def login(usr=None, pwd=None):
 	"""
 	Authenticates a user and returns a stateless JWT.
 	Wraps Frappe's core LoginManager to ensure standard validations apply

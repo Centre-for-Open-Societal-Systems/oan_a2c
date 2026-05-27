@@ -20,7 +20,8 @@ def validate_jwt_request(request=None):
     if path in [
         "/api/method/oan_a2c.api.auth.login",
         "/api/method/oan_a2c.api.auth.forgot_password",
-        "/api/method/oan_a2c.api.auth.reset_password"
+        "/api/method/oan_a2c.api.auth.reset_password",
+        "/api/method/oan_a2c.api.v1.webhooks.lead_inbound"
     ]:
         return
 
@@ -41,7 +42,11 @@ def validate_jwt_request(request=None):
         payload = jwt.decode(token, secret, algorithms=["HS256"])
         
         # Log the user context into the Python thread memory for Frappe's ORM RBAC
+        # Save and restore form_dict as frappe.set_user() resets local.form_dict = _dict()
+        temp_form_dict = getattr(frappe.local, "form_dict", None)
         frappe.set_user(payload.get("sub"))
+        if temp_form_dict is not None:
+            frappe.local.form_dict = temp_form_dict
         
     except jwt.ExpiredSignatureError:
         raise frappe.AuthenticationError("Token has expired")

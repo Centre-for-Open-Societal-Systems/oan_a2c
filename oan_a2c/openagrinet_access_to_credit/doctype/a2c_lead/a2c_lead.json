@@ -7,6 +7,10 @@
  "engine": "InnoDB",
  "field_order": [
   "phone_number",
+  "external_id",
+  "first_name",
+  "last_name",
+  "email",
   "lead_source",
   "status",
   "assigned_to",
@@ -27,6 +31,34 @@
    "search_index": 1
   },
   {
+   "fieldname": "external_id",
+   "fieldtype": "Data",
+   "label": "External Reference ID",
+   "unique": 0,
+   "search_index": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "first_name",
+   "fieldtype": "Data",
+   "label": "First Name",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "last_name",
+   "fieldtype": "Data",
+   "label": "Last Name",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email",
+   "in_list_view": 1
+  },
+  {
    "fieldname": "lead_source",
    "fieldtype": "Select",
    "label": "Source",
@@ -40,7 +72,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Lead Status",
-   "options": "Open\nContacted\nInterested\nNot Interested\nConverted",
+   "options": "Open\nInitiated\nQualified\nNot Interested\nProcessed",
    "default": "Open",
    "reqd": 1,
    "in_list_view": 1,
