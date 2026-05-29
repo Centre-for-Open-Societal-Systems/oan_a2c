@@ -18,7 +18,8 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh '''
-                # Clone frappe_docker which has the Containerfile
+                # Clone frappe_docker which has the Containerfilegit log --oneline -5
+git status
                 rm -rf frappe_docker
                 git clone https://github.com/frappe/frappe_docker.git frappe_docker
 
@@ -46,14 +47,19 @@ pipeline {
         stage('Push to ECR') {
             steps {
                 sh '''
+                    IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+            
                     aws ecr get-login-password --region ${AWS_REGION} | \
                         docker login --username AWS --password-stdin \
                         ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
                     docker push ${IMAGE_URI}:1.0.${BUILD_NUMBER}
                     docker push ${IMAGE_URI}:latest
-                '''
-            }
+            
+                echo "Pushed ${IMAGE_URI}:1.0.${BUILD_NUMBER}"
+            '''
         }
+    }
 
         stage('Deploy to Backend') {
             steps {
