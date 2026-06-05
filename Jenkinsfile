@@ -1,3 +1,4 @@
+//Build, migrate data and deploy to staging environment on AWS EC2 instance
 pipeline {
     agent any
 
