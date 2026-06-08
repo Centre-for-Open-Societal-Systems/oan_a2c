@@ -1,277 +1,82 @@
 import frappe
 import unittest
-from oan_a2c.api.loan_app_api import (
-    loan_details,
-    bank_details,
-    farmer_details,
-    application_manager,
-    get_consent_data
+from oan_a2c.api.v1.loan_applications import (
+    get_loan_summary,
+    get_all_loans,
+    get_basic_profile,
+    get_full_profile,
+    get_credit_info,
+    edit_credit_info
 )
-import json
 
-class TestLoanAPI(unittest.TestCase):
+class TestLoansV1API(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         frappe.set_user("Administrator")
-
-    @classmethod
-    def tearDownClass(cls):
-        frappe.set_user("Administrator")
-        # Clean up created loan applications
-        apps = frappe.get_all("Loan Application", filters={"purpose_of_loan": "API_TEST"}, pluck="name")
-        for name in apps:
-            frappe.delete_doc("Loan Application", name, ignore_permissions=True, force=True)
+        frappe.db.sql("DELETE FROM `tabA2C Loan Application` WHERE first_name='API_TEST_FARMER'")
         frappe.db.commit()
 
     def setUp(self):
         frappe.set_user("Administrator")
-
-    def test_1_create_loan_details(self):
-        """Test creating a new application via loan_details API"""
-        response = loan_details(
-            action="save",
-            loan_type="Agricultural Loan",
-            purpose_of_loan="API_TEST",
-            requested_loan_amount=50000,
-            primary_crop="Wheat"
-        )
-        self.assertEqual(response["status"], "success")
-        self.assertIn("application_id", response["data"])
-        self.assertEqual(response["data"]["current_step"], 1)
-
-        # Verify in DB
-        app_id = response["data"]["application_id"]
-        doc = frappe.get_doc("Loan Application", app_id)
-        self.assertEqual(doc.requested_amount, 50000)
-        self.assertEqual(doc.primary_crop, "Wheat")
-        self.assertEqual(doc.current_step, 1)
-
-        # Store app_id for next tests
-        TestLoanAPI.app_id = app_id
-
-    def test_2_update_bank_details(self):
-        """Test saving bank details for the created application"""
-        # Ensure we have an app_id from previous test or create one
-        app_id = getattr(self, "app_id", None)
-        if not app_id:
-            res = loan_details(action="save", purpose_of_loan="API_TEST")
-            app_id = res["data"]["application_id"]
-
-        response = bank_details(
-            action="save",
-            application_id=app_id,
-            bank_account_name="John Doe",
-            bank_account_number="1234567890",
-            total_amount_borrowing=50000
-        )
-        self.assertEqual(response["status"], "success")
-        self.assertEqual(response["data"]["current_step"], 2)
-
-        doc = frappe.get_doc("Loan Application", app_id)
-        self.assertEqual(doc.bank_account_no, "1234567890")
-
-    def test_3_save_farmer_details(self):
-        """Test saving farmer details"""
-        app_id = getattr(self, "app_id", None)
-        if not app_id:
-            res = loan_details(action="save", purpose_of_loan="API_TEST")
-            app_id = res["data"]["application_id"]
-
-        response = farmer_details(
-            action="save",
-            application_id=app_id,
-            full_name="John",
-            last_name="Doe",
-            mobile_phone="0911223344"
-        )
-        self.assertEqual(response["status"], "success")
-        self.assertEqual(response["data"]["current_step"], 5)
-
-        doc = frappe.get_doc("Loan Application", app_id)
-        self.assertEqual(doc.full_name, "John")
-
-    def test_4_application_manager_review(self):
-        """Test reviewing the application status"""
-        app_id = getattr(self, "app_id", None)
-        if not app_id:
-            res = loan_details(action="save", purpose_of_loan="API_TEST")
-            app_id = res["data"]["application_id"]
-
-        response = application_manager(
-            action="review",
-            application_id=app_id
-        )
-        self.assertEqual(response["status"], "success")
-        sections = response["data"]["sections"]
-        self.assertIn("Loan Requirements", sections)
-        self.assertIn("Bank Details", sections)
-
-    def test_5_draft_save(self):
-        """Test draft saving functionality with protected fields"""
-        app_id = getattr(self, "app_id", None)
-        if not app_id:
-            res = loan_details(action="save", purpose_of_loan="API_TEST")
-            app_id = res["data"]["application_id"]
-
-        response = application_manager(
-            action="draft",
-            application_id=app_id,
-            step=1,
-            data={"address": "Test Address", "status": "Approved"} # status should be protected
-        )
-        self.assertEqual(response["status"], "success")
-
-        doc = frappe.get_doc("Loan Application", app_id)
-        self.assertEqual(doc.address, "Test Address")
-        # status should not be changed by generic draft endpoint
-        self.assertEqual(doc.status, "Draft")
-
-    def test_6_get_consent_data_missing(self):
-        """Test getting consent data when none is available"""
-        app_id = getattr(self, "app_id", None)
-        if not app_id:
-            res = loan_details(action="save", purpose_of_loan="API_TEST")
-            app_id = res["data"]["application_id"]
-            
-        response = get_consent_data(application_id=app_id)
-        self.assertEqual(response["status"], "error")
-        self.assertEqual(response["error_code"], "NO_CONSENT_DATA")
-
-    def test_7_get_consent_data_success(self):
-        """Test parsing consent data"""
-        app_id = getattr(self, "app_id", None)
-        if not app_id:
-            res = loan_details(action="save", purpose_of_loan="API_TEST")
-            app_id = res["data"]["application_id"]
-            
-        # Simulate webhook having updated consent data
-        sample_consent = {
-            "consent": {
-                "consent_creation_request_id": "REQ-123"
-            },
-            "farmer": {
-                "id": "F-001",
-                "name": "Jane Doe Basic"
-            },
-            "selected_data": {
-                "farmer": {
-                    "given_name": "Jane",
-                    "family_name": "Doe",
-                    "email": "jane@example.com",
-                    "phone_no": ["123456789"]
-                }
-            }
-        }
-        
-        frappe.db.set_value("Loan Application", app_id, "consent_data", json.dumps(sample_consent))
-        frappe.db.set_value("Loan Application", app_id, "consent_status", "Approved")
-        frappe.db.commit()
-        
-        response = get_consent_data(application_id=app_id)
-        self.assertEqual(response["status"], "success")
-        
-        details = response["data"]["farmer_details"]
-        self.assertEqual(details["full_name"], "Jane Doe Basic")
-        self.assertEqual(details["email"], "jane@example.com")
-        self.assertEqual(details["mobile_phone"], "123456789")
-
-    def test_8_submit_missing_consent(self):
-        """Test that submitting an application without consent fails"""
-        # Create a new app that doesn't have consent_status="Approved"
-        res = loan_details(action="save", purpose_of_loan="API_TEST")
-        app_id = res["data"]["application_id"]
-
-        response = application_manager(
-            action="submit",
-            application_id=app_id
-        )
-        # It should fail because consent_status != "Approved" and no documents
-        self.assertEqual(response["status"], "error")
-        self.assertEqual(response["error_code"], "CONSENT_NOT_APPROVED")
-
-    def test_9_cancel_application(self):
-        """Test cancelling the application"""
-        res = loan_details(action="save", purpose_of_loan="API_TEST")
-        app_id = res["data"]["application_id"]
-
-        response = application_manager(
-            action="cancel",
-            application_id=app_id,
-            reason="User requested cancellation"
-        )
-        self.assertEqual(response["status"], "success")
-
-        doc = frappe.get_doc("Loan Application", app_id)
-        self.assertEqual(doc.status, "Cancelled")
-        self.assertEqual(doc.cancellation_reason, "User requested cancellation")
-
-    def test_10_submit_success(self):
-        """Test submitting an application when consent is Approved and documents are uploaded"""
-        res = loan_details(action="save", purpose_of_loan="API_TEST")
-        app_id = res["data"]["application_id"]
-
-        # 1. Update consent status to Approved
-        frappe.db.set_value("Loan Application", app_id, "consent_status", "Approved")
-        frappe.db.commit()
-
-        # 2. Attach a dummy document to satisfy doc count check
-        frappe.db.sql("""
-            INSERT INTO `tabFile` (name, file_name, attached_to_doctype, attached_to_name, file_url, is_private)
-            VALUES (%s, %s, %s, %s, %s, %s)
-        """, (frappe.generate_hash(), "test.pdf", "Loan Application", app_id, "/private/files/test.pdf", 1))
-        frappe.db.commit()
-
-        # 3. Call submit
-        response = application_manager(
-            action="submit",
-            application_id=app_id
-        )
-        
-        self.assertEqual(response["status"], "success")
-        self.assertEqual(response["data"]["status"], "Submitted")
-        
-        # Verify in DB
-        doc = frappe.get_doc("Loan Application", app_id)
-        self.assertEqual(doc.status, "Submitted")
-        self.assertEqual(doc.current_step, 6)
-
-    def test_11_get_loan_applications(self):
-        """Test the loan applications list API"""
-        from oan_a2c.openagrinet_access_to_credit.doctype.loan_application.loan_application import get_loan_applications
-
-        # Create a dummy test record
         doc = frappe.get_doc({
-            "doctype": "Loan Application",
+            "doctype": "A2C Loan Application",
+            "first_name": "API_TEST_FARMER",
+            "last_name": "Test",
+            "phone_number": "+251999888777",
+            "loan_amount": 5000,
+            "loan_type": "Input Loan",
             "status": "Draft",
-            "loan_type": "Test Dashboard Loan",
-            "requested_amount": 1000
-        }).insert(ignore_permissions=True)
+            "location": "Addis Ababa"
+        })
+        doc.insert(ignore_permissions=True)
+        self.app_id = doc.name
+        frappe.db.commit()
 
-        res = get_loan_applications(page=1, page_size=20)
-        self.assertEqual(res.get("status"), "success")
-        self.assertIn("results", res)
-        self.assertIn("pagination", res)
-        self.assertTrue(res["pagination"]["total"] > 0)
-        
-        # Cleanup
-        doc.delete()
+    def tearDown(self):
+        if hasattr(self, "app_id") and frappe.db.exists("A2C Loan Application", self.app_id):
+            frappe.delete_doc("A2C Loan Application", self.app_id, ignore_permissions=True, force=True)
+        frappe.db.commit()
 
-    def test_12_get_loan_summary(self):
-        """Test the loan summary API"""
-        from oan_a2c.openagrinet_access_to_credit.doctype.loan_application.loan_application import get_loan_summary
-
-        # Create a dummy test record
-        doc = frappe.get_doc({
-            "doctype": "Loan Application",
-            "status": "Draft",
-            "loan_type": "Test Dashboard Loan",
-            "requested_amount": 1000
-        }).insert(ignore_permissions=True)
-
+    def test_1_get_loan_summary(self):
         res = get_loan_summary()
-        self.assertEqual(res.get("status"), "success")
-        self.assertIn("total", res)
-        self.assertIn("by_status", res)
+        self.assertEqual(res["status"], "success")
+        self.assertIn("summary", res)
+        self.assertIn("total", res["summary"])
+
+    def test_2_get_all_loans(self):
+        res = get_all_loans(status="Draft", page_size=10)
+        self.assertEqual(res["status"], "success")
+        self.assertTrue(len(res["results"]) > 0)
+        found = False
+        for r in res["results"]:
+            if r["application_id"] == self.app_id:
+                found = True
+        self.assertTrue(found)
+
+    def test_3_get_basic_profile(self):
+        res = get_basic_profile(application_id=self.app_id)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER")
+        self.assertEqual(res["data"]["phone_number"], "+251999888777")
+        self.assertNotIn("loan_amount", res["data"])
+
+    def test_4_get_full_profile(self):
+        res = get_full_profile(application_id=self.app_id)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER")
+        self.assertNotIn("loan_amount", res["data"])
+        self.assertNotIn("status", res["data"])
+
+    def test_5_get_credit_info(self):
+        res = get_credit_info(application_id=self.app_id)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["data"]["loan_amount"], 5000)
+        self.assertEqual(res["data"]["loan_type"], "Input Loan")
+
+    def test_6_edit_credit_info(self):
+        res = edit_credit_info(application_id=self.app_id, loan_amount=10000, status="In Progress")
+        self.assertEqual(res["status"], "success")
         
-        # Cleanup
-        doc.delete()
+        doc = frappe.get_doc("A2C Loan Application", self.app_id)
+        self.assertEqual(doc.loan_amount, 10000)
+        self.assertEqual(doc.status, "In Progress")

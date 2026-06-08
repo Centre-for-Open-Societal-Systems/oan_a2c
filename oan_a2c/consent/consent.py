@@ -226,14 +226,14 @@ def verify_otp(consent_request=None, otp_code=None):
     
     # Link back to Loan Application
     if doc.loan_application:
-        frappe.db.set_value("Loan Application", doc.loan_application, "consent_status", "Approved")
-        frappe.db.set_value("Loan Application", doc.loan_application, "consent_request", consent_request)
-        frappe.db.set_value("Loan Application", doc.loan_application, "consent_receipt", receipt.get("signature"))
+        frappe.db.set_value("A2C Loan Application", doc.loan_application, "consent_status", "Approved")
+        frappe.db.set_value("A2C Loan Application", doc.loan_application, "consent_request", consent_request)
+        frappe.db.set_value("A2C Loan Application", doc.loan_application, "consent_receipt", receipt.get("signature"))
         
         # Advance step if needed
-        current_step = frappe.db.get_value("Loan Application", doc.loan_application, "current_step") or 0
+        current_step = frappe.db.get_value("A2C Loan Application", doc.loan_application, "current_step") or 0
         if int(current_step) < 4:
-            frappe.db.set_value("Loan Application", doc.loan_application, "current_step", 4)
+            frappe.db.set_value("A2C Loan Application", doc.loan_application, "current_step", 4)
             
     frappe.db.commit()
 
