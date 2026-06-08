@@ -136,7 +136,7 @@ def send_otp_and_create_consent(**kwargs):
 
     # --- Step 7: Save Consent Request doc in Frappe ---
     try:
-        doc = frappe.new_doc("A2C Consent Request")
+        doc = frappe.new_doc("Consent Request")
         doc.farmer_fayda_id                = fayda_id
         doc.partner                 = partner
         doc.loan_application        = loan_application
@@ -188,7 +188,7 @@ def verify_otp(consent_request=None, otp_code=None):
     if not consent_request or not otp_code:
         frappe.throw(_("consent_request and otp_code are required"))
 
-    doc = frappe.get_doc("A2C Consent Request", consent_request)
+    doc = frappe.get_doc("Consent Request", consent_request)
     transaction_id = doc.otp_transaction_id
 
     if not transaction_id:
@@ -218,8 +218,8 @@ def verify_otp(consent_request=None, otp_code=None):
     except Exception as e:
         print(f">>>>>> Warning: Failed to approve consent in Odoo explicitly: {e}")
 
-    frappe.db.set_value("A2C Consent Request", consent_request, "status", "Approved")
-    frappe.db.set_value("A2C Consent Request", consent_request, "otp_verified_at", now_datetime())
+    frappe.db.set_value("Consent Request", consent_request, "status", "Approved")
+    frappe.db.set_value("Consent Request", consent_request, "otp_verified_at", now_datetime())
 
     receipt = generate_consent_receipt(consent_request)
     enqueue_websub_delivery(receipt)
