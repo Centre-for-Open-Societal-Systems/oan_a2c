@@ -1,0 +1,241 @@
+{
+	"info": {
+		"_postman_id": "b3f0e8a7-4c22-4a7b-8f12-2a7e4b9c1d2e",
+		"name": "A2C Loans v1",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Get Loan Summary",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_loan_summary",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.loan_applications.get_loan_summary"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get All Loans",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_all_loans?status=Approved&page=1",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.loan_applications.get_all_loans"
+					],
+					"query": [
+						{
+							"key": "status",
+							"value": "Approved"
+						},
+						{
+							"key": "page",
+							"value": "1"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Basic Profile",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_basic_profile?application_id=APP-0001",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.loan_applications.get_basic_profile"
+					],
+					"query": [
+						{
+							"key": "application_id",
+							"value": "APP-0001"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Full Profile",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id=APP-0001",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.loan_applications.get_full_profile"
+					],
+					"query": [
+						{
+							"key": "application_id",
+							"value": "APP-0001"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Credit Info",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_credit_info?application_id=APP-0001",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.loan_applications.get_credit_info"
+					],
+					"query": [
+						{
+							"key": "application_id",
+							"value": "APP-0001"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Edit Credit Info",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"application_id\": \"APP-0001\",\n    \"loan_amount\": 50000,\n    \"loan_type\": \"Input Loan\",\n    \"status\": \"Under Review\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.edit_credit_info",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.loan_applications.edit_credit_info"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Upload Supporting Documents",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "file",
+							"type": "file",
+							"src": []
+						}
+					]
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.upload_supporting_documents?application_id=APP-0001",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.loan_applications.upload_supporting_documents"
+					],
+					"query": [
+						{
+							"key": "application_id",
+							"value": "APP-0001"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Supporting Documents",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_supporting_documents?application_id=APP-0001",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.loan_applications.get_supporting_documents"
+					],
+					"query": [
+						{
+							"key": "application_id",
+							"value": "APP-0001"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "jwt_token",
+			"value": "PASTE_YOUR_TOKEN_HERE"
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{jwt_token}}",
+				"type": "string"
+			}
+		]
+	}
+}

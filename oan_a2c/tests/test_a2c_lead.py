@@ -252,7 +252,6 @@ class TestLeadListAPI(unittest.TestCase):
 	def _clear_records(cls):
 		for name in frappe.get_all(
 			"A2C Lead",
-			filters={"phone_number": ("like", "+251922000%")},
 			pluck="name",
 		):
 			frappe.delete_doc("A2C Lead", name, ignore_permissions=True, force=True)

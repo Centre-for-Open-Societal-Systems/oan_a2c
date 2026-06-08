@@ -1,4 +1,787 @@
 {
+    "info": {
+        "_postman_id": "b3e9a51d-9f2d-4116-8db8-1c42f0b7c5b1",
+        "name": "OAN Access to Credit (A2C)",
+        "description": "API Contracts for the OpenAgriNet Access to Credit DPG Module. Endpoints are divided into stateless interactive APIs and background system webhooks.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Authentication & IAM",
+            "item": [
+                {
+                    "name": "1. Login (Generate JWT)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"usr\": \"agent.ethiopia@coopbank.com\",\n    \"pwd\": \"SuperSecurePassword123!\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.login",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.login"
+                            ]
+                        },
+                        "description": "Authenticates the user using standard Frappe credentials and returns a short-lived JSON Web Token (JWT) intended for frontend stateless session management."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2. Forgot Password Request",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"agent.ethiopia@coopbank.com\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.forgot_password",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.forgot_password"
+                            ]
+                        },
+                        "description": "Triggers an email to the user with a reset password link containing a temporary cryptographic key."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "3. Reset Password (Bridge)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"agent.ethiopia@coopbank.com\",\n    \"key\": \"{{reset_key_from_email}}\",\n    \"new_password\": \"NewSuperSecurePassword987!\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.reset_password",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.reset_password"
+                            ]
+                        },
+                        "description": "Sets a new password using the temporary key. Expected to be called by the Headless Frontend after a user clicks the reset link in their email."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Business API (Requires JWT)",
+            "item": [
+                {
+                    "name": "1. Get Leads (Paginated Search & Filter)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text",
+                                "description": "Insert the token received from the Login API."
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&start_date=&end_date=",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.leads.get_leads"
+                            ],
+                            "query": [
+                                {
+                                    "key": "start",
+                                    "value": "0"
+                                },
+                                {
+                                    "key": "page_length",
+                                    "value": "20"
+                                },
+                                {
+                                    "key": "search_query",
+                                    "value": ""
+                                },
+                                {
+                                    "key": "status",
+                                    "value": ""
+                                },
+                                {
+                                    "key": "lead_source",
+                                    "value": ""
+                                },
+                                {
+                                    "key": "start_date",
+                                    "value": ""
+                                },
+                                {
+                                    "key": "end_date",
+                                    "value": ""
+                                }
+                            ]
+                        },
+                        "description": "Fetches a paginated, filtered, and searchable list of A2C leads. Automatically applies multi-tenant RBAC and User Permissions at the query layer."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2. Create Lead Natively",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_number\": \"+251911000003\",\n    \"first_name\": \"Abebe\",\n    \"last_name\": \"Bikila\",\n    \"email\": \"abebe@coopbank.com\",\n    \"lead_source\": \"Agent Entry\",\n    \"external_id\": \"PARTNER-990011\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.create_lead",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.leads.create_lead"
+                            ]
+                        },
+                        "description": "Natively registers a new A2C Lead document in the system using JWT field agent context."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "3. Get Lead Summary (Metrics Dashboard)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.leads.get_lead_summary"
+                            ]
+                        },
+                        "description": "Returns aggregated lead counts: total count and status-wise counts. Enforces JWT session validation and native role-based permissions (RBAC)."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "System Webhooks (Requires API Key/Secret)",
+            "item": [
+                {
+                    "name": "Inbound Telco Webhook (Idempotent Ingestion)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "token {{api_key}}:{{api_secret}}",
+                                "type": "text",
+                                "description": "Standard Frappe API Key and API Secret token."
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phone_number\": \"+251911000003\",\n    \"lead_source\": \"Missed Call\",\n    \"external_ref_id\": \"TELCO-778899\",\n    \"timestamp\": \"2026-05-26T12:00:00Z\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.webhooks.lead_inbound"
+                            ]
+                        },
+                        "description": "Automated ingestion callback for external telecommunication IVR / missed call nodes. Bypasses JWT gateway and authenticates system-to-system via API Token."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Consent Management (Requires JWT)",
+            "item": [
+                {
+                    "name": "1. Create Consent Request",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"farmer\": \"FAYDA-123\",\n    \"partner\": \"Test Partner\",\n    \"consent_type\": \"specific\",\n    \"purpose\": \"Testing Consent API\",\n    \"validity_from\": \"2026-06-01 00:00:00\",\n    \"validity_to\": \"2027-06-01 00:00:00\",\n    \"requested_data_fields\": []\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.create_consent_request",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.consent.consent.create_consent_request"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "2. Send OTP",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"consent_request\": \"<CONSENT_REQUEST_ID_FROM_PREVIOUS_STEP>\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.send_otp",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.consent.consent.send_otp"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "3. Verify OTP",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"consent_request\": \"<CONSENT_REQUEST_ID>\",\n    \"otp_code\": \"123456\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.verify_otp",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.consent.consent.verify_otp"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Loan Application Management",
+            "item": [
+                {
+                    "name": "1. Loan Details",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action\": \"save\",\n    \"loan_type\": \"Agricultural Loan\",\n    \"purpose_of_loan\": \"Postman Test\",\n    \"requested_loan_amount\": 75000,\n    \"primary_crop\": \"Wheat\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.loan_details",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.loan_app_api.loan_details"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2. Bank Details",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action\": \"save\",\n    \"application_id\": \"{{application_id}}\",\n    \"bank_account_name\": \"Jane Doe\",\n    \"bank_account_number\": \"9876543210\",\n    \"bank_name\": \"Cooperative Bank of Oromia\",\n    \"total_amount_borrowing\": 75000\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.bank_details",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.loan_app_api.bank_details"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "3. Supporting Documents - Upload",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "action",
+                                    "value": "upload",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "application_id",
+                                    "value": "{{application_id}}",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "document_type",
+                                    "value": "Identity Document",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": []
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.supporting_documents",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.loan_app_api.supporting_documents"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "4. Supporting Documents - List",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action\": \"list\",\n    \"application_id\": \"{{application_id}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.supporting_documents",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.loan_app_api.supporting_documents"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "5. Farmer Details",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action\": \"save\",\n    \"application_id\": \"{{application_id}}\",\n    \"full_name\": \"John\",\n    \"last_name\": \"Doe\",\n    \"mobile_phone\": \"0911223344\",\n    \"gender\": \"Male\",\n    \"woreda\": \"Woreda A\",\n    \"kebele\": \"Kebele B\",\n    \"marital_status\": \"Married\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.farmer_details",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.loan_app_api.farmer_details"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "6. Get Consent Data",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"application_id\": \"{{application_id}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.get_consent_data",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.loan_app_api.get_consent_data"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "7. Application Manager - Review",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action\": \"review\",\n    \"application_id\": \"{{application_id}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.application_manager",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.loan_app_api.application_manager"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "8. Application Manager - Submit",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"action\": \"submit\",\n    \"application_id\": \"{{application_id}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.loan_app_api.application_manager",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.loan_app_api.application_manager"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "9. Get Loan Applications",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.openagrinet_access_to_credit.doctype.loan_application.loan_application.get_loan_applications?page=1&page_size=20",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c",
+                                "openagrinet_access_to_credit",
+                                "doctype",
+                                "loan_application",
+                                "loan_application",
+                                "get_loan_applications"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "page_size",
+                                    "value": "20"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "[\"Draft\", \"Approved\"]",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "loan_amount_min",
+                                    "value": "10000",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "loan_amount_max",
+                                    "value": "150000",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "loan_type",
+                                    "value": "Agricultural Loan",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "mobile_phone",
+                                    "value": "555",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "from_date",
+                                    "value": "2026-10-01",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "to_date",
+                                    "value": "2026-10-31",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "10. Get Loan Summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.openagrinet_access_to_credit.doctype.loan_application.loan_application.get_loan_summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c",
+                                "openagrinet_access_to_credit",
+                                "doctype",
+                                "loan_application",
+                                "loan_application",
+                                "get_loan_summary"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000"
+        },
+        {
+            "key": "jwt_token",
+            "value": "PASTE_YOUR_JWT_TOKEN_HERE"
+        },
+        {
+            "key": "api_key",
+            "value": "PASTE_YOUR_API_KEY_HERE"
+        },
+        {
+            "key": "api_secret",
+            "value": "PASTE_YOUR_API_SECRET_HERE"
+        },
+        {
+            "key": "reset_key_from_email",
+            "value": "PASTE_YOUR_KEY_HERE"
+        }
+    ]
+}
 	"info": {
 		"_postman_id": "b3e9a51d-9f2d-4116-8db8-1c42f0b7c5b1",
 		"name": "OAN Access to Credit (A2C)",
@@ -21,7 +804,7 @@
 							}
 						],
 						"body": {
-							"mode": "raw",
+							"mode": "raw",git
 							"raw": "{\n    \"usr\": \"test_agent@coopbank.com\",\n    \"pwd\": \"test_agent@1234\"\n}"
 						},
 						"url": {
@@ -234,7 +1017,8 @@
 							}
 						],
 						"url": {
-							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_metadata",
+							"raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.
+              data",
 							"host": [
 								"{{base_url}}"
 							],

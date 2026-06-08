@@ -1,0 +1,93 @@
+{
+	"info": {
+		"name": "OAN A2C Consent API",
+		"description": "API Contracts specifically for the Consent Management lifecycle.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Send OTP & Create Consent",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"fayda_id\": \"FAYDA-123\",\n    \"partner\": \"Test Partner\",\n    \"purpose\": \"Testing Consent API\",\n    \"validity_from\": \"2026-06-01 00:00:00\",\n    \"validity_to\": \"2027-06-01 00:00:00\",\n    \"loan_application\": \"{{application_id}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.consent.consent.send_otp_and_create_consent",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.consent.consent.send_otp_and_create_consent"
+					]
+				}
+			}
+		},
+		{
+			"name": "2. Verify OTP",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"consent_request\": \"{{consent_request_id}}\",\n    \"otp_code\": \"123456\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.consent.consent.verify_otp",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.consent.consent.verify_otp"
+					]
+				}
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000"
+		},
+		{
+			"key": "jwt_token",
+			"value": "PASTE_YOUR_TOKEN_HERE"
+		},
+		{
+			"key": "consent_request_id",
+			"value": "CR-YYYY-XXXXX"
+		},
+		{
+			"key": "application_id",
+			"value": "APP-YYYY-XXXXX"
+		}
+	]
+}

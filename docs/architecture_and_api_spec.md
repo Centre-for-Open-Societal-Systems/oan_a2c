@@ -383,6 +383,153 @@ Exposes a secure, JWT-authenticated endpoint to create a new `A2C Lead` natively
 
 ---
 
+### **4.7 Get Lead Summary (Metrics Dashboard)**
+Provides aggregated, cache-aware lead metrics grouped by their workflow states. Excellent for field dashboards and high-level progress tracking.
+
+*   **Endpoint:** `GET /api/method/oan_a2c.api.v1.leads.get_lead_summary`
+*   **Authentication Required:** Yes (JWT Bearer Token inside standard `Authorization: Bearer <token>` header).
+*   **Request Parameters:** None.
+*   **Success Response (HTTP 200):**
+    ```json
+    {
+      "message": {
+        "status": "success",
+        "total": 5,
+        "by_status": {
+          "Open": 2,
+          "Initiated": 1,
+          "Qualified": 1,
+          "Not Interested": 0,
+          "Processed": 1
+        }
+      }
+    }
+    ```
+*   **Security & Execution Specs:**
+    1. **Role Permissions:** Authenticated user must have `read` permissions on the `A2C Lead` DocType.
+    2. **Multi-Tenant Isolation:** Relies entirely on `frappe.get_list` to automatically enforce multi-tenant database filtering based on active User Permissions.
+
+---
+
+### **4.8 Get Lead Metadata (Forms Dropdown Options)**
+Dynamically loads valid Select options for metadata fields within Lead forms. Avoids hardcoding status or source collections in decoupled frontends.
+
+*   **Endpoint:** `GET /api/method/oan_a2c.api.v1.leads.get_lead_metadata`
+*   **Authentication Required:** Yes (JWT Bearer Token inside standard `Authorization: Bearer <token>` header).
+*   **Request Parameters:** None.
+*   **Success Response (HTTP 200):**
+    ```json
+    {
+      "message": {
+        "status": "success",
+        "statuses": [
+          "Open",
+          "Initiated",
+          "Qualified",
+          "Not Interested",
+          "Processed"
+        ],
+        "sources": [
+          "Missed Call",
+          "IVR",
+          "SMS",
+          "Agent Entry"
+        ]
+      }
+    }
+    ```
+*   **Security Specs:**
+    1. **Role Permissions:** Authenticated user must have `read` permissions on the `A2C Lead` DocType.
+
+---
+
+### **4.9 Add Lead Comment**
+Decoupled API bridge to attach user-generated comments or manual timeline notes to a specific lead. Directly hooks into Frappe's native timeline mechanism.
+
+*   **Endpoint:** `POST /api/method/oan_a2c.api.v1.leads.add_lead_comment`
+*   **Authentication Required:** Yes (JWT Bearer Token inside standard `Authorization: Bearer <token>` header).
+*   **Request Payload:**
+    ```json
+    {
+      "lead_id": "LEAD-2026-00003",
+      "content": "Called farmer; requested follow-up next Tuesday."
+    }
+    ```
+*   **Success Response (HTTP 200):**
+    ```json
+    {
+      "message": {
+        "status": "success",
+        "comment_id": "COM00000001",
+        "message": "Comment added successfully."
+      }
+    }
+    ```
+*   **Validation & Security Specs:**
+    1. **Parameter Enforcement:** Enforces presence of both `lead_id` and `content`, returning standard `400` errors on empty inputs.
+    2. **Document-Level Permissions:** Checks explicit user `write` permissions on the specific document instance via `frappe.has_permission(..., doc=lead_id)`.
+
+---
+
+### **4.10 Get Lead Timeline (History Log)**
+Retrieves the complete history of comments and automated system activities associated with a specific lead, ordered from newest to oldest.
+
+*   **Endpoint:** `GET /api/method/oan_a2c.api.v1.leads.get_lead_timeline`
+*   **Authentication Required:** Yes (JWT Bearer Token inside standard `Authorization: Bearer <token>` header).
+*   **Request Parameters:**
+    *   `lead_id` *(Required String)*: ID of the targeted lead.
+*   **Success Response (HTTP 200):**
+    ```json
+    {
+      "message": {
+        "status": "success",
+        "lead_id": "LEAD-2026-00003",
+        "timeline": [
+          {
+            "name": "COM00000001",
+            "comment_by": "test_agent@coopbank.com",
+            "content": "Called farmer; requested follow-up next Tuesday.",
+            "creation": "2026-05-27 12:00:00",
+            "comment_type": "Comment"
+          }
+        ]
+      }
+    }
+    ```
+*   **Security Specs:**
+    1. **Document-Level Permissions:** Checks explicit user `read` permissions on the specific document instance via `frappe.has_permission(..., doc=lead_id)`.
+
+---
+
+### **4.11 Get Lead Call Logs (Call History)**
+Parses unstructured raw multiline telco and call agent logs from the lead's notes into a clean, structured JSON collection.
+
+*   **Endpoint:** `GET /api/method/oan_a2c.api.v1.leads.get_lead_call_logs`
+*   **Authentication Required:** Yes (JWT Bearer Token inside standard `Authorization: Bearer <token>` header).
+*   **Request Parameters:**
+    *   `lead_id` *(Required String)*: ID of the targeted lead.
+*   **Success Response (HTTP 200):**
+    ```json
+    {
+      "message": {
+        "status": "success",
+        "lead_id": "LEAD-2026-00003",
+        "call_logs": [
+          {
+            "source": "Missed Call",
+            "ref_id": "TELCO-778899",
+            "timestamp": "2026-05-27T12:00:00Z"
+          }
+        ]
+      }
+    }
+    ```
+*   **Security & Parser Specs:**
+    1. **Document-Level Permissions:** Checks explicit user `read` permissions on the specific document instance via `frappe.has_permission(..., doc=lead_id)`.
+    2. **Dynamically Parsed Values:** Converts structured ` | ` separated string segments within the `call_notes` field into low-friction JSON objects.
+
+---
+
 ## **5. Security, Cryptography, & Middleware**
 
 To protect sensitive agricultural and credit data under Ethiopia’s regional data protection frameworks:
