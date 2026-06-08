@@ -7,13 +7,13 @@ from datetime import datetime
 
 
 class OpenG2PConsentClient:
-    def __init__(self):
+    def __init__(self, portal_session_id=None):
         self.base_url = frappe.conf.get("openg2p_base_url")
         self.db = frappe.conf.get("openg2p_db", "openg2p")
 
         # Portal user — for consent creation
-        self.username = frappe.conf.get("openg2p_username", "admin")
-        self.password = frappe.conf.get("openg2p_password", "admin")
+        self.username = frappe.conf.get("openg2p_username", "megha")
+        self.password = frappe.conf.get("openg2p_password", "megha")
 
         # Admin user — for res.partner / g2p.reg.id lookups
         self.admin_username = frappe.conf.get("openg2p_admin_username", "admin")
@@ -24,8 +24,13 @@ class OpenG2PConsentClient:
 
         self.session = requests.Session()        # portal user session
         self.admin_session = requests.Session()  # admin session
+        self.portal_session_id = portal_session_id
 
-        self._authenticate(self.session, self.username, self.password)
+        if portal_session_id:
+            self.session.cookies.set("session_id", portal_session_id)
+        else:
+            self._authenticate(self.session, self.username, self.password)
+            
         self._authenticate(self.admin_session, self.admin_username, self.admin_password)
 
         # Fayda direct config (same env vars Odoo uses)
@@ -129,7 +134,11 @@ class OpenG2PConsentClient:
             "params": params
         }
         try:
-            response = self.session.post(url, json=payload)
+            print(f">>>>>> [DEBUG RPC] Sending to {endpoint} with cookies: {self.session.cookies.get_dict()}")
+            kwargs = {"json": payload}
+            if hasattr(self, "portal_session_id") and self.portal_session_id:
+                kwargs["cookies"] = {"session_id": self.portal_session_id}
+            response = self.session.post(url, **kwargs)
             response.raise_for_status()
             data = response.json()
 
@@ -145,7 +154,11 @@ class OpenG2PConsentClient:
                     error_msg = str(error_data)
                 frappe.throw(_("OpenG2P Error: {0}").format(error_msg))
 
-            return data.get("result")
+            result = data.get("result")
+            if isinstance(result, dict) and result.get("success") is False:
+                frappe.throw(_("OpenG2P Error: {0}").format(result.get("message") or "Unknown error"))
+
+            return result
 
         except requests.exceptions.RequestException as e:
             frappe.throw(_("Failed to connect to OpenG2P: {0}").format(str(e)))
@@ -253,34 +266,19 @@ class OpenG2PConsentClient:
     # Partner lookup — uses admin session
     # -------------------------------------------------------------------------
 
-    def get_partner_id(self, partner_name):
-        """Fetch or auto-create the Odoo res.partner ID for the given partner name."""
-        url = f"{self.base_url}/web/dataset/call_kw"
+    def get_partner_id(self, partner_name=None):
+        """Fetch the consent_parent_partner_id of the API user. Odoo strictly requires this ID."""
         try:
             result = self._admin_search_read(
-                "res.partner",
-                [["name", "=", partner_name]],
-                ["id"]
+                "res.users",
+                [["login", "=", self.username]],
+                ["consent_parent_partner_id"]
             )
-            if result:
-                return result[0]["id"]
-
-            create_payload = {
-                "jsonrpc": "2.0",
-                "method": "call",
-                "params": {
-                    "model": "res.partner",
-                    "method": "create",
-                    "args": [{"name": partner_name, "is_company": True}],
-                    "kwargs": {}
-                }
-            }
-            create_response = self.admin_session.post(url, json=create_payload)
-            create_data = create_response.json()
-            if "error" in create_data:
-                frappe.throw(_("Failed to create partner in Odoo: {0}").format(str(create_data["error"])))
-            return create_data.get("result")
-
+            if result and result[0].get("consent_parent_partner_id"):
+                return result[0]["consent_parent_partner_id"][0]
+            
+            # Fallback if not found
+            return None
         except requests.exceptions.RequestException as e:
             frappe.throw(_("Failed to connect to OpenG2P: {0}").format(str(e)))
 
@@ -335,9 +333,32 @@ class OpenG2PConsentClient:
     # Consent creation — uses portal session
     # -------------------------------------------------------------------------
 
+    def upload_attachment(self, attachment_base64, attachment_filename):
+        """Uploads an attachment to Odoo and returns the attachment_id"""
+        params = {
+            "attachment_base64": attachment_base64,
+            "attachment_filename": attachment_filename
+        }
+        print(f">>>>>> Uploading attachment to OpenG2P: {attachment_filename}")
+        result = self._call_rpc("/api/consent/attachment/upload", "call", params)
+        print(f">>>>>> OpenG2P attachment response: {result}")
+        
+        # OpenG2P returns {"success": True, "data": {"attachment_id": 123}}
+        if not result or not result.get("success"):
+            frappe.throw(frappe._("OpenG2P Attachment Upload Failed: {0}").format(result.get("message")))
+        
+        return result.get("data", {}).get("attachment_id")
+
     def create_consent_request(self, partner_id, farmer_db_id, consent_type, purpose,
                                 validity_from, validity_to, allowed_data_field_ids,
-                                attachment_ids=None):
+                                attachment_ids=None, attachment_base64=None, attachment_filename=None):
+        
+        # If base64 is provided, upload it first to get the attachment_id
+        if attachment_base64:
+            uploaded_id = self.upload_attachment(attachment_base64, attachment_filename or "consent.pdf")
+            if uploaded_id:
+                attachment_ids = [uploaded_id]
+
         params = {
             "partner_id": partner_id,
             "farmer_db_id": farmer_db_id,
@@ -345,10 +366,11 @@ class OpenG2PConsentClient:
             "purpose": purpose,
             "validity_from": validity_from,
             "validity_to": validity_to,
-            "allowed_data_field_ids": allowed_data_field_ids
+            "allowed_data_field_ids": allowed_data_field_ids,
+            "originated_from": "partner"
         }
         if attachment_ids:
-            params["attachment_ids"] = attachment_ids if isinstance(attachment_ids, list) else [attachment_ids]
+            params["attachment_ids"] = attachment_ids if not isinstance(attachment_ids, list) else attachment_ids[0]
 
         print(f">>>>>> Sending consent to OpenG2P: {params}")
         result = self._call_rpc("/api/consent/request/create", "call", params)
@@ -368,197 +390,35 @@ class OpenG2PConsentClient:
     # OTP — calls Fayda directly (bypasses Odoo session dependency)
     # -------------------------------------------------------------------------
 
-    def send_otp(self, farmer_id):
+    def request_otp(self, farmer_id):
         """
-        Call Fayda OTP API directly from Frappe.
-        Stores transaction context in Frappe cache — no Odoo session dependency.
+        Calls Odoo's new /consent/fayda/request_otp endpoint.
         """
-        print(f">>>>>> send_otp (direct Fayda) | farmer_id: {farmer_id}")
-
-        identifier = self._get_farmer_fayda_identifier(farmer_id)
-        if not identifier:
-            frappe.throw(_("Farmer has no Fayda identifier configured."))
-
-        transaction_id = self._make_transaction_id()
-        url = f"{self.fayda_base_url}/requestData"
-
-        payload = {
-            "id": self.fayda_client_id,
-            "clientSecret": self.fayda_client_secret,
-            "version": self.fayda_version,
-            "requestTime": self._now_iso_millis(),
-            "env": self.fayda_env,
-            "domainUri": self.fayda_domain_uri,
-            "transactionID": transaction_id,
-            "individualId": identifier,
-            "individualIdType": self.fayda_identifier_type,
-            "otpChannel": [self.fayda_channel],
-        }
-
-        print(f">>>>>> Calling Fayda /requestData: {url}")
-        print(f">>>>>> Fayda payload: {payload}")
-
-        try:
-            resp = requests.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json", "Accept": "application/json"},
-                timeout=20
-            )
-            resp.raise_for_status()
-            response_payload = resp.json()
-        except requests.exceptions.RequestException as e:
-            frappe.throw(_("Fayda OTP request failed: {0}").format(str(e)))
-
-        print(f">>>>>> Fayda /requestData response: {response_payload}")
-
-        errors = response_payload.get("errors")
-        if errors:
-            frappe.throw(_("Fayda OTP Error: {0}").format(str(errors)))
-
-        response_data = response_payload.get("response") or {}
-        masked_mobile = (response_data.get("maskedMobile") or "").strip()
-
-        # Store OTP context in Frappe cache (10 min TTL)
-        cache_key = f"fayda_otp_{transaction_id}"
-        frappe.cache().set_value(cache_key, {
-            "farmer_id": farmer_id,
-            "identifier": identifier,
-            "identifier_type": self.fayda_identifier_type,
-            "masked_mobile": masked_mobile,
-            "transaction_id": transaction_id,
-        }, expires_in_sec=600)
-
-        print(f">>>>>> OTP requested. transaction_id: {transaction_id}, masked_mobile: {masked_mobile}")
-
-        return {
-            "success": True,
-            "transaction_id": transaction_id,
-            "masked_mobile": masked_mobile,
-            "data": {
-                "transaction_id": transaction_id,
-                "masked_mobile": masked_mobile,
-            }
-        }
+        params = {"farmer_id": farmer_id}
+        print(f">>>>>> Calling Odoo /consent/fayda/request_otp: {params}")
+        result = self._call_rpc("/consent/fayda/request_otp", "call", params)
+        print(f">>>>>> Odoo request_otp response: {result}")
+        return result
 
     def verify_otp(self, farmer_id, transaction_id, otp_code):
         """
-        Verify OTP directly with Fayda from Frappe.
-        Reads context from Frappe cache — no Odoo session needed.
+        Calls Odoo's new /consent/fayda/verify_otp endpoint.
         """
-        print(f">>>>>> verify_otp (direct Fayda) | farmer_id: {farmer_id}, transaction_id: {transaction_id}")
-
-        # Load OTP context from Frappe cache
-        cache_key = f"fayda_otp_{transaction_id}"
-        cached = frappe.cache().get_value(cache_key)
-        print(f">>>>>> Cached OTP context: {cached}")
-
-        if not cached:
-            frappe.throw(_("OTP session expired or not found. Please request a new OTP."))
-
-        if cached.get("farmer_id") != farmer_id:
-            frappe.throw(_("OTP session does not match the selected farmer."))
-
-        identifier = cached.get("identifier", "")
-        identifier_type = cached.get("identifier_type", self.fayda_identifier_type)
-
-        url = f"{self.fayda_base_url}/getDataAuth"
-        verify_time = self._now_iso_millis()
-
-        payload = {
-            "id": self.fayda_client_id,
-            "clientSecret": self.fayda_client_secret,
-            "version": self.fayda_version,
-            "requestTime": verify_time,
-            "env": self.fayda_env,
-            "domainUri": self.fayda_domain_uri,
-            "transactionID": transaction_id,
-            "requestedAuth": {
-                "otp": True,
-                "demo": False,
-                "bio": False,
-            },
-            "consentObtained": True,
-            "individualId": identifier,
-            "individualIdType": identifier_type,
-            "thumbprint": self.fayda_thumbprint,
-            "requestSessionKey": self.fayda_request_session_key,
-            "requestHMAC": self.fayda_request_hmac,
-            "request": {
-                "timestamp": verify_time,
-                "otp": otp_code,
-            },
-        }
-
-        print(f">>>>>> Calling Fayda /getDataAuth: {url}")
-        print(f">>>>>> Fayda verify payload: {payload}")
-
-        try:
-            resp = requests.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json", "Accept": "application/json"},
-                timeout=20
-            )
-            resp.raise_for_status()
-            response_payload = resp.json()
-        except requests.exceptions.RequestException as e:
-            frappe.throw(_("Fayda OTP verification failed: {0}").format(str(e)))
-
-        print(f">>>>>> Fayda /getDataAuth response: {response_payload}")
-
-        errors = response_payload.get("errors")
-        response_data = response_payload.get("response") or {}
-        auth_status = bool(response_data.get("authStatus"))
-
-        if errors or not auth_status:
-            msg = str(errors) if errors else "OTP verification failed."
-            frappe.throw(_("OTP verification failed: {0}").format(msg))
-
-        # Clear cache after successful verification
-        frappe.cache().delete_value(cache_key)
-
-        verified_at = frappe.utils.now_datetime().strftime("%Y-%m-%d %H:%M:%S")
-        print(f">>>>>> OTP verified successfully at {verified_at}")
-
-        return {
-            "success": True,
+        params = {
+            "farmer_id": int(farmer_id),
             "transaction_id": transaction_id,
-            "masked_mobile": cached.get("masked_mobile", ""),
-            "verified_at": verified_at,
+            "otp_code": str(otp_code)
         }
+        print(f">>>>>> Calling Odoo /consent/fayda/verify_otp: {params}")
+        result = self._call_rpc("/consent/fayda/verify_otp", "call", params)
+        print(f">>>>>> Odoo verify_otp response: {result}")
+        return result
 
     # -------------------------------------------------------------------------
     # Attachment upload — uses admin session
     # -------------------------------------------------------------------------
 
-    def upload_attachment(self, filename, file_content_base64, mimetype="application/pdf"):
-        url = f"{self.base_url}/web/dataset/call_kw"
-        payload = {
-            "jsonrpc": "2.0",
-            "method": "call",
-            "params": {
-                "model": "ir.attachment",
-                "method": "create",
-                "args": [{
-                    "name": filename,
-                    "datas": file_content_base64,
-                    "mimetype": mimetype,
-                    "res_model": "g2p.consent.request"
-                }],
-                "kwargs": {}
-            }
-        }
-        try:
-            response = self.admin_session.post(url, json=payload)
-            data = response.json()
-            if "error" in data:
-                frappe.throw(_("Failed to upload attachment: {0}").format(
-                    data["error"].get("data", {}).get("message", str(data["error"]))
-                ))
-            return data.get("result")
-        except requests.exceptions.RequestException as e:
-            frappe.throw(_("Failed to upload attachment to OpenG2P: {0}").format(str(e)))
+
 
     def upload_consent_attachment(self, file_url):
         """Read file from Frappe disk and upload to OpenG2P."""
@@ -566,14 +426,21 @@ class OpenG2PConsentClient:
         import os
 
         site_path = frappe.get_site_path()
-        file_path = f"{site_path}/public{file_url}"
-        if not os.path.exists(file_path):
-            file_path = f"{site_path}/private{file_url}"
+        # If the file_url already starts with /private or /public, just strip the leading slash
+        # otherwise prepend /public
+        if file_url.startswith("/private/"):
+            file_path = os.path.join(site_path, file_url.lstrip("/"))
+        elif file_url.startswith("/public/"):
+            file_path = os.path.join(site_path, file_url.lstrip("/"))
+        else:
+            file_path = f"{site_path}/public{file_url}"
+            if not os.path.exists(file_path):
+                file_path = f"{site_path}/private{file_url}"
 
         print(f">>>>>> Reading attachment from: {file_path}")
 
         with open(file_path, "rb") as f:
             file_content_b64 = base64.b64encode(f.read()).decode("utf-8")
 
-        filename = file_url.split("/")[-1]
-        return self.upload_attachment(filename=filename, file_content_base64=file_content_b64)
+        filename = os.path.basename(file_path)
+        return self.upload_attachment(attachment_base64=file_content_b64, attachment_filename=filename)
