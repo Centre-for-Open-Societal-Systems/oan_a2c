@@ -614,6 +614,41 @@
                         "description": "Assigns a lead to an agent, updates the assignment date, and logs a timeline comment."
                     },
                     "response": []
+                },
+                {
+                    "name": "15. Update Visit Schedule Status",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"schedule_id\": \"VISIT-2026-00001\",\n    \"status\": \"Completed\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.update_visit_schedule_status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.leads.update_visit_schedule_status"
+                            ]
+                        },
+                        "description": "Updates the status of an A2C Visit Schedule (Scheduled, Completed, Cancelled, Missed)."
+                    },
+                    "response": []
                 }
             ]
         },
