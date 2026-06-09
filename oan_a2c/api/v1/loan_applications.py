@@ -30,11 +30,20 @@ def get_basic_profile(lead_id):
 
 @frappe.whitelist()
 def get_full_profile(application_id=None, lead_id=None):
+    """
+    Retrieves the full profile details of a loan application.
+    Supports looking up the application by application_id, lead_id, or both.
+    If both are provided, it validates that they refer to the same application to prevent mismatches.
+    """
     try:
         if not application_id and not lead_id:
             return {"status": "error", "message": "Either application_id or lead_id is required"}
 
-        if application_id:
+        if application_id and lead_id:
+            doc = _get_app(application_id)
+            if doc.lead_id != lead_id:
+                return {"status": "error", "message": "Mismatched application_id and lead_id"}
+        elif application_id:
             doc = _get_app(application_id)
         else:
             apps = frappe.get_all("A2C Loan Application", filters={"lead_id": lead_id}, fields=["name"], limit=1)
