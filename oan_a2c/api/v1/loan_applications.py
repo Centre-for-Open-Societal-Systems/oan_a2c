@@ -273,6 +273,9 @@ def upload_supporting_documents(application_id):
 @frappe.whitelist()
 def get_supporting_documents(application_id):
     try:
+        # Validate that the application exists
+        _get_app(application_id)
+        
         files = frappe.get_all(
             "File",
             filters={
