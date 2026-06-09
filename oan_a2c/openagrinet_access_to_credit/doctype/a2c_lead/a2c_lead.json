@@ -101,6 +101,12 @@
    "fieldname": "call_notes",
    "fieldtype": "Text",
    "label": "Initial Call Notes"
+  },
+  {
+   "fieldname": "farmer_profile",
+   "fieldtype": "Link",
+   "label": "Farmer Profile",
+   "options": "A2C Farmer Profile"
   }
  ],
  "index_web_pages_for_search": 0,

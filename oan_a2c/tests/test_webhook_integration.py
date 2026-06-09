@@ -66,12 +66,12 @@ def run():
     
     print(f"Cleaning up existing records for UUID: {consent_request_id}...")
     # Cleanup previous runs
-    existing_consents = frappe.get_all("Consent Request", filters={"openg2p_consent_id": consent_request_id}, pluck="name")
+    existing_consents = frappe.get_all("A2C Consent Request", filters={"openg2p_consent_id": consent_request_id}, pluck="name")
     for name in existing_consents:
-        doc = frappe.get_doc("Consent Request", name)
+        doc = frappe.get_doc("A2C Consent Request", name)
         if doc.loan_application:
             frappe.delete_doc("A2C Loan Application", doc.loan_application, ignore_permissions=True, force=True)
-        frappe.delete_doc("Consent Request", name, ignore_permissions=True, force=True)
+        frappe.delete_doc("A2C Consent Request", name, ignore_permissions=True, force=True)
     frappe.db.commit()
     
     print(f"Creating fake Loan Application and Consent Request...")
@@ -90,7 +90,7 @@ def run():
     
     # Create fake Consent Request linked to Loan Application
     consent_req = frappe.get_doc({
-        "doctype": "Consent Request",
+        "doctype": "A2C Consent Request",
         "openg2p_consent_id": consent_request_id,
         "loan_application": loan_app.name,
         "farmer_fayda_id": "1234567890",
@@ -131,7 +131,7 @@ def run():
     print(f"Farmer ID: {updated_loan.farmer_id} (Expected: 30)")
     
     # Verify Consent Request
-    updated_consent = frappe.get_doc("Consent Request", consent_req.name)
+    updated_consent = frappe.get_doc("A2C Consent Request", consent_req.name)
     print(f"Consent Status: {updated_consent.status} (Expected: Approved)")
     
     print("\nDone! To run this test, execute: bench execute oan_a2c.tests.test_webhook_integration.run")
