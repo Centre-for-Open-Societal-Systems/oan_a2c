@@ -29,15 +29,25 @@ def get_basic_profile(lead_id):
         return {"status": "error", "message": str(e)}
 
 @frappe.whitelist()
-def get_full_profile(application_id):
+def get_full_profile(application_id=None, lead_id=None):
     try:
-        doc = _get_app(application_id)
+        if not application_id and not lead_id:
+            return {"status": "error", "message": "Either application_id or lead_id is required"}
+
+        if application_id:
+            doc = _get_app(application_id)
+        else:
+            apps = frappe.get_all("A2C Loan Application", filters={"lead_id": lead_id}, fields=["name"], limit=1)
+            if not apps:
+                return {"status": "error", "message": "Loan Application not found for this lead"}
+            doc = frappe.get_doc("A2C Loan Application", apps[0].name)
 
         data = doc.as_dict()
         filtered_data = {
             k: v for k, v in data.items() 
             if not k.startswith('_') and k not in ('doctype', 'docstatus', 'idx')
         }
+        filtered_data["application_id"] = doc.name
         
         return {
             "status": "success",

@@ -1323,7 +1323,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id={{application_id}}",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id={{application_id}}&lead_id={{lead}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -1336,6 +1336,11 @@
                                 {
                                     "key": "application_id",
                                     "value": "{{application_id}}"
+                                },
+                                {
+                                    "key": "lead_id",
+                                    "value": "{{lead}}",
+                                    "disabled": true
                                 }
                             ]
                         }
