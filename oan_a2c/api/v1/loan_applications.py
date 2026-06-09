@@ -146,10 +146,11 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
 @frappe.whitelist()
 def get_basic_profile(lead_id):
     try:
-        apps = frappe.get_all("A2C Loan Application", filters={"lead_id": lead_id}, limit=1)
-        if not apps:
-            return {"status": "error", "message": "Loan Application not found for this lead"}
-        doc = frappe.get_doc("A2C Loan Application", apps[0].name)
+        lead_doc = frappe.get_doc("A2C Lead", lead_id)
+        if not lead_doc.farmer_profile:
+            return {"status": "error", "message": "Farmer Profile not found for this lead"}
+        
+        doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
         return {
             "status": "success",
             "data": {
@@ -166,10 +167,11 @@ def get_basic_profile(lead_id):
 @frappe.whitelist()
 def get_full_profile(lead_id):
     try:
-        apps = frappe.get_all("A2C Loan Application", filters={"lead_id": lead_id}, limit=1)
-        if not apps:
-            return {"status": "error", "message": "Loan Application not found for this lead"}
-        doc = frappe.get_doc("A2C Loan Application", apps[0].name)
+        lead_doc = frappe.get_doc("A2C Lead", lead_id)
+        if not lead_doc.farmer_profile:
+            return {"status": "error", "message": "Farmer Profile not found for this lead"}
+            
+        doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
 
         excluded_fields = [
             'loan_amount', 'loan_type', 'loan_reason', 'status', 
