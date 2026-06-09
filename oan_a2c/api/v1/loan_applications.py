@@ -173,15 +173,10 @@ def get_full_profile(lead_id):
             
         doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
 
-        excluded_fields = [
-            'loan_amount', 'loan_type', 'loan_reason', 'status', 
-            'current_step', 'loan_officer', 'application_id'
-        ]
-        
         data = doc.as_dict()
         filtered_data = {
             k: v for k, v in data.items() 
-            if k not in excluded_fields and not k.startswith('_')
+            if not k.startswith('_')
         }
         
         return {
