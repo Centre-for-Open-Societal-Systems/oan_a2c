@@ -27,8 +27,8 @@ class TestAuthAPI(unittest.TestCase):
 			user.first_name = "Test Agent"
 			user.insert(ignore_permissions=True)
 
-			from frappe.core.doctype.user.user import update_password
-			update_password(new_password=cls.test_password, user=cls.test_email)
+		from frappe.core.doctype.user.user import update_password
+		update_password(new_password=cls.test_password, user=cls.test_email)
 
 		# Ensure a mock encryption key is present in isolated CI/CD environments
 		if not frappe.conf.get("encryption_key"):

@@ -98,10 +98,9 @@
   },
   {
    "fieldname": "loan_type",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "label": "Loan Type",
-   "options": "\nInput Loan\nCash Loan\nEquipment Loan",
-   "reqd": 1,
+   "read_only": 1,
    "search_index": 1
   },
   {
@@ -170,15 +169,15 @@
   },
   {
    "fieldname": "gender",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "label": "Gender",
-   "options": "\nMale\nFemale"
+   "read_only": 1
   },
   {
    "fieldname": "marital_status",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "label": "Marital Status",
-   "options": "\nSingle\nMarried\nWidowed\nDivorced"
+   "read_only": 1
   },
   {
    "fieldname": "col_break_1",
@@ -211,9 +210,9 @@
   },
   {
    "fieldname": "education_level",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "label": "Education Level",
-   "options": "\nNone / No formal education\nPrimary (Grade 1-8)\nSecondary (Grade 9-12)\nTVET / Certificate\nDiploma\nDegree and above"
+   "read_only": 1
   },
   {
    "fieldname": "land_details_section",
