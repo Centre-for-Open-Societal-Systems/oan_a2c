@@ -139,7 +139,7 @@ def get_loan_metadata():
         return {"status": "error", "message": str(e)}
 
 @frappe.whitelist()
-def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_amount=None, loan_type=None, location=None, from_date=None, to_date=None, page=1, page_size=20):
+def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_amount=None, loan_type=None, location=None, phone_number=None, from_date=None, to_date=None, page=1, page_size=20):
     try:
         if not frappe.has_permission("A2C Loan Application", "read"):
             return {"status": "error", "message": "Not permitted to view Loan Applications"}
@@ -168,6 +168,9 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
         if location:
             filters['location'] = ("like", f"%{location}%")
 
+        if phone_number:
+            filters['phone_number'] = ("like", f"%{phone_number}%")
+
         if from_date and to_date:
             filters['creation'] = ("between", [from_date, f"{to_date} 23:59:59"])
         elif from_date:
@@ -180,7 +183,7 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
         records = frappe.get_all(
             "A2C Loan Application",
             filters=filters,
-            fields=["name as application_id", "status", "loan_amount", "loan_type", "location", "creation"],
+            fields=["name as application_id", "status", "loan_amount", "loan_type", "location", "phone_number", "creation"],
             order_by="creation DESC",
             limit_start=offset,
             limit_page_length=page_size

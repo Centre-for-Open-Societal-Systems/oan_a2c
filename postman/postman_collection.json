@@ -1444,7 +1444,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_all_loans?status=Approved&page=1",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_all_loans?status=Approved&page=1&phone_number=%2B251912345678",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -1475,6 +1475,11 @@
                                 {
                                     "key": "loan_type",
                                     "value": "Input Loan",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "phone_number",
+                                    "value": "+251912345678",
                                     "disabled": true
                                 }
                             ]
