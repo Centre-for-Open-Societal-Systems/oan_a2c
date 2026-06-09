@@ -29,43 +29,43 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         location_parts = [p for p in [region, zone, woreda] if p]
         location = ", ".join(location_parts)
 
+        # Fetch Consent Request to check links
+        consent_doc = frappe.get_doc("A2C Consent Request", consent_doc_name)
+        lead_id = consent_doc.get("lead")
+        
+        phone_number = selected_data.get("Phone Number", "")
+        if not phone_number and lead_id:
+            phone_number = frappe.db.get_value("A2C Lead", lead_id, "phone_number")
+
         updates = {
             "first_name": first_name,
             "last_name": last_name,
             "location": location,
             "farmer_id": farmer_data.get("id"),
-            "consent_id": consent_doc_name
+            "consent_id": consent_doc_name,
+            "phone_number": phone_number,
+            "lead_id": lead_id
         }
 
-        # Fetch Consent Request to check links
-        consent_doc = frappe.get_doc("A2C Consent Request", consent_doc_name)
-
-        # Update Loan Application
-        loan_app_name = consent_doc.get("loan_application")
-        if loan_app_name:
-            loan_app = frappe.get_doc("A2C Loan Application", loan_app_name)
-            for k, v in updates.items():
-                if v is not None and v != "":
-                    loan_app.set(k, v)
-            loan_app.save(ignore_permissions=True)
+        if lead_id:
+            lead_doc = frappe.get_doc("A2C Lead", lead_id)
+            farmer_profile_name = lead_doc.get("farmer_profile")
             
-            # Update Farmer Profile if linked
-            farmer_profile_name = loan_app.get("farmer_profile")
-            if farmer_profile_name:
+            if not farmer_profile_name:
+                farmer_profile = frappe.new_doc("A2C Farmer Profile")
+                for k, v in updates.items():
+                    if v is not None and v != "":
+                        farmer_profile.set(k, v)
+                farmer_profile.insert(ignore_permissions=True)
+                
+                # Link back to lead
+                lead_doc.db_set("farmer_profile", farmer_profile.name)
+            else:
                 farmer_profile = frappe.get_doc("A2C Farmer Profile", farmer_profile_name)
                 for k, v in updates.items():
                     if v is not None and v != "":
                         farmer_profile.set(k, v)
                 farmer_profile.save(ignore_permissions=True)
-        else:
-            # Fallback: try finding by consent_id directly
-            profiles = frappe.get_all("A2C Farmer Profile", filters={"consent_id": consent_doc_name}, pluck="name")
-            if profiles:
-                profile = frappe.get_doc("A2C Farmer Profile", profiles[0])
-                for k, v in updates.items():
-                    if v is not None and v != "":
-                        profile.set(k, v)
-                profile.save(ignore_permissions=True)
 
         frappe.db.commit()
         frappe.logger().info(f"✅ SUCCESS: Background webhook data saved for consent {consent_doc_name}")
@@ -127,3 +127,5 @@ def receive_consent_data(**kwargs):
         frappe.logger().error(f"Webhook Gateway Error: {str(e)}", exc_info=True)
         frappe.response["http_status_code"] = 500
         return {"status": "error", "message": str(e)}
+
+

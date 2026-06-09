@@ -68,7 +68,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "\nDraft\nIn Progress\nSubmitted\nUnder Review\nApproved\nRejected\nDisbursed\nCancelled",
+   "options": "\nDraft\nProcessing\nApproved\nRejected",
    "search_index": 1
   },
   {
