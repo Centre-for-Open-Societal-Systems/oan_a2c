@@ -125,8 +125,7 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
         records = frappe.get_all(
             "A2C Loan Application",
             filters=filters,
-            fields=["name as application_id", "first_name", "last_name", "phone_number", 
-                    "status", "loan_amount", "loan_type", "location", "creation"],
+            fields=["*", "name as application_id"],
             order_by="creation DESC",
             limit_start=offset,
             limit_page_length=page_size
