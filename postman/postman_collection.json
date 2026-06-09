@@ -178,7 +178,37 @@
                         },
                         "description": "Fetches a paginated, filtered, and searchable list of A2C leads. Automatically applies multi-tenant RBAC and User Permissions at the query layer."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "2. Create Lead Natively",
@@ -213,7 +243,37 @@
                         },
                         "description": "Natively registers a new A2C Lead document in the system using JWT field agent context."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "3. Get Lead Summary (Metrics Dashboard)",
@@ -239,7 +299,37 @@
                         },
                         "description": "Returns aggregated lead counts: total count and status-wise counts. Enforces JWT session validation and native role-based permissions (RBAC)."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "4. Get Lead Metadata (Forms Dropdown Options)",
@@ -265,7 +355,37 @@
                         },
                         "description": "Returns dynamic select option values for lead forms and search filters."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "5. Add Lead Comment",
@@ -300,7 +420,37 @@
                         },
                         "description": "Attaches a new timeline comment to the specified A2C Lead."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "6. Get Lead Timeline (History Log)",
@@ -337,7 +487,37 @@
                         },
                         "description": "Fetches a chronologically sorted history of A2C Lead Audit Events (timeline history) for a lead."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "7. Get Lead Call Logs (Call History)",
@@ -369,7 +549,37 @@
                         },
                         "description": "Retrieves and parses raw multiline call notes into a structured list of call log objects."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "8. Schedule Visit",
@@ -404,7 +614,37 @@
                         },
                         "description": "Schedules a visit for the lead, updates status to Verified if Active, and writes a comment to the timeline."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "9. Get Visit Schedules",
@@ -444,7 +684,37 @@
                         },
                         "description": "Retrieves the list of scheduled visits for the agent, with optional filters."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "10. Add Lead Credit Information",
@@ -479,7 +749,37 @@
                         },
                         "description": "Records a new credit requirement/loan profile linked to an active discovery lead."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "11. Get Lead Credit Information",
@@ -511,7 +811,37 @@
                         },
                         "description": "Retrieves the list of credit requirements recorded for the specified lead."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "12. Update Lead Status",
@@ -546,7 +876,37 @@
                         },
                         "description": "Updates the workflow status of a lead, logs the reason to the timeline, and enforces terminal locking."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "13. Get Assignable Users",
@@ -578,7 +938,37 @@
                         },
                         "description": "Retrieves active users holding Development Agent or Bank Agent roles matching the fuzzy query."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "14. Assign Lead",
@@ -613,7 +1003,37 @@
                         },
                         "description": "Assigns a lead to an agent, updates the assignment date, and logs a timeline comment."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "15. Update Visit Schedule Status",
@@ -648,7 +1068,37 @@
                         },
                         "description": "Updates the status of an A2C Visit Schedule (Scheduled, Completed, Cancelled, Missed)."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 }
             ]
         },
@@ -823,7 +1273,37 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Get All Loans",
@@ -873,7 +1353,37 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Create Loan Application",
@@ -908,7 +1418,37 @@
                         },
                         "description": "Creates a new Loan Application for a Processed lead."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Update Loan Status",
@@ -943,7 +1483,37 @@
                         },
                         "description": "Updates the status of a loan application (Approved or Rejected)."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Get Basic Profile",
@@ -974,7 +1544,37 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Get Full Profile",
@@ -988,7 +1588,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?lead_id={{lead}}",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id={{application_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -999,78 +1599,43 @@
                             ],
                             "query": [
                                 {
-                                    "key": "lead_id",
-                                    "value": "{{lead}}"
-                                }
-                            ]
-                        }
-                    },
-                    "response": []
-                },
-                {
-                    "name": "Get Credit Info",
-                    "request": {
-                        "method": "GET",
-                        "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
-                            }
-                        ],
-                        "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_credit_info?application_id={{application_id}}",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "method",
-                                "oan_a2c.api.v1.loan_applications.get_credit_info"
-                            ],
-                            "query": [
-                                {
                                     "key": "application_id",
                                     "value": "{{application_id}}"
                                 }
                             ]
                         }
                     },
-                    "response": []
-                },
-                {
-                    "name": "Edit Credit Info",
-                    "request": {
-                        "method": "POST",
-                        "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
-                            },
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json",
-                                "type": "text"
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
                             }
-                        ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"application_id\": \"{{application_id}}\",\n    \"loan_amount\": 50000,\n    \"loan_type\": \"Input Loan\",\n    \"status\": \"Under Review\"\n}"
-                        },
-                        "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.edit_credit_info",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "method",
-                                "oan_a2c.api.v1.loan_applications.edit_credit_info"
-                            ]
                         }
-                    },
-                    "response": []
+                    ]
                 },
                 {
                     "name": "Upload Supporting Documents",
@@ -1111,7 +1676,37 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Get Supporting Documents",
@@ -1142,7 +1737,37 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Get Loan Assignment Summary",
@@ -1167,7 +1792,37 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Get Loan Metadata",
@@ -1192,7 +1847,37 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 },
                 {
                     "name": "Webhook Receive Consent Data",
@@ -1226,7 +1911,37 @@
                             ]
                         }
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
                 }
             ]
         }

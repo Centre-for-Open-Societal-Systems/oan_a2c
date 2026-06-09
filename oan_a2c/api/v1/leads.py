@@ -161,7 +161,7 @@ def create_lead(phone_number=None, first_name=None, last_name=None, email=None, 
 	audit_event.event_type = "Created"
 	audit_event.event_title = "Lead Created"
 	audit_event.event_description = f"Imported from {lead_source}" if lead_source else "Manually created"
-	audit_event.insert(ignore_permissions=True)
+	audit_event.insert()
 
 	return {
 		"status": "success",
@@ -275,7 +275,7 @@ def add_lead_credit_info(lead_id=None, loan_type=None, loan_amount=None, purpose
 	audit_event.event_description = _("Credit Information added: {0} for ETB {1:,.2f}.").format(
 		loan_type, float(loan_amount)
 	)
-	audit_event.insert(ignore_permissions=True)
+	audit_event.insert()
 
 	return {
 		"status": "success",
@@ -359,7 +359,7 @@ def update_lead_status(lead_id=None, status=None, reason=None):
 	audit_event.event_type = "Status Changed"
 	audit_event.event_title = "Status Updated"
 	audit_event.event_description = description
-	audit_event.insert(ignore_permissions=True)
+	audit_event.insert()
 
 	return {
 		"status": "success",
@@ -477,7 +477,7 @@ def assign_lead(lead_id=None, assigned_to=None):
 	audit_event.event_type = "Assigned"
 	audit_event.event_title = "Assigned to Owner"
 	audit_event.event_description = _("Assigned to {0}").format(assignee_name)
-	audit_event.insert(ignore_permissions=True)
+	audit_event.insert()
 
 	return {
 		"status": "success",
@@ -645,7 +645,7 @@ def schedule_visit(
 	audit_event.event_description = _("Visit scheduled for {0} at {1}.").format(
 		visit_date, visit_time
 	)
-	audit_event.insert(ignore_permissions=True)
+	audit_event.insert()
 
 	return {
 		"status": "success",

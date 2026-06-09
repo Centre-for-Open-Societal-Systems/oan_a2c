@@ -4,9 +4,7 @@ from oan_a2c.api.v1.loan_applications import (
     get_loan_summary,
     get_all_loans,
     get_basic_profile,
-    get_full_profile,
-    get_credit_info,
-    edit_credit_info
+    get_full_profile
 )
 
 class TestLoansV1API(unittest.TestCase):
@@ -94,22 +92,12 @@ class TestLoansV1API(unittest.TestCase):
         self.assertNotIn("loan_amount", res["data"])
 
     def test_4_get_full_profile(self):
-        res = get_full_profile(lead_id="TEST_LEAD_999")
+        res = get_full_profile(application_id=self.app_id)
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER")
-        self.assertNotIn("loan_amount", res["data"])
-        self.assertNotIn("status", res["data"])
-
-    def test_5_get_credit_info(self):
-        res = get_credit_info(application_id=self.app_id)
-        self.assertEqual(res["status"], "success")
         self.assertEqual(res["data"]["loan_amount"], 5000)
-        self.assertEqual(res["data"]["loan_type"], "Input Loan")
+        self.assertEqual(res["data"]["status"], "Draft")
 
-    def test_6_edit_credit_info(self):
-        res = edit_credit_info(application_id=self.app_id, loan_amount=10000, status="Processing")
-        self.assertEqual(res["status"], "success")
-        
-        doc = frappe.get_doc("A2C Loan Application", self.app_id)
-        self.assertEqual(doc.loan_amount, 10000)
-        self.assertEqual(doc.status, "Processing")
+
+
+

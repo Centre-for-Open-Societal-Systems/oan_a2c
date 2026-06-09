@@ -125,7 +125,7 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
         records = frappe.get_all(
             "A2C Loan Application",
             filters=filters,
-            fields=["*", "name as application_id"],
+            fields=["name as application_id", "status", "loan_amount", "loan_type", "location", "creation"],
             order_by="creation DESC",
             limit_start=offset,
             limit_page_length=page_size
@@ -164,13 +164,9 @@ def get_basic_profile(lead_id):
         return {"status": "error", "message": str(e)}
 
 @frappe.whitelist()
-def get_full_profile(lead_id):
+def get_full_profile(application_id):
     try:
-        lead_doc = frappe.get_doc("A2C Lead", lead_id)
-        if not lead_doc.farmer_profile:
-            return {"status": "error", "message": "Farmer Profile not found for this lead"}
-            
-        doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
+        doc = _get_app(application_id)
 
         data = doc.as_dict()
         filtered_data = {
@@ -185,47 +181,9 @@ def get_full_profile(lead_id):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@frappe.whitelist()
-def get_credit_info(application_id):
-    try:
-        doc = _get_app(application_id)
-        return {
-            "status": "success",
-            "data": {
-                "loan_amount": doc.loan_amount,
-                "loan_type": doc.loan_type,
-                "loan_reason": doc.loan_reason,
-                "status": doc.status
-            }
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
-@frappe.whitelist(methods=["POST"])
-def edit_credit_info(**kwargs):
-    try:
-        data = kwargs
-        application_id = data.get("application_id")
-        if not application_id:
-            return {"status": "error", "message": "application_id is required"}
 
-        doc = _get_app(application_id)
-        
-        if "loan_amount" in data: doc.loan_amount = data["loan_amount"]
-        if "loan_type" in data: doc.loan_type = data["loan_type"]
-        if "loan_reason" in data: doc.loan_reason = data["loan_reason"]
-        if "status" in data: doc.status = data["status"]
 
-        doc.save(ignore_permissions=True)
-        frappe.db.commit()
-
-        return {
-            "status": "success",
-            "message": "Credit info updated successfully"
-        }
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Edit Credit Info Error")
-        return {"status": "error", "message": str(e)}
 
 @frappe.whitelist(methods=["POST"])
 def upload_supporting_documents(application_id):
