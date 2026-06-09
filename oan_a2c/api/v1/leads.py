@@ -95,6 +95,22 @@ def get_leads(
 		order_by="creation desc"
 	)
 
+	# Fetch linked loan_type and loan_amount from Credit Information for each lead
+	for lead in leads:
+		credit_infos = frappe.get_all(
+			"A2C Credit Information",
+			filters={"lead": lead["name"]},
+			fields=["loan_type", "loan_amount"],
+			order_by="creation desc",
+			limit=1
+		)
+		if credit_infos:
+			lead["loan_type"] = credit_infos[0]["loan_type"]
+			lead["loan_amount"] = credit_infos[0]["loan_amount"]
+		else:
+			lead["loan_type"] = None
+			lead["loan_amount"] = None
+
 	return {
 		"status": "success",
 		"start": start,
@@ -621,12 +637,6 @@ def schedule_visit(
 	schedule.status = "Scheduled"
 	schedule.insert(ignore_permissions=False)
 
-	# Update lead status to Initiated if it was Open
-	lead_doc = frappe.get_doc("A2C Lead", lead_id)
-	if lead_doc.status == "Active":
-		lead_doc.status = "Verified"
-		lead_doc.save(ignore_permissions=False)
-
 	# Insert Audit Event
 	audit_event = frappe.new_doc("A2C Lead Audit Event")
 	audit_event.lead = lead_id
@@ -716,6 +726,37 @@ def get_visit_schedules(
 		"page_length": page_length,
 		"total_count": total_count,
 		"results": schedules
+	}
+
+
+@frappe.whitelist(allow_guest=False)
+def update_visit_schedule_status(schedule_id=None, status=None):
+	"""
+	Updates the status of an A2C Visit Schedule (Scheduled, Completed, Cancelled, Missed).
+	"""
+	if not schedule_id or not status:
+		frappe.throw(_("schedule_id and status are required"), frappe.MandatoryError)
+
+	if not frappe.db.exists("A2C Visit Schedule", schedule_id):
+		frappe.throw(_("A2C Visit Schedule {0} not found").format(schedule_id), frappe.DoesNotExistError)
+
+	schedule = frappe.get_doc("A2C Visit Schedule", schedule_id)
+	
+	# Enforce write permissions on the linked lead
+	frappe.has_permission("A2C Lead", "write", doc=schedule.lead, throw=True)
+
+	allowed_statuses = ("Scheduled", "Completed", "Cancelled", "Missed")
+	if status not in allowed_statuses:
+		frappe.throw(_("Invalid status: {0}").format(status), frappe.ValidationError)
+
+	schedule.status = status
+	schedule.save(ignore_permissions=False)
+
+	return {
+		"status": "success",
+		"schedule_id": schedule_id,
+		"new_status": status,
+		"message": _("Visit schedule status updated successfully.")
 	}
 
 

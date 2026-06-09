@@ -67,13 +67,13 @@ class TestLeadCreditInfo(unittest.TestCase):
 		self.assertEqual(doc.purpose_message, "Seeds and fertilizer for next planting season.")
 		self.assertEqual(doc.created_by, "Administrator")
 
-		# Verify lead timeline comments
-		comments = frappe.get_all(
-			"Comment",
-			filters={"reference_doctype": "A2C Lead", "reference_name": self.lead_id},
-			fields=["content"]
+		# Verify lead timeline audit events
+		events = frappe.get_all(
+			"A2C Lead Audit Event",
+			filters={"lead": self.lead_id},
+			fields=["event_description"]
 		)
-		self.assertTrue(any("Credit Information added" in c["content"] for c in comments))
+		self.assertTrue(any("Credit Information added" in e["event_description"] for e in events))
 
 	def test_2_create_credit_info_invalid_amount_throws(self):
 		"""Verifies that negative or zero amounts are rejected by the controller validation."""

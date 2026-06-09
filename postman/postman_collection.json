@@ -841,6 +841,76 @@
                     "response": []
                 },
                 {
+                    "name": "Create Loan Application",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lead_id\": \"LEAD-2026-00001\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.create_loan_application",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.create_loan_application"
+                            ]
+                        },
+                        "description": "Creates a new Loan Application for a Processed lead."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Loan Status",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"application_id\": \"{{application_id}}\",\n    \"status\": \"Approved\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.update_loan_status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.update_loan_status"
+                            ]
+                        },
+                        "description": "Updates the status of a loan application (Approved or Rejected)."
+                    },
+                    "response": []
+                },
+                {
                     "name": "Get Basic Profile",
                     "request": {
                         "method": "GET",

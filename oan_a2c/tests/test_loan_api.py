@@ -13,7 +13,9 @@ class TestLoansV1API(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         frappe.set_user("Administrator")
-        frappe.db.sql("DELETE FROM `tabA2C Loan Application` WHERE first_name='API_TEST_FARMER'")
+        frappe.db.sql("DELETE FROM `tabA2C Loan Application` WHERE lead_id='TEST_LEAD_999' OR first_name='API_TEST_FARMER'")
+        frappe.db.sql("DELETE FROM `tabA2C Farmer Profile` WHERE lead_id='TEST_LEAD_999' OR phone_number='+251999888777'")
+        frappe.db.sql("DELETE FROM `tabA2C Lead` WHERE name='TEST_LEAD_999'")
         frappe.db.commit()
 
     def setUp(self):
@@ -45,6 +47,8 @@ class TestLoansV1API(unittest.TestCase):
             frappe.db.set_value("A2C Lead", "TEST_LEAD_999", "farmer_profile", farmer.name)
             frappe.db.commit()
 
+        farmer_profile_name = frappe.db.get_value("A2C Lead", "TEST_LEAD_999", "farmer_profile")
+        
         doc = frappe.get_doc({
             "doctype": "A2C Loan Application",
             "first_name": "API_TEST_FARMER",
@@ -54,7 +58,8 @@ class TestLoansV1API(unittest.TestCase):
             "loan_type": "Input Loan",
             "status": "Draft",
             "location": "Addis Ababa",
-            "lead_id": "TEST_LEAD_999"
+            "lead_id": "TEST_LEAD_999",
+            "farmer_profile": farmer_profile_name
         })
         doc.insert(ignore_permissions=True)
         self.app_id = doc.name

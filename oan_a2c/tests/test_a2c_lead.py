@@ -538,7 +538,15 @@ class TestVisitScheduleAPI(unittest.TestCase):
 		self.assertEqual(schedule.kebele, "Kebele 02")
 		self.assertEqual(schedule.status, "Scheduled")
 
-		# Verify Lead status was promoted to Initiated
+		# Verify Lead status remains Active after scheduling (since the visit is only Scheduled, not Completed yet)
+		lead_status = frappe.db.get_value("A2C Lead", self.lead_id, "status")
+		self.assertEqual(lead_status, "Active")
+
+		# Promote the visit schedule status to Completed
+		from oan_a2c.api.v1.leads import update_visit_schedule_status
+		update_visit_schedule_status(schedule_id=res["schedule_id"], status="Completed")
+
+		# Verify Lead status was promoted to Verified after completion
 		lead_status = frappe.db.get_value("A2C Lead", self.lead_id, "status")
 		self.assertEqual(lead_status, "Verified")
 
