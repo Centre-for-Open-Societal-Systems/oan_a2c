@@ -1251,6 +1251,128 @@
             "name": "Loan Application Management",
             "item": [
                 {
+                    "name": "Get Basic Profile",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_basic_profile?lead_id={{lead}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.get_basic_profile"
+                            ],
+                            "query": [
+                                {
+                                    "key": "lead_id",
+                                    "value": "{{lead}}"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Full Profile",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id={{application_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.get_full_profile"
+                            ],
+                            "query": [
+                                {
+                                    "key": "application_id",
+                                    "value": "{{application_id}}"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
                     "name": "Get Loan Summary",
                     "request": {
                         "method": "GET",
@@ -1482,128 +1604,6 @@
                             ]
                         },
                         "description": "Updates the status of a loan application (Approved or Rejected)."
-                    },
-                    "response": [],
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "const responseJson = pm.response.json();",
-                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
-                                    "",
-                                    "pm.test('Response status check', function () {",
-                                    "    if (responseJson.message && responseJson.message.status) {",
-                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
-                                    "    } else if (responseJson.status) {",
-                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
-                                    "    } else {",
-                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
-                                    "    }",
-                                    "});",
-                                    "",
-                                    "const expectedMsg = pm.iterationData.get('expected_message');",
-                                    "if (expectedStatus === 'error' && expectedMsg) {",
-                                    "    pm.test('Error message verification', function () {",
-                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
-                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
-                                    "    });",
-                                    "}"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "Get Basic Profile",
-                    "request": {
-                        "method": "GET",
-                        "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
-                            }
-                        ],
-                        "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_basic_profile?lead_id={{lead}}",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "method",
-                                "oan_a2c.api.v1.loan_applications.get_basic_profile"
-                            ],
-                            "query": [
-                                {
-                                    "key": "lead_id",
-                                    "value": "{{lead}}"
-                                }
-                            ]
-                        }
-                    },
-                    "response": [],
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "const responseJson = pm.response.json();",
-                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
-                                    "",
-                                    "pm.test('Response status check', function () {",
-                                    "    if (responseJson.message && responseJson.message.status) {",
-                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
-                                    "    } else if (responseJson.status) {",
-                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
-                                    "    } else {",
-                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
-                                    "    }",
-                                    "});",
-                                    "",
-                                    "const expectedMsg = pm.iterationData.get('expected_message');",
-                                    "if (expectedStatus === 'error' && expectedMsg) {",
-                                    "    pm.test('Error message verification', function () {",
-                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
-                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
-                                    "    });",
-                                    "}"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "Get Full Profile",
-                    "request": {
-                        "method": "GET",
-                        "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
-                            }
-                        ],
-                        "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id={{application_id}}",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "method",
-                                "oan_a2c.api.v1.loan_applications.get_full_profile"
-                            ],
-                            "query": [
-                                {
-                                    "key": "application_id",
-                                    "value": "{{application_id}}"
-                                }
-                            ]
-                        }
                     },
                     "response": [],
                     "event": [
@@ -1884,11 +1884,6 @@
                     "request": {
                         "method": "POST",
                         "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
-                            },
                             {
                                 "key": "Content-Type",
                                 "value": "application/json",

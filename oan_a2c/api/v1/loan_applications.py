@@ -8,6 +8,45 @@ def _get_app(application_id):
     return frappe.get_doc("A2C Loan Application", application_id)
 
 @frappe.whitelist()
+def get_basic_profile(lead_id):
+    try:
+        lead_doc = frappe.get_doc("A2C Lead", lead_id)
+        if not lead_doc.farmer_profile:
+            return {"status": "error", "message": "Farmer Profile not found for this lead"}
+        
+        doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
+        return {
+            "status": "success",
+            "data": {
+                "first_name": doc.first_name,
+                "last_name": doc.last_name,
+                "phone_number": doc.phone_number,
+                "email": doc.email,
+                "location": doc.location
+            }
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@frappe.whitelist()
+def get_full_profile(application_id):
+    try:
+        doc = _get_app(application_id)
+
+        data = doc.as_dict()
+        filtered_data = {
+            k: v for k, v in data.items() 
+            if not k.startswith('_') and k not in ('doctype', 'docstatus', 'idx')
+        }
+        
+        return {
+            "status": "success",
+            "data": filtered_data
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@frappe.whitelist()
 def get_loan_summary():
     try:
         if not frappe.has_permission("A2C Loan Application", "read"):
@@ -70,15 +109,12 @@ def get_loan_metadata():
             
         meta = frappe.get_meta("A2C Loan Application")
         status_field = meta.get_field("status")
-        type_field = meta.get_field("loan_type")
         
-        statuses = status_field.options.split("\n") if status_field and status_field.options else []
-        loan_types = type_field.options.split("\n") if type_field and type_field.options else []
+        statuses = [s for s in status_field.options.split("\n") if s] if status_field and status_field.options else []
         
         return {
             "status": "success",
-            "statuses": statuses,
-            "loan_types": loan_types
+            "statuses": statuses
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -142,44 +178,7 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
         frappe.log_error(frappe.get_traceback(), "Get All Loans Error")
         return {"status": "error", "message": str(e)}
 
-@frappe.whitelist()
-def get_basic_profile(lead_id):
-    try:
-        lead_doc = frappe.get_doc("A2C Lead", lead_id)
-        if not lead_doc.farmer_profile:
-            return {"status": "error", "message": "Farmer Profile not found for this lead"}
-        
-        doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
-        return {
-            "status": "success",
-            "data": {
-                "first_name": doc.first_name,
-                "last_name": doc.last_name,
-                "phone_number": doc.phone_number,
-                "email": doc.email,
-                "location": doc.location
-            }
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
-@frappe.whitelist()
-def get_full_profile(application_id):
-    try:
-        doc = _get_app(application_id)
-
-        data = doc.as_dict()
-        filtered_data = {
-            k: v for k, v in data.items() 
-            if not k.startswith('_')
-        }
-        
-        return {
-            "status": "success",
-            "data": filtered_data
-        }
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
 
 
