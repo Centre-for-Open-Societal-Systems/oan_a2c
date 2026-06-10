@@ -299,14 +299,14 @@
                             "raw": "{\n  \"fayda_id\": \"{{farmer_fayda_id}}\",\n  \"partner\": \"OAN partner\",\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_form_filename\": \"signed_consent.txt\",\n  \"consent_form_base64\": \"VGhpcyBpcyBhIHNhbXBsZSBzaWduZWQgY29uc2VudCBmb3JtLg==\"\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.request_otp",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.request_otp",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.consent.consent.request_otp"
+                                "oan_a2c.api.v1.consent.consent.request_otp"
                             ]
                         }
                     }
@@ -330,14 +330,14 @@
                             "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"otp_code\": \"111111\"\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.consent.consent.verify_otp_for_lead",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp_for_lead",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.consent.consent.verify_otp_for_lead"
+                                "oan_a2c.api.v1.consent.consent.verify_otp_for_lead"
                             ]
                         }
                     }

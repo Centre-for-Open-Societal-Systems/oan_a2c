@@ -77,7 +77,7 @@ def _fetch_and_save_farmer_data(client, fayda_id, target_doctype, target_name, o
 
         doc = frappe.get_doc(target_doctype, target_name)
         doc.consent_data   = _json.dumps(synthetic_payload, indent=2, ensure_ascii=False)
-        if target_doctype == "Loan Application":
+        if target_doctype == "A2C Loan Application":
             doc.fayda_verified = 1
         doc.save(ignore_permissions=True)
         frappe.db.commit()
@@ -111,6 +111,12 @@ def request_otp(**kwargs):
     validity_from           = _getter("validity_from")
     validity_to             = _getter("validity_to")
     consent_form_attachment = _getter("consent_form_attachment")
+    consent_form_attachment = _getter("consent_form_attachment")
+
+    if not lead_id:
+        frappe.throw(frappe._("lead_id is required"))
+    if not frappe.db.exists("A2C Lead", lead_id):
+        frappe.throw(frappe._("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
 
     if not fayda_id:
         frappe.throw(frappe._("fayda_id is required"))
@@ -179,7 +185,8 @@ def request_otp(**kwargs):
 
     # 3. Create Frappe Consent Request (Pending Odoo Creation)
     try:
-        doc = frappe.new_doc("Consent Request")
+        doc = frappe.new_doc("A2C Consent Request")
+        doc.lead                    = lead_id
         doc.farmer_fayda_id         = fayda_id
         doc.partner                 = partner
         doc.consent_type            = "specific"
@@ -193,13 +200,6 @@ def request_otp(**kwargs):
         doc.insert(ignore_permissions=True)
         frappe.db.commit()
         consent_request_name = doc.name
-        
-        # Link to Lead
-        if lead_id and frappe.db.exists("A2C Lead", lead_id):
-            frappe.db.set_value("A2C Lead", lead_id, "consent_request", consent_request_name)
-            frappe.db.set_value("A2C Lead", lead_id, "fayda_id", fayda_id)
-            frappe.db.set_value("A2C Lead", lead_id, "consent_status", "Pending")
-            frappe.db.commit()
             
     except Exception as e:
         frappe.log_error(f"Consent Request Creation Failed: {str(e)}", "Consent Request Error")
@@ -230,12 +230,19 @@ def verify_otp_for_lead(**kwargs):
         frappe.throw(frappe._("otp_code is required"))
 
     lead_doc = frappe.get_doc("A2C Lead", lead_id)
-    consent_request = lead_doc.consent_request
+    
+    # Find the latest pending A2C Consent Request for this lead
+    consent_request = frappe.db.get_value(
+        "A2C Consent Request",
+        {"lead": lead_id, "status": "Pending OTP"},
+        "name",
+        order_by="creation desc"
+    )
     
     if not consent_request:
-        frappe.throw(frappe._("No consent_request found on Lead '{0}'. Did you call request_otp first?").format(lead_id))
+        frappe.throw(frappe._("No pending A2C Consent Request found for Lead '{0}'. Did you call request_otp first?").format(lead_id))
 
-    cr_doc = frappe.get_doc("Consent Request", consent_request)
+    cr_doc = frappe.get_doc("A2C Consent Request", consent_request)
     fayda_id                = cr_doc.farmer_fayda_id
     transaction_id          = cr_doc.otp_transaction_id
     partner                 = cr_doc.partner
@@ -309,7 +316,7 @@ def verify_otp_for_lead(**kwargs):
         print(f">>>>>> Warning: consent approval failed: {e}")
 
     # 5. Generate Receipt and Update Lead
-    frappe.db.set_value("Consent Request", consent_request, {
+    frappe.db.set_value("A2C Consent Request", consent_request, {
         "status":             "Approved",
         "otp_verified_at":    now_datetime(),
         "openg2p_consent_id": openg2p_consent_id,

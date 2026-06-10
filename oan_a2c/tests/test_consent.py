@@ -1,7 +1,7 @@
 import frappe
 import unittest
 from unittest.mock import patch, MagicMock
-from oan_a2c.consent.consent import send_otp_and_create_consent, verify_otp
+from oan_a2c.api.v1.consent.consent import send_otp_and_create_consent, verify_otp
 import json
 
 class TestConsentAPI(unittest.TestCase):
@@ -58,7 +58,7 @@ class TestConsentAPI(unittest.TestCase):
         result = frappe.db.get_value("Consent Request", name, list(fields), as_dict=True)
         return result or {}
 
-    @patch("oan_a2c.consent.consent.OpenG2PConsentClient")
+    @patch("oan_a2c.api.v1.consent.consent.OpenG2PConsentClient")
     def test_send_otp_and_create_consent(self, MockClient):
         # Mock the OpenG2P responses
         mock_instance = MockClient.return_value
@@ -102,8 +102,8 @@ class TestConsentAPI(unittest.TestCase):
         
         return consent_name
 
-    @patch("oan_a2c.consent.consent.enqueue_websub_delivery")
-    @patch("oan_a2c.consent.consent.OpenG2PConsentClient")
+    @patch("oan_a2c.api.v1.consent.consent.enqueue_websub_delivery")
+    @patch("oan_a2c.api.v1.consent.consent.OpenG2PConsentClient")
     def test_verify_otp(self, MockClient, MockEnqueue):
         # Create doc and send OTP first
         consent_name = self.test_send_otp_and_create_consent()
