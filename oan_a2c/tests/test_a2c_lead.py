@@ -688,6 +688,22 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 				reason="Try to make it active again"
 			)
 
+	def test_4_rejected_lead_status_locked(self):
+		"""Verifies that once lead status is set to Rejected, saving any further status update throws ValidationError."""
+		# Reset lead status to Active, save it, then set to Rejected
+		frappe.db.set_value("A2C Lead", self.lead_id, "status", "Active")
+		frappe.db.commit()
+
+		lead = frappe.get_doc("A2C Lead", self.lead_id)
+		lead.status = "Rejected"
+		lead.save()
+
+		# Try to change status to Active and save, should raise ValidationError
+		lead = frappe.get_doc("A2C Lead", self.lead_id)
+		lead.status = "Active"
+		self.assertRaises(frappe.ValidationError, lead.save)
+
+
 
 class TestLeadAssignmentAPI(unittest.TestCase):
 	"""Tests for Lead Assignment, Date stamp, and User search lookup APIs."""

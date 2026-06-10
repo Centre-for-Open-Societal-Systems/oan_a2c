@@ -4,7 +4,12 @@ from oan_a2c.api.v1.loan_applications import (
     get_loan_summary,
     get_all_loans,
     get_basic_profile,
-    get_full_profile
+    update_basic_profile,
+    get_full_profile,
+    get_supporting_documents,
+    delete_supporting_document,
+    update_loan_step,
+    update_loan_status
 )
 
 class TestLoansV1API(unittest.TestCase):
@@ -73,6 +78,10 @@ class TestLoansV1API(unittest.TestCase):
         self.assertEqual(res["status"], "success")
         self.assertIn("summary", res)
         self.assertIn("total", res["summary"])
+        self.assertIn("tab_counts", res["summary"])
+        self.assertEqual(res["summary"]["tab_counts"]["all"], res["summary"]["total"])
+        self.assertIn("my", res["summary"]["tab_counts"])
+        self.assertIn("unassigned", res["summary"]["tab_counts"])
 
     def test_2_get_all_loans(self):
         res = get_all_loans(status="Draft", page_size=10)
@@ -82,7 +91,16 @@ class TestLoansV1API(unittest.TestCase):
         for r in res["results"]:
             if r["application_id"] == self.app_id:
                 found = True
+                self.assertEqual(r["lead_id"], "TEST_LEAD_999")
+                self.assertEqual(r["step"], 1)
         self.assertTrue(found)
+
+        # Test filtering by lead_id
+        res_lead = get_all_loans(lead_id="TEST_LEAD_999")
+        self.assertEqual(res_lead["status"], "success")
+        self.assertTrue(len(res_lead["results"]) > 0)
+        for r in res_lead["results"]:
+            self.assertEqual(r["lead_id"], "TEST_LEAD_999")
 
     def test_3_get_basic_profile(self):
         res = get_basic_profile(lead_id="TEST_LEAD_999")
@@ -91,12 +109,87 @@ class TestLoansV1API(unittest.TestCase):
         self.assertEqual(res["data"]["phone_number"], "+251999888777")
         self.assertNotIn("loan_amount", res["data"])
 
+    def test_3b_update_basic_profile(self):
+        res = update_basic_profile(
+            lead_id="TEST_LEAD_999",
+            first_name="API_TEST_FARMER_UPDATED",
+            last_name="TestUpdated",
+            location="Hawassa"
+        )
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER_UPDATED")
+        self.assertEqual(res["data"]["last_name"], "TestUpdated")
+        self.assertEqual(res["data"]["location"], "Hawassa")
+
+        # Verify database documents got updated
+        lead_doc = frappe.get_doc("A2C Lead", "TEST_LEAD_999")
+        farmer_doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
+        self.assertEqual(farmer_doc.first_name, "API_TEST_FARMER_UPDATED")
+        self.assertEqual(farmer_doc.last_name, "TestUpdated")
+        self.assertEqual(farmer_doc.location, "Hawassa")
+        self.assertEqual(lead_doc.first_name, "API_TEST_FARMER_UPDATED")
+        self.assertEqual(lead_doc.last_name, "TestUpdated")
+
     def test_4_get_full_profile(self):
         res = get_full_profile(application_id=self.app_id)
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER")
         self.assertEqual(res["data"]["loan_amount"], 5000)
         self.assertEqual(res["data"]["status"], "Draft")
+
+    def test_5_supporting_documents(self):
+        # Create a File document programmatically
+        file_doc = frappe.get_doc({
+            "doctype": "File",
+            "file_name": "test_doc.png",
+            "content": b"dummy content",
+            "attached_to_doctype": "A2C Loan Application",
+            "attached_to_name": self.app_id,
+            "is_private": 1
+        })
+        file_doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        file_id = file_doc.name
+
+        # 1. Get supporting documents
+        res = get_supporting_documents(self.app_id)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(len(res["files"]), 1)
+        self.assertEqual(res["files"][0]["name"], file_id)
+
+        # 2. Delete supporting document
+        res_del = delete_supporting_document(self.app_id, file_id)
+        self.assertEqual(res_del["status"], "success")
+        self.assertEqual(res_del["message"], "File deleted successfully")
+
+        # 3. Check if file is actually deleted
+        self.assertFalse(frappe.db.exists("File", file_id))
+
+        # 4. Get again, should be empty
+        res_after = get_supporting_documents(self.app_id)
+        self.assertEqual(res_after["status"], "success")
+        self.assertEqual(len(res_after["files"]), 0)
+
+    def test_6_update_loan_step(self):
+        # 1. Update step
+        res = update_loan_step(self.app_id, 3)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["message"], "Loan application step updated to 3")
+
+        # 2. Check if updated
+        doc = frappe.get_doc("A2C Loan Application", self.app_id)
+        self.assertEqual(doc.current_step, 3)
+
+    def test_7_rejected_loan_status_locked(self):
+        # 1. Reject the loan application
+        res = update_loan_status(self.app_id, "Rejected")
+        self.assertEqual(res["status"], "success")
+
+        # 2. Try to change it to Approved, should fail or throw ValidationError
+        doc = frappe.get_doc("A2C Loan Application", self.app_id)
+        doc.status = "Approved"
+        self.assertRaises(frappe.ValidationError, doc.save)
+
 
 
 
