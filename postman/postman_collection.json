@@ -1251,6 +1251,65 @@
             "name": "Loan Application Management",
             "item": [
                 {
+                    "name": "Webhook Receive Consent Data",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"consent\": {\n        \"consent_creation_request_id\": \"G2P-CONS-12345\",\n        \"status\": \"Approved\"\n    },\n    \"farmer\": {\n        \"id\": \"FARMER-999\",\n        \"name\": \"John Doe\"\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.webhook_consent_data.receive_consent_data"
+                            ]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
                     "name": "Get Basic Profile",
                     "request": {
                         "method": "GET",
@@ -1262,7 +1321,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_basic_profile?lead_id={{lead}}",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_basic_profile?lead_id={{lead_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -1274,7 +1333,7 @@
                             "query": [
                                 {
                                     "key": "lead_id",
-                                    "value": "{{lead}}"
+                                    "value": "{{lead_id}}"
                                 }
                             ]
                         }
@@ -1312,178 +1371,37 @@
                     ]
                 },
                 {
-                    "name": "Get Full Profile",
+                    "name": "Update Basic Profile",
                     "request": {
-                        "method": "GET",
+                        "method": "POST",
                         "header": [
                             {
                                 "key": "Authorization",
                                 "value": "Bearer {{jwt_token}}",
                                 "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
                             }
                         ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"email\": \"farmer@example.com\",\n    \"location\": \"Hawassa\"\n}"
+                        },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id={{application_id}}&lead_id={{lead}}",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.update_basic_profile",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.loan_applications.get_full_profile"
-                            ],
-                            "query": [
-                                {
-                                    "key": "application_id",
-                                    "value": "{{application_id}}"
-                                },
-                                {
-                                    "key": "lead_id",
-                                    "value": "{{lead}}",
-                                    "disabled": true
-                                }
+                                "oan_a2c.api.v1.loan_applications.update_basic_profile"
                             ]
-                        }
-                    },
-                    "response": [],
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "const responseJson = pm.response.json();",
-                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
-                                    "",
-                                    "pm.test('Response status check', function () {",
-                                    "    if (responseJson.message && responseJson.message.status) {",
-                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
-                                    "    } else if (responseJson.status) {",
-                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
-                                    "    } else {",
-                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
-                                    "    }",
-                                    "});",
-                                    "",
-                                    "const expectedMsg = pm.iterationData.get('expected_message');",
-                                    "if (expectedStatus === 'error' && expectedMsg) {",
-                                    "    pm.test('Error message verification', function () {",
-                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
-                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
-                                    "    });",
-                                    "}"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "Get Loan Summary",
-                    "request": {
-                        "method": "GET",
-                        "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
-                            }
-                        ],
-                        "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_loan_summary",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "method",
-                                "oan_a2c.api.v1.loan_applications.get_loan_summary"
-                            ]
-                        }
-                    },
-                    "response": [],
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "exec": [
-                                    "const responseJson = pm.response.json();",
-                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
-                                    "",
-                                    "pm.test('Response status check', function () {",
-                                    "    if (responseJson.message && responseJson.message.status) {",
-                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
-                                    "    } else if (responseJson.status) {",
-                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
-                                    "    } else {",
-                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
-                                    "    }",
-                                    "});",
-                                    "",
-                                    "const expectedMsg = pm.iterationData.get('expected_message');",
-                                    "if (expectedStatus === 'error' && expectedMsg) {",
-                                    "    pm.test('Error message verification', function () {",
-                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
-                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
-                                    "    });",
-                                    "}"
-                                ],
-                                "type": "text/javascript"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "Get All Loans",
-                    "request": {
-                        "method": "GET",
-                        "header": [
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
-                            }
-                        ],
-                        "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_all_loans?status=Approved&page=1&phone_number=%2B251912345678",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "method",
-                                "oan_a2c.api.v1.loan_applications.get_all_loans"
-                            ],
-                            "query": [
-                                {
-                                    "key": "status",
-                                    "value": "Approved"
-                                },
-                                {
-                                    "key": "page",
-                                    "value": "1"
-                                },
-                                {
-                                    "key": "min_loan_amount",
-                                    "value": "1000",
-                                    "disabled": true
-                                },
-                                {
-                                    "key": "max_loan_amount",
-                                    "value": "50000",
-                                    "disabled": true
-                                },
-                                {
-                                    "key": "loan_type",
-                                    "value": "Input Loan",
-                                    "disabled": true
-                                },
-                                {
-                                    "key": "phone_number",
-                                    "value": "+251912345678",
-                                    "disabled": true
-                                }
-                            ]
-                        }
+                        },
+                        "description": "Updates basic profile details (first_name, last_name, phone_number, email, location) of the farmer linked to the lead."
                     },
                     "response": [],
                     "event": [
@@ -1575,6 +1493,12 @@
                                     "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
                                     "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
                                     "    });",
+                                    "}",
+                                    "",
+                                    "if (responseJson.status === 'success' && responseJson.application_id) {",
+                                    "    pm.collectionVariables.set('loan_application', responseJson.application_id);",
+                                    "} else if (responseJson.message && responseJson.message.status === 'success' && responseJson.message.application_id) {",
+                                    "    pm.collectionVariables.set('loan_application', responseJson.message.application_id);",
                                     "}"
                                 ],
                                 "type": "text/javascript"
@@ -1583,37 +1507,33 @@
                     ]
                 },
                 {
-                    "name": "Update Loan Status",
+                    "name": "Get Full Profile",
                     "request": {
-                        "method": "POST",
+                        "method": "GET",
                         "header": [
                             {
                                 "key": "Authorization",
                                 "value": "Bearer {{jwt_token}}",
                                 "type": "text"
-                            },
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json",
-                                "type": "text"
                             }
                         ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"application_id\": \"{{application_id}}\",\n    \"status\": \"Approved\"\n}"
-                        },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.update_loan_status",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id={{loan_application}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.loan_applications.update_loan_status"
+                                "oan_a2c.api.v1.loan_applications.get_full_profile"
+                            ],
+                            "query": [
+                                {
+                                    "key": "application_id",
+                                    "value": "{{loan_application}}"
+                                }
                             ]
-                        },
-                        "description": "Updates the status of a loan application (Approved or Rejected)."
+                        }
                     },
                     "response": [],
                     "event": [
@@ -1648,6 +1568,63 @@
                     ]
                 },
                 {
+                    "name": "Update Loan Step",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"application_id\": \"{{loan_application}}\",\n    \"step\": 2\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.update_loan_step",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.update_loan_step"
+                            ]
+                        },
+                        "description": "Updates the current step of a loan application."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
                     "name": "Upload Supporting Documents",
                     "request": {
                         "method": "POST",
@@ -1669,7 +1646,7 @@
                             ]
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.upload_supporting_documents?application_id={{application_id}}",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.upload_supporting_documents?application_id={{loan_application}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -1681,7 +1658,7 @@
                             "query": [
                                 {
                                     "key": "application_id",
-                                    "value": "{{application_id}}"
+                                    "value": "{{loan_application}}"
                                 }
                             ]
                         }
@@ -1730,7 +1707,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_supporting_documents?application_id={{application_id}}",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_supporting_documents?application_id={{loan_application}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -1742,7 +1719,7 @@
                             "query": [
                                 {
                                     "key": "application_id",
-                                    "value": "{{application_id}}"
+                                    "value": "{{loan_application}}"
                                 }
                             ]
                         }
@@ -1780,27 +1757,94 @@
                     ]
                 },
                 {
-                    "name": "Get Loan Assignment Summary",
+                    "name": "Delete Supporting Document",
                     "request": {
-                        "method": "GET",
+                        "method": "POST",
                         "header": [
                             {
                                 "key": "Authorization",
                                 "value": "Bearer {{jwt_token}}",
                                 "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
                             }
                         ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"application_id\": \"{{loan_application}}\",\n    \"file_id\": \"{{file_id}}\"\n}"
+                        },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_loan_assignment_summary",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.delete_supporting_document",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.loan_applications.get_loan_assignment_summary"
+                                "oan_a2c.api.v1.loan_applications.delete_supporting_document"
                             ]
+                        },
+                        "description": "Deletes a supporting document associated with a loan application."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
                         }
+                    ]
+                },
+                {
+                    "name": "Update Loan Status",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"application_id\": \"{{loan_application}}\",\n    \"status\": \"Approved\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.update_loan_status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.update_loan_status"
+                            ]
+                        },
+                        "description": "Updates the status of a loan application (Approved or Rejected)."
                     },
                     "response": [],
                     "event": [
@@ -1890,29 +1934,121 @@
                     ]
                 },
                 {
-                    "name": "Webhook Receive Consent Data",
+                    "name": "Get All Loans",
                     "request": {
-                        "method": "POST",
+                        "method": "GET",
                         "header": [
                             {
-                                "key": "Content-Type",
-                                "value": "application/json",
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"consent\": {\n        \"consent_creation_request_id\": \"G2P-CONS-12345\",\n        \"status\": \"Approved\"\n    },\n    \"farmer\": {\n        \"id\": \"FARMER-999\",\n        \"name\": \"John Doe\"\n    }\n}"
-                        },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_all_loans?status=Approved&page=1&phone_number=%2B251912345678",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.webhook_consent_data.receive_consent_data"
+                                "oan_a2c.api.v1.loan_applications.get_all_loans"
+                            ],
+                            "query": [
+                                {
+                                    "key": "status",
+                                    "value": "Approved"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "min_loan_amount",
+                                    "value": "1000",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "max_loan_amount",
+                                    "value": "50000",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "loan_type",
+                                    "value": "Input Loan",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "phone_number",
+                                    "value": "+251912345678",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "lead_id",
+                                    "value": "{{lead_id}}",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                                    "",
+                                    "pm.test('Response status check', function () {",
+                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                                    "    } else if (responseJson.status) {",
+                                    "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                                    "    } else {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "    }",
+                                    "});",
+                                    "",
+                                    "const expectedMsg = pm.iterationData.get('expected_message');",
+                                    "if (expectedStatus === 'error' && expectedMsg) {",
+                                    "    pm.test('Error message verification', function () {",
+                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                                    "    });",
+                                    "}",
+                                    "",
+                                    "if (responseJson.status === 'success' && responseJson.results && responseJson.results.length > 0) {",
+                                    "    pm.collectionVariables.set('loan_application', responseJson.results[0].application_id);",
+                                    "} else if (responseJson.message && responseJson.message.status === 'success' && responseJson.message.results && responseJson.message.results.length > 0) {",
+                                    "    pm.collectionVariables.set('loan_application', responseJson.message.results[0].application_id);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Loan Summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_loan_summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.get_loan_summary"
                             ]
                         }
                     },
@@ -1973,7 +2109,7 @@
             "value": "PASTE_YOUR_KEY_HERE"
         },
         {
-            "key": "application_id",
+            "key": "loan_application",
             "value": "APP-2026-00083"
         },
         {

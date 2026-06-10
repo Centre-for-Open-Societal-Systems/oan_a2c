@@ -11,3 +11,9 @@ class A2CLoanApplication(Document):
 		if self.phone_number and not self.phone_number.isdigit() and not self.phone_number.startswith('+'):
 			frappe.throw("Phone Number must contain only digits or start with +")
 
+		if not self.is_new():
+			db_status = self.get_db_value("status")
+			if db_status == "Rejected" and self.status != "Rejected":
+				frappe.throw("Status is locked because the loan application is Rejected", frappe.ValidationError)
+
+

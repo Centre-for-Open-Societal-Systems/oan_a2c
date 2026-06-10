@@ -5,6 +5,10 @@ from frappe.model.document import Document
 
 class A2CLead(Document):
 	def before_save(self):
+		if not self.is_new():
+			db_status = self.get_db_value("status")
+			if db_status == "Rejected" and self.status != "Rejected":
+				frappe.throw(_("Status is locked because the lead is Rejected"), frappe.ValidationError)
 		self._enforce_phone_uniqueness()
 		self._enforce_external_id_uniqueness()
 
