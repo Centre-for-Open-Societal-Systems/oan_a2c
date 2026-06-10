@@ -134,11 +134,20 @@ class OpenG2PConsentClient:
             "params": params
         }
         try:
-            print(f">>>>>> [DEBUG RPC] Sending to {endpoint} with cookies: {self.session.cookies.get_dict()}")
-            kwargs = {"json": payload}
+            session_id = None
             if hasattr(self, "portal_session_id") and self.portal_session_id:
-                kwargs["cookies"] = {"session_id": self.portal_session_id}
-            response = self.session.post(url, **kwargs)
+                session_id = self.portal_session_id
+            else:
+                session_id = self.session.cookies.get("session_id")
+
+            headers = {"Content-Type": "application/json"}
+            if session_id:
+                # Explicitly pass session_id to guarantee Odoo receives it
+                headers["X-Openerp-Session-Id"] = session_id
+                headers["Cookie"] = f"session_id={session_id}"
+
+            print(f">>>>>> [DEBUG RPC] Sending to {endpoint} with session_id: {session_id}")
+            response = self.session.post(url, json=payload, headers=headers)
             response.raise_for_status()
             data = response.json()
 
