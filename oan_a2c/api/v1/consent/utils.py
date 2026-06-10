@@ -17,7 +17,7 @@ def generate_consent_receipt(consent_request_name):
         "consent_request": consent.name,
         "fayda_id": consent.farmer_fayda_id,
         "partner": consent.partner,
-        "loan_application": consent.loan_application or None,
+        "lead": getattr(consent, "lead", None),
         "openg2p_consent_id": consent.openg2p_consent_id or None,
         "status": consent.status,
         "otp_verified_at": str(consent.otp_verified_at) if consent.otp_verified_at else None,

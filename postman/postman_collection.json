@@ -1144,103 +1144,141 @@
             ]
         },
         {
-            "name": "Consent Management (Requires JWT)",
+            "name": "4. OpenG2P Consent Flow",
             "item": [
                 {
-                    "name": "1. Create Consent Request",
+                    "name": "4.1 Search Farmer",
                     "request": {
                         "method": "POST",
                         "header": [
                             {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
+                                "key": "Content-Type",
+                                "value": "application/json"
                             },
                             {
-                                "key": "Content-Type",
-                                "value": "application/json",
-                                "type": "text"
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
                             }
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"farmer\": \"FAYDA-123\",\n    \"partner\": \"Test Partner\",\n    \"consent_type\": \"specific\",\n    \"purpose\": \"Testing Consent API\",\n    \"validity_from\": \"2026-06-01 00:00:00\",\n    \"validity_to\": \"2027-06-01 00:00:00\",\n    \"requested_data_fields\": []\n}"
+                            "raw": "{\n  \"fayda_id\": \"{{fayda_id}}\"\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.create_consent_request",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.api.search_farmer",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.consent.consent.create_consent_request"
+                                "oan_a2c.api.v1.consent.api.search_farmer"
                             ]
                         }
                     }
                 },
                 {
-                    "name": "2. Send OTP",
+                    "name": "4.2 Request OTP",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var resp = pm.response.json();",
+                                    "var msg  = resp.message || resp;",
+                                    "if (msg.consent_request) { pm.collectionVariables.set('consent_request', msg.consent_request); }"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
                     "request": {
                         "method": "POST",
                         "header": [
                             {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
+                                "key": "Content-Type",
+                                "value": "application/json"
                             },
                             {
-                                "key": "Content-Type",
-                                "value": "application/json",
-                                "type": "text"
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
                             }
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"consent_request\": \"<CONSENT_REQUEST_ID_FROM_PREVIOUS_STEP>\"\n}"
+                            "raw": "{\n  \"fayda_id\": \"{{farmer_fayda_id}}\",\n  \"partner\": \"OAN partner\",\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_form_filename\": \"signed_consent.txt\",\n  \"consent_form_base64\": \"VGhpcyBpcyBhIHNhbXBsZSBzaWduZWQgY29uc2VudCBmb3JtLg==\"\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.send_otp",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.request_otp",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.consent.consent.send_otp"
+                                "oan_a2c.api.v1.consent.consent.request_otp"
                             ]
                         }
                     }
                 },
                 {
-                    "name": "3. Verify OTP",
+                    "name": "4.3 Verify OTP and Approve Consent",
                     "request": {
                         "method": "POST",
                         "header": [
                             {
-                                "key": "Authorization",
-                                "value": "Bearer {{jwt_token}}",
-                                "type": "text"
+                                "key": "Content-Type",
+                                "value": "application/json"
                             },
                             {
-                                "key": "Content-Type",
-                                "value": "application/json",
-                                "type": "text"
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
                             }
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"consent_request\": \"<CONSENT_REQUEST_ID>\",\n    \"otp_code\": \"123456\"\n}"
+                            "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"otp_code\": \"111111\"\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp_for_lead",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.consent.consent.verify_otp"
+                                "oan_a2c.api.v1.consent.consent.verify_otp_for_lead"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "4.4 Send Success Notification",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"message\": \"Your OTP has been successfully verified!\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.send_notification",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.leads.send_notification"
                             ]
                         }
                     }
