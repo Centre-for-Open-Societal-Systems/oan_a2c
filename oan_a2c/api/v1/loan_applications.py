@@ -10,10 +10,16 @@ def _get_app(application_id):
 @frappe.whitelist(allow_guest=False)
 def get_basic_profile(lead_id):
     try:
+        if not lead_id:
+            return {"status": "error", "message": "lead_id is required"}
+
+        frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
+
         lead_doc = frappe.get_doc("A2C Lead", lead_id)
         if not lead_doc.farmer_profile:
             return {"status": "error", "message": "Farmer Profile not found for this lead"}
         
+        frappe.has_permission("A2C Farmer Profile", "read", doc=lead_doc.farmer_profile, throw=True)
         doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
         return {
             "status": "success",
@@ -40,6 +46,7 @@ def update_basic_profile(lead_id, email=None, location=None):
         if not lead_doc.farmer_profile:
             return {"status": "error", "message": "Farmer Profile not found for this lead"}
             
+        frappe.has_permission("A2C Farmer Profile", "write", doc=lead_doc.farmer_profile, throw=True)
         farmer_doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
         
         changed = False
@@ -58,8 +65,8 @@ def update_basic_profile(lead_id, email=None, location=None):
                     changed = True
                     
         if changed:
-            farmer_doc.save(ignore_permissions=True)
-            lead_doc.save(ignore_permissions=True)
+            farmer_doc.save()
+            lead_doc.save()
             frappe.db.commit()
             
         return {
@@ -85,6 +92,7 @@ def get_full_profile(application_id):
             return {"status": "error", "message": "application_id is required"}
 
         doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "read", doc=doc, throw=True)
 
         data = doc.as_dict()
         filtered_data = {
@@ -240,6 +248,7 @@ def upload_supporting_documents(application_id):
             return {"status": "error", "message": "No files found in request"}
             
         doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "write", doc=doc, throw=True)
         uploaded_files = []
         
         ALLOWED_EXTENSIONS = ('.pdf', '.png', '.jpg', '.jpeg')
@@ -262,7 +271,7 @@ def upload_supporting_documents(application_id):
                 "attached_to_name": doc.name,
                 "is_private": 1
             })
-            file_doc.insert(ignore_permissions=True)
+            file_doc.insert()
             uploaded_files.append({
                 "name": file_doc.name,
                 "file_url": file_doc.file_url,
@@ -303,8 +312,9 @@ def delete_supporting_document(application_id, file_id):
         if not application_id or not file_id:
             return {"status": "error", "message": "application_id and file_id are required"}
             
-        # Validate that the application exists
-        _get_app(application_id)
+        # Validate that the application exists and check write permissions
+        doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "write", doc=doc, throw=True)
         
         # Check if the file exists and is attached to this application
         if not frappe.db.exists("File", {
@@ -315,7 +325,7 @@ def delete_supporting_document(application_id, file_id):
             return {"status": "error", "message": "File not found or not attached to this application"}
             
         # Delete the file document
-        frappe.delete_doc("File", file_id, ignore_permissions=True)
+        frappe.delete_doc("File", file_id)
         frappe.db.commit()
         
         return {"status": "success", "message": "File deleted successfully"}
@@ -333,6 +343,11 @@ def create_loan_application(lead_id):
         if not lead_id:
             return {"status": "error", "message": "lead_id is required"}
 
+        # Enforce create permissions on the A2C Loan Application
+        frappe.has_permission("A2C Loan Application", "create", throw=True)
+        # Check read permissions on the Lead
+        frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
+
         # Check if loan application already exists
         existing = frappe.get_all("A2C Loan Application", filters={"lead_id": lead_id}, limit=1)
         if existing:
@@ -345,6 +360,8 @@ def create_loan_application(lead_id):
         if not farmer_profile_name:
             return {"status": "error", "message": "No Farmer Profile found for this lead. Webhook consent might not be completed."}
         
+        # Check read permissions on the Farmer Profile
+        frappe.has_permission("A2C Farmer Profile", "read", doc=farmer_profile_name, throw=True)
         farmer_profile = frappe.get_doc("A2C Farmer Profile", farmer_profile_name)
 
         # Get Credit Info (most recent)
@@ -364,7 +381,7 @@ def create_loan_application(lead_id):
         loan_app.first_name = farmer_profile.first_name
         loan_app.last_name = farmer_profile.last_name
         loan_app.location = farmer_profile.location
-        loan_app.phone_number = farmer_profile.phone_number or lead_doc.phone_number
+        loan_app.phone_number = farmer_profile.phone_number 
         loan_app.farmer_id = farmer_profile.farmer_id
         loan_app.consent_id = farmer_profile.consent_id
         
@@ -375,9 +392,9 @@ def create_loan_application(lead_id):
         loan_app.loan_amount = credit_infos[0].loan_amount
         loan_app.loan_reason = credit_infos[0].purpose_message
         loan_app.status = "Draft"
-        loan_app.insert(ignore_permissions=True)
+        loan_app.insert(ignore_permissions=False)
         frappe.db.commit()
-
+        print("Loan application created successfully", loan_app.name, loan_app.status)
         return {
             "status": "success",
             "message": "Loan application created successfully",
@@ -398,12 +415,13 @@ def update_loan_status(application_id, status):
             return {"status": "error", "message": "application_id and status are required"}
 
         doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "write", doc=doc, throw=True)
         
         if doc.status in ["Rejected", "Approved"]:
             return {"status": "error", "message": f"Cannot change status. Loan application is already {doc.status}"}
 
         doc.status = status
-        doc.save(ignore_permissions=True)
+        doc.save()
         frappe.db.commit()
 
         return {
@@ -426,9 +444,10 @@ def update_loan_step(application_id, step):
 
         step = cint(step)
         doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "write", doc=doc, throw=True)
         
         doc.current_step = step
-        doc.save(ignore_permissions=True)
+        doc.save()
         frappe.db.commit()
 
         return {

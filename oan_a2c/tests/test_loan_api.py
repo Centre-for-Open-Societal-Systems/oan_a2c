@@ -112,23 +112,19 @@ class TestLoansV1API(unittest.TestCase):
     def test_3b_update_basic_profile(self):
         res = update_basic_profile(
             lead_id="TEST_LEAD_999",
-            first_name="API_TEST_FARMER_UPDATED",
-            last_name="TestUpdated",
+            email="updated_farmer@example.com",
             location="Hawassa"
         )
         self.assertEqual(res["status"], "success")
-        self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER_UPDATED")
-        self.assertEqual(res["data"]["last_name"], "TestUpdated")
+        self.assertEqual(res["data"]["email"], "updated_farmer@example.com")
         self.assertEqual(res["data"]["location"], "Hawassa")
 
         # Verify database documents got updated
         lead_doc = frappe.get_doc("A2C Lead", "TEST_LEAD_999")
         farmer_doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
-        self.assertEqual(farmer_doc.first_name, "API_TEST_FARMER_UPDATED")
-        self.assertEqual(farmer_doc.last_name, "TestUpdated")
+        self.assertEqual(farmer_doc.email, "updated_farmer@example.com")
         self.assertEqual(farmer_doc.location, "Hawassa")
-        self.assertEqual(lead_doc.first_name, "API_TEST_FARMER_UPDATED")
-        self.assertEqual(lead_doc.last_name, "TestUpdated")
+        self.assertEqual(lead_doc.email, "updated_farmer@example.com")
 
     def test_4_get_full_profile(self):
         res = get_full_profile(application_id=self.app_id)
