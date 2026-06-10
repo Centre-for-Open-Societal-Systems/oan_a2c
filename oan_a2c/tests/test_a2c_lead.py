@@ -503,7 +503,7 @@ class TestVisitScheduleAPI(unittest.TestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
 		# Reset lead status to Open
-		frappe.db.set_value("A2C Lead", self.lead_id, "status", "Active")
+		frappe.db.set_value("A2C Lead", self.lead_id, "status", "Open")
 		# Delete all schedules before each test
 		for name in frappe.get_all("A2C Visit Schedule", pluck="name"):
 			frappe.delete_doc("A2C Visit Schedule", name, ignore_permissions=True, force=True)

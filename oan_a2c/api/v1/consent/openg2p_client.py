@@ -7,7 +7,7 @@ from datetime import datetime
 
 
 class OpenG2PConsentClient:
-    def __init__(self, portal_session_id=None):
+    def __init__(self, portal_session_id=None, cookie_dict=None):
         self.base_url = frappe.conf.get("openg2p_base_url")
         self.db = frappe.conf.get("openg2p_db", "openg2p")
 
@@ -25,9 +25,14 @@ class OpenG2PConsentClient:
         self.session = requests.Session()        # portal user session
         self.admin_session = requests.Session()  # admin session
         self.portal_session_id = portal_session_id
+        self.cookie_dict = cookie_dict
 
-        if portal_session_id:
-            self.session.cookies.set("session_id", portal_session_id)
+        if cookie_dict:
+            requests.utils.cookiejar_from_dict(cookie_dict, cookiejar=self.session.cookies)
+        elif portal_session_id:
+            from urllib.parse import urlparse
+            domain = urlparse(self.base_url).hostname
+            self.session.cookies.set("session_id", portal_session_id, domain=domain)
         else:
             self._authenticate(self.session, self.username, self.password)
             
@@ -125,7 +130,9 @@ class OpenG2PConsentClient:
         except requests.exceptions.RequestException as e:
             frappe.throw(_("Failed to connect to OpenG2P: {0}").format(str(e)))
 
-    def _call_rpc(self, endpoint, method, params):
+
+
+    def _call_rpc(self, endpoint, method, params, use_admin=False):
         url = f"{self.base_url}{endpoint}"
         payload = {
             "jsonrpc": "2.0",
@@ -134,11 +141,34 @@ class OpenG2PConsentClient:
             "params": params
         }
         try:
-            print(f">>>>>> [DEBUG RPC] Sending to {endpoint} with cookies: {self.session.cookies.get_dict()}")
-            kwargs = {"json": payload}
+            session = self.admin_session if use_admin else self.session
+            session_id = None
             if hasattr(self, "portal_session_id") and self.portal_session_id:
-                kwargs["cookies"] = {"session_id": self.portal_session_id}
-            response = self.session.post(url, **kwargs)
+                session_id = self.portal_session_id
+            else:
+                for cookie in session.cookies:
+                    if cookie.name == "session_id":
+                        session_id = cookie.value
+                        break
+
+            headers = {"Content-Type": "application/json"}
+            if session_id:
+                headers["X-Openerp-Session-Id"] = session_id
+
+            print(f">>>>>> [DEBUG RPC] Sending to {endpoint} with session_id: {session_id}")
+            
+            # Print EXACT request headers and cookies before sending
+            session = self.admin_session if use_admin else self.session
+            req = requests.Request('POST', url, json=payload, headers=headers)
+            prepared = session.prepare_request(req)
+            
+            print(f">>>>>> [DEBUG RPC] Sending POST to {url} with headers {prepared.headers}")
+            response = session.send(prepared)
+            
+            # Print response headers and body for debugging
+            print(f">>>>>> [DEBUG RPC] Response headers: {response.headers}")
+            print(f">>>>>> [DEBUG RPC] Response body: {response.text}")
+            
             response.raise_for_status()
             data = response.json()
 
@@ -391,9 +421,26 @@ class OpenG2PConsentClient:
     # -------------------------------------------------------------------------
 
     def request_otp(self, farmer_id):
-        """
-        Calls Odoo's new /consent/fayda/request_otp endpoint.
-        """
+        
+        # WORKAROUND FOR ODOO 17 FRESH SESSION BUG:
+        # We must initialize Odoo's internal session dictionary before requesting an OTP.
+        # Calling verify_otp with a dummy transaction but a valid farmer_id reaches
+        # _get_fayda_otp_session_store and forces Werkzeug to initialize and flush `{}`.
+        print(f">>>>>> [DEBUG] Priming Odoo session for farmer_id: {farmer_id}")
+        prime_payload = {
+            "jsonrpc": "2.0",
+            "method": "call",
+            "params": {
+                "farmer_id": farmer_id,
+                "transaction_id": "DUMMY_INIT",
+                "otp_code": "000"
+            }
+        }
+        try:
+            self.session.post(f"{self.base_url}/consent/fayda/verify_otp", json=prime_payload, timeout=5)
+        except Exception:
+            pass
+
         params = {"farmer_id": farmer_id}
         print(f">>>>>> Calling Odoo /consent/fayda/request_otp: {params}")
         result = self._call_rpc("/consent/fayda/request_otp", "call", params)
@@ -402,10 +449,10 @@ class OpenG2PConsentClient:
 
     def verify_otp(self, farmer_id, transaction_id, otp_code):
         """
-        Calls Odoo's new /consent/fayda/verify_otp endpoint.
+        Calls Odoo's /consent/fayda/verify_otp endpoint.
         """
         params = {
-            "farmer_id": int(farmer_id),
+            "farmer_id": str(farmer_id),
             "transaction_id": transaction_id,
             "otp_code": str(otp_code)
         }

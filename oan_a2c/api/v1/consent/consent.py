@@ -98,6 +98,39 @@ def _fetch_and_save_farmer_data(client, fayda_id, target_doctype, target_name, o
 
 
 @frappe.whitelist(allow_guest=False)
+def search_farmer(**kwargs):
+    """
+    NEW FLOW — Step 1: Search for Farmer in OpenG2P using Fayda ID.
+    """
+    _getter = _parse_request(kwargs)
+    fayda_id = _getter("fayda_id")
+
+    if not fayda_id:
+        frappe.throw(frappe._("fayda_id is required"))
+
+    client = OpenG2PConsentClient()
+    farmer_db_id = client.get_farmer_by_fayda_id(fayda_id)
+    
+    if not farmer_db_id:
+        frappe.throw(frappe._("Farmer with Fayda ID '{0}' not found in OpenG2P.").format(fayda_id), frappe.DoesNotExistError)
+
+    # Optionally fetch basic profile to show who it is
+    farmer_records = client._admin_search_read(
+        "res.partner",
+        [["id", "=", farmer_db_id]],
+        ["id", "name", "mobile", "phone"]
+    )
+    
+    farmer_data = farmer_records[0] if farmer_records else {"id": farmer_db_id}
+
+    return {
+        "status": "success",
+        "farmer_db_id": farmer_db_id,
+        "farmer": farmer_data,
+        "message": "Farmer found successfully."
+    }
+
+@frappe.whitelist(allow_guest=False)
 def request_otp(**kwargs):
     """
     NEW FLOW — Step 2: Request OTP and Create Consent in OpenG2P.
@@ -168,7 +201,11 @@ def request_otp(**kwargs):
     # 2. Trigger Odoo OTP (which hits Fayda)
     try:
         otp_response = client.request_otp(farmer_id=farmer_db_id)
-        odoo_session_id = client.session.cookies.get("session_id")
+        odoo_session_id = None
+        for cookie in client.session.cookies:
+            if cookie.name == "session_id":
+                odoo_session_id = cookie.value
+                break
     except Exception as e:
         frappe.throw(frappe._("OTP request failed: {0}").format(str(e)))
 
@@ -179,9 +216,11 @@ def request_otp(**kwargs):
     if not transaction_id:
         frappe.throw(frappe._("OTP sent but no transaction_id returned: {0}").format(str(otp_response)))
 
-    print(f">>>>>> [DEBUG] Storing Odoo session_id: {odoo_session_id} for transaction_id: {transaction_id}")
-    if odoo_session_id:
-        frappe.cache().set_value(f"odoo_session_{transaction_id}", odoo_session_id, expires_in_sec=1800)
+    import requests
+    cookie_dict = requests.utils.dict_from_cookiejar(client.session.cookies)
+    print(f">>>>>> [DEBUG] Storing Odoo session dict: {cookie_dict} for transaction_id: {transaction_id}")
+    if cookie_dict:
+        frappe.cache().set_value(f"odoo_session_dict_{transaction_id}", cookie_dict, expires_in_sec=1800)
 
     # 3. Create Frappe Consent Request (Pending Odoo Creation)
     try:
@@ -256,11 +295,15 @@ def verify_otp_for_lead(**kwargs):
         frappe.throw(frappe._("OTP was not requested for this consent"))
 
     # Restore Odoo session cookie to match request_otp context
-    odoo_session_id = frappe.cache().get_value(f"odoo_session_{transaction_id}")
-    print(f">>>>>> [DEBUG] Retrieved Odoo session_id: {odoo_session_id} for transaction_id: {transaction_id}")
-    
-    # Initialize client WITH the old session ID, skipping re-authentication!
-    client = OpenG2PConsentClient(portal_session_id=odoo_session_id)
+    cookie_dict = frappe.cache().get_value(f"odoo_session_dict_{transaction_id}")
+    if cookie_dict:
+        print(f">>>>>> [DEBUG] Retrieved Odoo cookie_dict: {cookie_dict} for transaction_id: {transaction_id}")
+        client = OpenG2PConsentClient(cookie_dict=cookie_dict)
+    else:
+        # Fallback for sessions created before the dict logic was deployed
+        odoo_session_id = frappe.cache().get_value(f"odoo_session_{transaction_id}")
+        print(f">>>>>> [DEBUG] Retrieved fallback Odoo session_id: {odoo_session_id} for transaction_id: {transaction_id}")
+        client = OpenG2PConsentClient(portal_session_id=odoo_session_id)
 
     farmer_db_id = client.get_farmer_by_fayda_id(fayda_id)
     if not farmer_db_id:
