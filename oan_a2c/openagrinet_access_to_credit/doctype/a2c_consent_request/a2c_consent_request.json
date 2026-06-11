@@ -19,7 +19,8 @@
   "otp_transaction_id",
   "otp_verified_at",
   "websub_delivered",
-  "websub_delivered_at"
+  "websub_delivered_at",
+  "consent_receipt"
  ],
  "fields": [
   {
@@ -105,6 +106,11 @@
    "fieldname": "websub_delivered_at",
    "fieldtype": "Datetime",
    "label": "WebSub Delivered At"
+  },
+  {
+   "fieldname": "consent_receipt",
+   "fieldtype": "Data",
+   "label": "Consent Receipt"
   }
  ],
  "links": [],

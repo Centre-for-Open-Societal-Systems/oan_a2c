@@ -358,7 +358,7 @@ def verify_otp_for_lead(**kwargs):
     except Exception as e:
         print(f">>>>>> Warning: consent approval failed: {e}")
 
-    # 5. Generate Receipt and Update Lead
+    # 5. Generate Receipt and Update Consent Request
     frappe.db.set_value("A2C Consent Request", consent_request, {
         "status":             "Approved",
         "otp_verified_at":    now_datetime(),
@@ -369,8 +369,7 @@ def verify_otp_for_lead(**kwargs):
     receipt = generate_consent_receipt(consent_request)
     enqueue_websub_delivery(receipt)
 
-    frappe.db.set_value("A2C Lead", lead_id, {
-        "consent_status": "Approved",
+    frappe.db.set_value("A2C Consent Request", consent_request, {
         "consent_receipt": receipt.get("signature")
     })
     frappe.db.commit()
