@@ -49,23 +49,15 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 
         if lead_id:
             lead_doc = frappe.get_doc("A2C Lead", lead_id)
-            farmer_profile_name = lead_doc.get("farmer_profile")
             
-            if not farmer_profile_name:
-                farmer_profile = frappe.new_doc("A2C Farmer Profile")
-                for k, v in updates.items():
-                    if v is not None and v != "":
-                        farmer_profile.set(k, v)
-                farmer_profile.insert(ignore_permissions=True)
-                
-                # Link back to lead
-                lead_doc.db_set("farmer_profile", farmer_profile.name)
-            else:
-                farmer_profile = frappe.get_doc("A2C Farmer Profile", farmer_profile_name)
-                for k, v in updates.items():
-                    if v is not None and v != "":
-                        farmer_profile.set(k, v)
-                farmer_profile.save(ignore_permissions=True)
+            farmer_profile = frappe.new_doc("A2C Farmer Profile")
+            for k, v in updates.items():
+                if v is not None and v != "":
+                    farmer_profile.set(k, v)
+            farmer_profile.insert(ignore_permissions=True)
+            
+            # Link back to lead
+            lead_doc.db_set("farmer_profile", farmer_profile.name)
 
         frappe.db.commit()
         frappe.logger().info(f"✅ SUCCESS: Background webhook data saved for consent {consent_doc_name}")

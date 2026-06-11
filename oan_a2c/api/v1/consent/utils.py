@@ -11,13 +11,13 @@ def generate_consent_receipt(consent_request_name):
     if not secret_key:
         frappe.throw("secret_key not found in site_config.json")
 
-    consent = frappe.get_doc("Consent Request", consent_request_name)
+    consent = frappe.get_doc("A2C Consent Request", consent_request_name)
 
     receipt_data = {
         "consent_request": consent.name,
         "fayda_id": consent.farmer_fayda_id,
         "partner": consent.partner,
-        "loan_application": consent.loan_application or None,
+        "lead": getattr(consent, "lead", None),
         "openg2p_consent_id": consent.openg2p_consent_id or None,
         "status": consent.status,
         "otp_verified_at": str(consent.otp_verified_at) if consent.otp_verified_at else None,
@@ -41,7 +41,7 @@ def generate_consent_receipt(consent_request_name):
 def enqueue_websub_delivery(receipt):
     consent_request_name = receipt["receipt_data"]["consent_request"]
     frappe.enqueue(
-        "oan_a2c.consent.utils.deliver_websub_payload",
+        "oan_a2c.api.v1.consent.utils.deliver_websub_payload",
         receipt=receipt,
         consent_request_name=consent_request_name,
         queue="default"
@@ -51,7 +51,7 @@ def enqueue_websub_delivery(receipt):
 def deliver_websub_payload(receipt, consent_request_name):
     frappe.logger().info(f"Delivering WebSub payload for {consent_request_name}")
 
-    consent = frappe.get_doc("Consent Request", consent_request_name)
+    consent = frappe.get_doc("A2C Consent Request", consent_request_name)
     openg2p_base_url = frappe.conf.get("openg2p_base_url")
     openg2p_db = frappe.conf.get("openg2p_db")
     openg2p_username = frappe.conf.get("openg2p_username")
@@ -92,6 +92,6 @@ def deliver_websub_payload(receipt, consent_request_name):
     else:
         frappe.logger().warning(f"Skipping Odoo callback: base_url={openg2p_base_url} consent_id={consent.openg2p_consent_id}")
 
-    frappe.db.set_value("Consent Request", consent_request_name, "websub_delivered", 1)
-    frappe.db.set_value("Consent Request", consent_request_name, "websub_delivered_at", now_datetime())
+    frappe.db.set_value("A2C Consent Request", consent_request_name, "websub_delivered", 1)
+    frappe.db.set_value("A2C Consent Request", consent_request_name, "websub_delivered_at", now_datetime())
     frappe.db.commit()

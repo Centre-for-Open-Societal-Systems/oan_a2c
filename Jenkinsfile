@@ -5,7 +5,7 @@ pipeline {
         AWS_REGION     = 'ap-south-1'
         AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
         ECR_REPO       = 'oan-a2c'
-        IMAGE_URI      = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+        //IMAGE_URI      = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
         FRAPPE_BRANCH  = 'version-16'
         FRAPPE_PATH    = 'https://github.com/frappe/frappe'
     }
@@ -18,20 +18,30 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 sh '''
-                    echo '[{"url":"https://github.com/Protean-FOSS-Factory/oan_a2c.git","branch":"develop"}]' > /tmp/apps.json
-                    DOCKER_BUILDKIT=1 docker buildx build \
-                        --build-arg FRAPPE_PATH=${FRAPPE_PATH} \
-                        --build-arg FRAPPE_BRANCH=${FRAPPE_BRANCH} \
-                        --secret id=apps_json,src=/tmp/apps.json \
-                        --tag ${IMAGE_URI}:1.0.${BUILD_NUMBER} \
-                        --tag ${IMAGE_URI}:latest \
-                        --file images/layered/Containerfile \
-                        --network=host \
-                        --load \
-                        --no-cache .
-                '''
-            }
+                # Clone frappe_docker which has the Containerfile
+                rm -rf frappe_docker
+                git clone https://github.com/frappe/frappe_docker.git frappe_docker
+
+                # Prepare apps.json
+                echo '[{"url":"https://github.com/Protean-FOSS-Factory/oan_a2c.git","branch":"develop"}]' > /tmp/apps.json
+
+                IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+
+                # Build from frappe_docker directory
+                cd frappe_docker
+                DOCKER_BUILDKIT=1 docker buildx build \
+                    --build-arg FRAPPE_PATH=${FRAPPE_PATH} \
+                    --build-arg FRAPPE_BRANCH=${FRAPPE_BRANCH} \
+                    --secret id=apps_json,src=/tmp/apps.json \
+                    --tag ${IMAGE_URI}:1.0.${BUILD_NUMBER} \
+                    --tag ${IMAGE_URI}:latest \
+                    --file images/layered/Containerfile \
+                    --network=host \
+                    --load \
+                    --no-cache .
+            '''
         }
+    }
 
         stage('Push to ECR') {
             steps {

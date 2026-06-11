@@ -7,13 +7,19 @@ def _get_app(application_id):
         frappe.throw("Loan Application not found", frappe.DoesNotExistError)
     return frappe.get_doc("A2C Loan Application", application_id)
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=False)
 def get_basic_profile(lead_id):
     try:
+        if not lead_id:
+            return {"status": "error", "message": "lead_id is required"}
+
+        frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
+
         lead_doc = frappe.get_doc("A2C Lead", lead_id)
         if not lead_doc.farmer_profile:
             return {"status": "error", "message": "Farmer Profile not found for this lead"}
         
+        frappe.has_permission("A2C Farmer Profile", "read", doc=lead_doc.farmer_profile, throw=True)
         doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
         return {
             "status": "success",
@@ -28,28 +34,65 @@ def get_basic_profile(lead_id):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@frappe.whitelist()
-def get_full_profile(application_id=None, lead_id=None):
+@frappe.whitelist(allow_guest=False, methods=["POST"])
+def update_basic_profile(lead_id, email=None, location=None):
+    try:
+        if not lead_id:
+            return {"status": "error", "message": "lead_id is required"}
+            
+        frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
+        
+        lead_doc = frappe.get_doc("A2C Lead", lead_id)
+        if not lead_doc.farmer_profile:
+            return {"status": "error", "message": "Farmer Profile not found for this lead"}
+            
+        frappe.has_permission("A2C Farmer Profile", "write", doc=lead_doc.farmer_profile, throw=True)
+        farmer_doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
+        
+        changed = False
+        updates = {
+            "email": email,
+            "location": location
+        }
+        
+        for field, value in updates.items():
+            if value is not None:
+                if farmer_doc.meta.has_field(field) and farmer_doc.get(field) != value:
+                    farmer_doc.set(field, value)
+                    changed = True
+                if lead_doc.meta.has_field(field) and lead_doc.get(field) != value:
+                    lead_doc.set(field, value)
+                    changed = True
+                    
+        if changed:
+            farmer_doc.save()
+            lead_doc.save()
+            frappe.db.commit()
+            
+        return {
+            "status": "success",
+            "message": "Basic profile updated successfully",
+            "data": {
+                "email": farmer_doc.email,
+                "location": farmer_doc.location
+            }
+        }
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Update Basic Profile Error")
+        return {"status": "error", "message": str(e)}
+
+
+@frappe.whitelist(allow_guest=False)
+def get_full_profile(application_id):
     """
     Retrieves the full profile details of a loan application.
-    Supports looking up the application by application_id, lead_id, or both.
-    If both are provided, it validates that they refer to the same application to prevent mismatches.
     """
     try:
-        if not application_id and not lead_id:
-            return {"status": "error", "message": "Either application_id or lead_id is required"}
+        if not application_id:
+            return {"status": "error", "message": "application_id is required"}
 
-        if application_id and lead_id:
-            doc = _get_app(application_id)
-            if doc.lead_id != lead_id:
-                return {"status": "error", "message": "Mismatched application_id and lead_id"}
-        elif application_id:
-            doc = _get_app(application_id)
-        else:
-            apps = frappe.get_all("A2C Loan Application", filters={"lead_id": lead_id}, fields=["name"], limit=1)
-            if not apps:
-                return {"status": "error", "message": "Loan Application not found for this lead"}
-            doc = frappe.get_doc("A2C Loan Application", apps[0].name)
+        doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "read", doc=doc, throw=True)
 
         data = doc.as_dict()
         filtered_data = {
@@ -65,7 +108,7 @@ def get_full_profile(application_id=None, lead_id=None):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=False)
 def get_loan_summary():
     try:
         if not frappe.has_permission("A2C Loan Application", "read"):
@@ -88,6 +131,16 @@ def get_loan_summary():
             elif row.status == "Rejected":
                 summary["rejected"] += count
         
+        user = frappe.session.user
+        my_applications = frappe.db.count("A2C Loan Application", {"loan_officer": user})
+        unassigned = frappe.db.count("A2C Loan Application", {"loan_officer": ["in", ["", None]]})
+
+        summary["tab_counts"] = {
+            "all": summary["total"],
+            "my": my_applications,
+            "unassigned": unassigned
+        }
+
         return {
             "status": "success",
             "summary": summary
@@ -96,31 +149,7 @@ def get_loan_summary():
         frappe.log_error(frappe.get_traceback(), "Get Loan Summary Error")
         return {"status": "error", "message": str(e)}
 
-@frappe.whitelist()
-def get_loan_assignment_summary():
-    try:
-        if not frappe.has_permission("A2C Loan Application", "read"):
-            return {"status": "error", "message": "Not permitted to view Loan Applications"}
-
-        user = frappe.session.user
-
-        total = frappe.db.count("A2C Loan Application")
-        my_applications = frappe.db.count("A2C Loan Application", {"loan_officer": user})
-        unassigned = frappe.db.count("A2C Loan Application", {"loan_officer": ["in", ["", None]]})
-
-        return {
-            "status": "success",
-            "summary": {
-                "all_applications": total,
-                "my_applications": my_applications,
-                "unassigned": unassigned
-            }
-        }
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Get Loan Assignment Summary Error")
-        return {"status": "error", "message": str(e)}
-
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=False)
 def get_loan_metadata():
     try:
         if not frappe.has_permission("A2C Loan Application", "read"):
@@ -138,8 +167,8 @@ def get_loan_metadata():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@frappe.whitelist()
-def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_amount=None, loan_type=None, location=None, phone_number=None, from_date=None, to_date=None, page=1, page_size=20):
+@frappe.whitelist(allow_guest=False)
+def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_amount=None, loan_type=None, location=None, phone_number=None, from_date=None, to_date=None, page=1, page_size=20, lead_id=None):
     try:
         if not frappe.has_permission("A2C Loan Application", "read"):
             return {"status": "error", "message": "Not permitted to view Loan Applications"}
@@ -151,7 +180,13 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
         filters = {}
 
         if status:
-            filters['status'] = status
+            allowed_statuses = {"Draft", "Processing", "Approved", "Rejected"}
+            valid_statuses = [s.strip() for s in status.split(",") if s.strip() in allowed_statuses]
+            if valid_statuses:
+                filters['status'] = ["in", valid_statuses]
+        
+        if lead_id:
+            filters['lead_id'] = lead_id
         
         if min_loan_amount and max_loan_amount:
             filters['loan_amount'] = ("between", [min_loan_amount, max_loan_amount])
@@ -183,7 +218,7 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
         records = frappe.get_all(
             "A2C Loan Application",
             filters=filters,
-            fields=["name as application_id", "status", "loan_amount", "loan_type", "location", "phone_number", "creation"],
+            fields=["name as application_id", "status", "current_step as step", "lead_id", "loan_amount", "loan_type", "location", "phone_number", "creation"],
             order_by="creation DESC",
             limit_start=offset,
             limit_page_length=page_size
@@ -206,13 +241,14 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
 
 
 
-@frappe.whitelist(methods=["POST"])
+@frappe.whitelist(allow_guest=False, methods=["POST"])
 def upload_supporting_documents(application_id):
     try:
         if not frappe.request.files:
             return {"status": "error", "message": "No files found in request"}
             
         doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "write", doc=doc, throw=True)
         uploaded_files = []
         
         ALLOWED_EXTENSIONS = ('.pdf', '.png', '.jpg', '.jpeg')
@@ -235,7 +271,7 @@ def upload_supporting_documents(application_id):
                 "attached_to_name": doc.name,
                 "is_private": 1
             })
-            file_doc.insert(ignore_permissions=True)
+            file_doc.insert()
             uploaded_files.append({
                 "name": file_doc.name,
                 "file_url": file_doc.file_url,
@@ -249,7 +285,7 @@ def upload_supporting_documents(application_id):
         frappe.log_error(frappe.get_traceback(), "Upload Documents Error")
         return {"status": "error", "message": str(e)}
 
-@frappe.whitelist()
+@frappe.whitelist(allow_guest=False)
 def get_supporting_documents(application_id):
     try:
         # Validate that the application exists
@@ -270,7 +306,35 @@ def get_supporting_documents(application_id):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@frappe.whitelist(methods=["POST"])
+@frappe.whitelist(allow_guest=False, methods=["POST"])
+def delete_supporting_document(application_id, file_id):
+    try:
+        if not application_id or not file_id:
+            return {"status": "error", "message": "application_id and file_id are required"}
+            
+        # Validate that the application exists and check write permissions
+        doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "write", doc=doc, throw=True)
+        
+        # Check if the file exists and is attached to this application
+        if not frappe.db.exists("File", {
+            "name": file_id,
+            "attached_to_doctype": "A2C Loan Application",
+            "attached_to_name": application_id
+        }):
+            return {"status": "error", "message": "File not found or not attached to this application"}
+            
+        # Delete the file document
+        frappe.delete_doc("File", file_id)
+        frappe.db.commit()
+        
+        return {"status": "success", "message": "File deleted successfully"}
+        
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Delete Document Error")
+        return {"status": "error", "message": str(e)}
+
+@frappe.whitelist(allow_guest=False, methods=["POST"])
 def create_loan_application(lead_id):
     """
     Creates an A2C Loan Application by copying data from the Lead's linked Farmer Profile and Credit Information.
@@ -278,6 +342,11 @@ def create_loan_application(lead_id):
     try:
         if not lead_id:
             return {"status": "error", "message": "lead_id is required"}
+
+        # Enforce create permissions on the A2C Loan Application
+        frappe.has_permission("A2C Loan Application", "create", throw=True)
+        # Check read permissions on the Lead
+        frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
 
         # Check if loan application already exists
         existing = frappe.get_all("A2C Loan Application", filters={"lead_id": lead_id}, limit=1)
@@ -291,6 +360,8 @@ def create_loan_application(lead_id):
         if not farmer_profile_name:
             return {"status": "error", "message": "No Farmer Profile found for this lead. Webhook consent might not be completed."}
         
+        # Check read permissions on the Farmer Profile
+        frappe.has_permission("A2C Farmer Profile", "read", doc=farmer_profile_name, throw=True)
         farmer_profile = frappe.get_doc("A2C Farmer Profile", farmer_profile_name)
 
         # Get Credit Info (most recent)
@@ -310,7 +381,7 @@ def create_loan_application(lead_id):
         loan_app.first_name = farmer_profile.first_name
         loan_app.last_name = farmer_profile.last_name
         loan_app.location = farmer_profile.location
-        loan_app.phone_number = farmer_profile.phone_number or lead_doc.phone_number
+        loan_app.phone_number = farmer_profile.phone_number 
         loan_app.farmer_id = farmer_profile.farmer_id
         loan_app.consent_id = farmer_profile.consent_id
         
@@ -321,9 +392,9 @@ def create_loan_application(lead_id):
         loan_app.loan_amount = credit_infos[0].loan_amount
         loan_app.loan_reason = credit_infos[0].purpose_message
         loan_app.status = "Draft"
-        loan_app.insert(ignore_permissions=True)
+        loan_app.insert(ignore_permissions=False)
         frappe.db.commit()
-
+        print("Loan application created successfully", loan_app.name, loan_app.status)
         return {
             "status": "success",
             "message": "Loan application created successfully",
@@ -334,7 +405,7 @@ def create_loan_application(lead_id):
         frappe.log_error(frappe.get_traceback(), "Create Loan Application Error")
         return {"status": "error", "message": str(e)}
 
-@frappe.whitelist(methods=["POST"])
+@frappe.whitelist(allow_guest=False, methods=["POST"])
 def update_loan_status(application_id, status):
     """
     Updates the status of a loan application. Cannot update if current status is Rejected or Approved.
@@ -344,12 +415,13 @@ def update_loan_status(application_id, status):
             return {"status": "error", "message": "application_id and status are required"}
 
         doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "write", doc=doc, throw=True)
         
         if doc.status in ["Rejected", "Approved"]:
             return {"status": "error", "message": f"Cannot change status. Loan application is already {doc.status}"}
 
         doc.status = status
-        doc.save(ignore_permissions=True)
+        doc.save()
         frappe.db.commit()
 
         return {
@@ -359,4 +431,30 @@ def update_loan_status(application_id, status):
 
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "Update Loan Status Error")
+        return {"status": "error", "message": str(e)}
+
+@frappe.whitelist(allow_guest=False, methods=["POST"])
+def update_loan_step(application_id, step):
+    """
+    Updates the current step of a loan application.
+    """
+    try:
+        if not application_id or step is None:
+            return {"status": "error", "message": "application_id and step are required"}
+
+        step = cint(step)
+        doc = _get_app(application_id)
+        frappe.has_permission("A2C Loan Application", "write", doc=doc, throw=True)
+        
+        doc.current_step = step
+        doc.save()
+        frappe.db.commit()
+
+        return {
+            "status": "success",
+            "message": f"Loan application step updated to {step}"
+        }
+
+    except Exception as e:
+        frappe.log_error(frappe.get_traceback(), "Update Loan Step Error")
         return {"status": "error", "message": str(e)}

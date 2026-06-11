@@ -503,7 +503,7 @@ class TestVisitScheduleAPI(unittest.TestCase):
 	def setUp(self):
 		frappe.set_user("Administrator")
 		# Reset lead status to Open
-		frappe.db.set_value("A2C Lead", self.lead_id, "status", "Active")
+		frappe.db.set_value("A2C Lead", self.lead_id, "status", "Open")
 		# Delete all schedules before each test
 		for name in frappe.get_all("A2C Visit Schedule", pluck="name"):
 			frappe.delete_doc("A2C Visit Schedule", name, ignore_permissions=True, force=True)
@@ -687,6 +687,22 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 				status="Active",
 				reason="Try to make it active again"
 			)
+
+	def test_4_rejected_lead_status_locked(self):
+		"""Verifies that once lead status is set to Rejected, saving any further status update throws ValidationError."""
+		# Reset lead status to Active, save it, then set to Rejected
+		frappe.db.set_value("A2C Lead", self.lead_id, "status", "Active")
+		frappe.db.commit()
+
+		lead = frappe.get_doc("A2C Lead", self.lead_id)
+		lead.status = "Rejected"
+		lead.save()
+
+		# Try to change status to Active and save, should raise ValidationError
+		lead = frappe.get_doc("A2C Lead", self.lead_id)
+		lead.status = "Active"
+		self.assertRaises(frappe.ValidationError, lead.save)
+
 
 
 class TestLeadAssignmentAPI(unittest.TestCase):
