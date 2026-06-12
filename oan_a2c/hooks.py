@@ -170,7 +170,7 @@ app_license = "mit"
 # Testing
 # -------
 
-# before_tests = "oan_a2c.install.before_tests"
+before_tests = "oan_a2c.tests.before_tests"
 
 # Extend DocType Class
 # ------------------------------

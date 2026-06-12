@@ -71,7 +71,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"email\": \"test_agent@coopbank.com\"\n}"
+                            "raw": "{\n    \"email\": \"{{usr}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.auth.forgot_password",
@@ -101,7 +101,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"email\": \"test_agent@coopbank.com\",\n    \"key\": \"{{reset_key_from_email}}\",\n    \"new_password\": \"NewSuperSecurePassword987!\"\n}"
+                            "raw": "{\n    \"email\": \"{{usr}}\",\n    \"key\": \"{{reset_key_from_email}}\",\n    \"new_password\": \"{{new_password}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.auth.reset_password",
@@ -136,7 +136,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&start_date=&end_date=",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&start_date=&end_date=&min_loan_amount=&max_loan_amount=",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -173,6 +173,16 @@
                                 {
                                     "key": "end_date",
                                     "value": ""
+                                },
+                                {
+                                    "key": "min_loan_amount",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "max_loan_amount",
+                                    "value": "",
+                                    "disabled": true
                                 }
                             ]
                         },
@@ -228,7 +238,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"phone_number\": \"+251911000003\",\n    \"first_name\": \"Abebe\",\n    \"last_name\": \"Bikila\",\n    \"email\": \"abebe@coopbank.com\",\n    \"lead_source\": \"Agent Entry\",\n    \"external_id\": \"PARTNER-990011\"\n}"
+                            "raw": "{\n    \"phone_number\": \"{{phone_number}}\",\n    \"first_name\": \"{{first_name}}\",\n    \"last_name\": \"{{last_name}}\",\n    \"email\": \"{{email}}\",\n    \"lead_source\": \"Agent Entry\",\n    \"external_id\": \"{{external_id}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.create_lead",
@@ -405,7 +415,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"lead_id\": \"LEAD-2026-00001\",\n    \"content\": \"Field agent discussed agricultural profiles with farmer.\"\n}"
+                            "raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"content\": \"Field agent discussed agricultural profiles with farmer.\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.add_lead_comment",
@@ -464,7 +474,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_timeline?lead_id=LEAD-2026-00001&event_type=",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_timeline?lead_id={{lead_id}}&event_type=",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -476,7 +486,7 @@
                             "query": [
                                 {
                                     "key": "lead_id",
-                                    "value": "LEAD-2026-00001"
+                                    "value": "{{lead_id}}"
                                 },
                                 {
                                     "key": "event_type",
@@ -531,7 +541,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_call_logs?lead_id=LEAD-2026-00001",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_call_logs?lead_id={{lead_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -543,7 +553,7 @@
                             "query": [
                                 {
                                     "key": "lead_id",
-                                    "value": "LEAD-2026-00001"
+                                    "value": "{{lead_id}}"
                                 }
                             ]
                         },
@@ -599,7 +609,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"lead_id\": \"LEAD-2026-00001\",\n    \"visit_date\": \"2026-06-10\",\n    \"visit_time\": \"14:30:00\",\n    \"region\": \"Oromia\",\n    \"zone\": \"East Shewa\",\n    \"woreda\": \"Ada'ama\",\n    \"kebele\": \"Kebele 02\",\n    \"meeting_location\": \"Cooperative Office\",\n    \"notes\": \"Bring farm certificates\"\n}"
+                            "raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"visit_date\": \"{{visit_date}}\",\n    \"visit_time\": \"{{visit_time}}\",\n    \"region\": \"{{visit_region}}\",\n    \"zone\": \"{{visit_zone}}\",\n    \"woreda\": \"{{visit_woreda}}\",\n    \"kebele\": \"{{visit_kebele}}\",\n    \"meeting_location\": \"{{visit_location}}\",\n    \"notes\": \"{{visit_notes}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.schedule_visit",
@@ -658,7 +668,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_visit_schedules?lead_id=LEAD-2026-00001&start=0&page_length=20",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_visit_schedules?lead_id={{lead_id}}&start=0&page_length=20",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -670,7 +680,7 @@
                             "query": [
                                 {
                                     "key": "lead_id",
-                                    "value": "LEAD-2026-00001"
+                                    "value": "{{lead_id}}"
                                 },
                                 {
                                     "key": "start",
@@ -734,7 +744,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"lead_id\": \"LEAD-2026-00001\",\n    \"loan_type\": \"Input loan (seeds, agrochemicals)\",\n    \"loan_amount\": 90000.00,\n    \"purpose_message\": \"Met with farmer at the cooperative office. Recommended for the Fertilizer 2026 campaign.\"\n}"
+                            "raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"loan_type\": \"{{credit_loan_type}}\",\n    \"loan_amount\": {{credit_loan_amount}},\n    \"purpose_message\": \"{{credit_purpose}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.add_lead_credit_info",
@@ -793,7 +803,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_credit_infos?lead_id=LEAD-2026-00001",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_lead_credit_infos?lead_id={{lead_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -805,7 +815,7 @@
                             "query": [
                                 {
                                     "key": "lead_id",
-                                    "value": "LEAD-2026-00001"
+                                    "value": "{{lead_id}}"
                                 }
                             ]
                         },
@@ -861,7 +871,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"lead_id\": \"LEAD-2026-00001\",\n    \"status\": \"Processed\",\n    \"reason\": \"Lead meets criteria and is ready to be processed further.\"\n}"
+                            "raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"status\": \"{{lead_update_status}}\",\n    \"reason\": \"{{lead_update_reason}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.update_lead_status",
@@ -920,7 +930,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_assignable_users?search_query=Sara",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_assignable_users?search_query={{agent_search_query}}",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -932,7 +942,7 @@
                             "query": [
                                 {
                                     "key": "search_query",
-                                    "value": "Sara"
+                                    "value": "{{agent_search_query}}"
                                 }
                             ]
                         },
@@ -988,7 +998,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"lead_id\": \"LEAD-2026-00001\",\n    \"assigned_to\": \"sara.bekele@coopbank.com\"\n}"
+                            "raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"assigned_to\": \"{{assigned_to}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.assign_lead",
@@ -1124,7 +1134,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"phone_number\": \"+251911000003\",\n    \"lead_source\": \"Missed Call\",\n    \"external_ref_id\": \"TELCO-778899\",\n    \"timestamp\": \"2026-05-26T12:00:00Z\"\n}"
+                            "raw": "{\n    \"phone_number\": \"{{phone_number}}\",\n    \"lead_source\": \"Missed Call\",\n    \"external_ref_id\": \"{{external_ref_id}}\",\n    \"timestamp\": \"{{webhook_timestamp}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
@@ -1148,6 +1158,28 @@
             "item": [
                 {
                     "name": "4.1 Search Farmer",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "var resp = pm.response.json();",
+                                    "var msg  = resp.message || resp;",
+                                    "if (msg.status === 'success') {",
+                                    "    if (msg.farmer_db_id) {",
+                                    "        pm.collectionVariables.set('farmer_id', msg.farmer_db_id.toString());",
+                                    "    } else if (msg.farmer && msg.farmer.id) {",
+                                    "        pm.collectionVariables.set('farmer_id', msg.farmer.id.toString());",
+                                    "    }",
+                                    "    if (msg.farmer && msg.farmer.name) {",
+                                    "        pm.collectionVariables.set('farmer_name', msg.farmer.name);",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1206,7 +1238,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"fayda_id\": \"{{farmer_fayda_id}}\",\n  \"partner\": \"OAN partner\",\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_form_filename\": \"signed_consent.txt\",\n  \"consent_form_base64\": \"VGhpcyBpcyBhIHNhbXBsZSBzaWduZWQgY29uc2VudCBmb3JtLg==\"\n}"
+                            "raw": "{\n  \"fayda_id\": \"{{fayda_id}}\",\n  \"partner\": \"OAN partner\",\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_form_filename\": \"signed_consent.txt\",\n  \"consent_form_base64\": \"VGhpcyBpcyBhIHNhbXBsZSBzaWduZWQgY29uc2VudCBmb3JtLg==\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.request_otp",
@@ -1237,7 +1269,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"otp_code\": \"111111\"\n}"
+                            "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"otp_code\": \"{{otp_code}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp_for_lead",
@@ -1289,7 +1321,7 @@
             "name": "Loan Application Management",
             "item": [
                 {
-                    "name": "Webhook Receive Consent Data",
+                    "name": "1. Webhook Receive Consent Data",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1301,7 +1333,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"consent\": {\n        \"consent_creation_request_id\": \"G2P-CONS-12345\",\n        \"status\": \"Approved\"\n    },\n    \"farmer\": {\n        \"id\": \"FARMER-999\",\n        \"name\": \"John Doe\"\n    }\n}"
+                            "raw": "{\n    \"consent\": {\n        \"consent_creation_request_id\": \"{{consent_request}}\",\n        \"status\": \"{{consent_status}}\"\n    },\n    \"farmer\": {\n        \"id\": \"{{farmer_id}}\",\n        \"name\": \"{{farmer_name}}\"\n    }\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
@@ -1348,7 +1380,7 @@
                     ]
                 },
                 {
-                    "name": "Get Basic Profile",
+                    "name": "2. Get Basic Profile",
                     "request": {
                         "method": "GET",
                         "header": [
@@ -1359,7 +1391,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_basic_profile?lead_id={{lead_id}}",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_basic_profile?lead_id={{lead_id}}&include_consent_data=1",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -1372,6 +1404,12 @@
                                 {
                                     "key": "lead_id",
                                     "value": "{{lead_id}}"
+                                },
+                                {
+                                    "key": "include_consent_data",
+                                    "value": "1",
+                                    "description": "Set to 1 to retrieve consent information alongside basic profile.",
+                                    "disabled": true
                                 }
                             ]
                         }
@@ -1386,7 +1424,9 @@
                                     "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
                                     "",
                                     "pm.test('Response status check', function () {",
-                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "    if (expectedStatus === 'error') {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 429, 500]);",
+                                    "    } else if (responseJson.message && responseJson.message.status) {",
                                     "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
                                     "    } else if (responseJson.status) {",
                                     "        pm.expect(responseJson.status).to.eql(expectedStatus);",
@@ -1398,7 +1438,14 @@
                                     "const expectedMsg = pm.iterationData.get('expected_message');",
                                     "if (expectedStatus === 'error' && expectedMsg) {",
                                     "    pm.test('Error message verification', function () {",
-                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        let errMsg = '';",
+                                    "        if (responseJson.error && responseJson.error.message) {",
+                                    "            errMsg = responseJson.error.message;",
+                                    "        } else if (responseJson.message && responseJson.message.message) {",
+                                    "            errMsg = responseJson.message.message;",
+                                    "        } else {",
+                                    "            errMsg = responseJson.message || responseJson.error || '';",
+                                    "        }",
                                     "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
                                     "    });",
                                     "}"
@@ -1409,7 +1456,7 @@
                     ]
                 },
                 {
-                    "name": "Update Basic Profile",
+                    "name": "3. Update Basic Profile",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1474,7 +1521,7 @@
                     ]
                 },
                 {
-                    "name": "Create Loan Application",
+                    "name": "4. Create Loan Application",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1491,7 +1538,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"lead_id\": \"LEAD-2026-00001\"\n}"
+                            "raw": "{\n    \"lead_id\": \"{{lead_id}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.create_loan_application",
@@ -1516,7 +1563,9 @@
                                     "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
                                     "",
                                     "pm.test('Response status check', function () {",
-                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "    if (expectedStatus === 'error') {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 429, 500]);",
+                                    "    } else if (responseJson.message && responseJson.message.status) {",
                                     "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
                                     "    } else if (responseJson.status) {",
                                     "        pm.expect(responseJson.status).to.eql(expectedStatus);",
@@ -1528,15 +1577,34 @@
                                     "const expectedMsg = pm.iterationData.get('expected_message');",
                                     "if (expectedStatus === 'error' && expectedMsg) {",
                                     "    pm.test('Error message verification', function () {",
-                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        let errMsg = '';",
+                                    "        if (responseJson.error && responseJson.error.message) {",
+                                    "            errMsg = responseJson.error.message;",
+                                    "        } else if (responseJson.message && responseJson.message.message) {",
+                                    "            errMsg = responseJson.message.message;",
+                                    "        } else {",
+                                    "            errMsg = responseJson.message || responseJson.error || '';",
+                                    "        }",
                                     "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
                                     "    });",
                                     "}",
                                     "",
-                                    "if (responseJson.status === 'success' && responseJson.application_id) {",
-                                    "    pm.collectionVariables.set('loan_application', responseJson.application_id);",
-                                    "} else if (responseJson.message && responseJson.message.status === 'success' && responseJson.message.application_id) {",
-                                    "    pm.collectionVariables.set('loan_application', responseJson.message.application_id);",
+                                    "var appId = null;",
+                                    "if (responseJson.status === 'success') {",
+                                    "    if (responseJson.application_id) {",
+                                    "        appId = responseJson.application_id;",
+                                    "    } else if (responseJson.data && responseJson.data.application_id) {",
+                                    "        appId = responseJson.data.application_id;",
+                                    "    }",
+                                    "} else if (responseJson.message && responseJson.message.status === 'success') {",
+                                    "    if (responseJson.message.data && responseJson.message.data.application_id) {",
+                                    "        appId = responseJson.message.data.application_id;",
+                                    "    } else if (responseJson.message.application_id) {",
+                                    "        appId = responseJson.message.application_id;",
+                                    "    }",
+                                    "}",
+                                    "if (appId) {",
+                                    "    pm.collectionVariables.set('loan_application', appId.toString());",
                                     "}"
                                 ],
                                 "type": "text/javascript"
@@ -1545,7 +1613,7 @@
                     ]
                 },
                 {
-                    "name": "Get Full Profile",
+                    "name": "5. Get Full Profile",
                     "request": {
                         "method": "GET",
                         "header": [
@@ -1606,7 +1674,7 @@
                     ]
                 },
                 {
-                    "name": "Update Loan Step",
+                    "name": "6. Update Loan Step",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1648,7 +1716,9 @@
                                     "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
                                     "",
                                     "pm.test('Response status check', function () {",
-                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "    if (expectedStatus === 'error') {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 429, 500]);",
+                                    "    } else if (responseJson.message && responseJson.message.status) {",
                                     "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
                                     "    } else if (responseJson.status) {",
                                     "        pm.expect(responseJson.status).to.eql(expectedStatus);",
@@ -1663,7 +1733,7 @@
                     ]
                 },
                 {
-                    "name": "Upload Supporting Documents",
+                    "name": "7. Upload Supporting Documents",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1734,7 +1804,7 @@
                     ]
                 },
                 {
-                    "name": "Get Supporting Documents",
+                    "name": "8. Get Supporting Documents",
                     "request": {
                         "method": "GET",
                         "header": [
@@ -1772,7 +1842,9 @@
                                     "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
                                     "",
                                     "pm.test('Response status check', function () {",
-                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "    if (expectedStatus === 'error') {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 429, 500]);",
+                                    "    } else if (responseJson.message && responseJson.message.status) {",
                                     "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
                                     "    } else if (responseJson.status) {",
                                     "        pm.expect(responseJson.status).to.eql(expectedStatus);",
@@ -1784,9 +1856,27 @@
                                     "const expectedMsg = pm.iterationData.get('expected_message');",
                                     "if (expectedStatus === 'error' && expectedMsg) {",
                                     "    pm.test('Error message verification', function () {",
-                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        let errMsg = '';",
+                                    "        if (responseJson.error && responseJson.error.message) {",
+                                    "            errMsg = responseJson.error.message;",
+                                    "        } else if (responseJson.message && responseJson.message.message) {",
+                                    "            errMsg = responseJson.message.message;",
+                                    "        } else {",
+                                    "            errMsg = responseJson.message || responseJson.error || '';",
+                                    "        }",
                                     "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
                                     "    });",
+                                    "}",
+                                    "if (responseJson.status === 'success' && responseJson.data && responseJson.data.length > 0) {",
+                                    "    const fileAttachment = responseJson.data[0].file_attachment;",
+                                    "    if (fileAttachment) {",
+                                    "        pm.collectionVariables.set('file_id', fileAttachment);",
+                                    "    }",
+                                    "} else if (responseJson.message && responseJson.message.status === 'success' && responseJson.message.data && responseJson.message.data.length > 0) {",
+                                    "    const fileAttachment = responseJson.message.data[0].file_attachment;",
+                                    "    if (fileAttachment) {",
+                                    "        pm.collectionVariables.set('file_id', fileAttachment);",
+                                    "    }",
                                     "}"
                                 ],
                                 "type": "text/javascript"
@@ -1795,7 +1885,57 @@
                     ]
                 },
                 {
-                    "name": "Delete Supporting Document",
+                    "name": "9. Download Supporting Document",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.download_supporting_document?file_id={{file_id}}&view=0",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.download_supporting_document"
+                            ],
+                            "query": [
+                                {
+                                    "key": "file_id",
+                                    "value": "{{file_id}}"
+                                },
+                                {
+                                    "key": "view",
+                                    "value": "0",
+                                    "description": "Set to 1 to view inline instead of downloading."
+                                }
+                            ]
+                        },
+                        "description": "Downloads or streams the content of an uploaded private supporting document."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Response status check', function () {",
+                                    "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "10. Delete Supporting Document",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1852,7 +1992,7 @@
                     ]
                 },
                 {
-                    "name": "Update Loan Status",
+                    "name": "11. Update Loan Status",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1894,7 +2034,9 @@
                                     "const expectedStatus = pm.iterationData.get('expected_status') || 'success';",
                                     "",
                                     "pm.test('Response status check', function () {",
-                                    "    if (responseJson.message && responseJson.message.status) {",
+                                    "    if (expectedStatus === 'error') {",
+                                    "        pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 429, 500]);",
+                                    "    } else if (responseJson.message && responseJson.message.status) {",
                                     "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
                                     "    } else if (responseJson.status) {",
                                     "        pm.expect(responseJson.status).to.eql(expectedStatus);",
@@ -1906,7 +2048,14 @@
                                     "const expectedMsg = pm.iterationData.get('expected_message');",
                                     "if (expectedStatus === 'error' && expectedMsg) {",
                                     "    pm.test('Error message verification', function () {",
-                                    "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                                    "        let errMsg = '';",
+                                    "        if (responseJson.error && responseJson.error.message) {",
+                                    "            errMsg = responseJson.error.message;",
+                                    "        } else if (responseJson.message && responseJson.message.message) {",
+                                    "            errMsg = responseJson.message.message;",
+                                    "        } else {",
+                                    "            errMsg = responseJson.message || responseJson.error || '';",
+                                    "        }",
                                     "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
                                     "    });",
                                     "}"
@@ -1917,7 +2066,7 @@
                     ]
                 },
                 {
-                    "name": "Get Loan Metadata",
+                    "name": "12. Get Loan Metadata",
                     "request": {
                         "method": "GET",
                         "header": [
@@ -1972,7 +2121,7 @@
                     ]
                 },
                 {
-                    "name": "Get All Loans",
+                    "name": "13. Get All Loans",
                     "request": {
                         "method": "GET",
                         "header": [
@@ -1983,7 +2132,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_all_loans?status=Approved&page=1&phone_number=%2B251912345678",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_all_loans?status=Approved&page=1&phone_number={{search_phone_number}}&search_query=",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -2018,12 +2167,17 @@
                                 },
                                 {
                                     "key": "phone_number",
-                                    "value": "+251912345678",
+                                    "value": "{{search_phone_number}}",
                                     "disabled": true
                                 },
                                 {
                                     "key": "lead_id",
                                     "value": "{{lead_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "search_query",
+                                    "value": "",
                                     "disabled": true
                                 }
                             ]
@@ -2068,7 +2222,7 @@
                     ]
                 },
                 {
-                    "name": "Get Loan Summary",
+                    "name": "14. Get Loan Summary",
                     "request": {
                         "method": "GET",
                         "header": [
@@ -2157,6 +2311,134 @@
         {
             "key": "pwd",
             "value": "test_agent@1234"
+        },
+        {
+            "key": "file_id",
+            "value": ""
+        },
+        {
+            "key": "lead_id",
+            "value": "LEAD-2026-00001"
+        },
+        {
+            "key": "phone_number",
+            "value": "+251911000003"
+        },
+        {
+            "key": "first_name",
+            "value": "Abebe"
+        },
+        {
+            "key": "last_name",
+            "value": "Bikila"
+        },
+        {
+            "key": "email",
+            "value": "abebe@coopbank.com"
+        },
+        {
+            "key": "external_id",
+            "value": "PARTNER-990011"
+        },
+        {
+            "key": "external_ref_id",
+            "value": "TELCO-778899"
+        },
+        {
+            "key": "webhook_timestamp",
+            "value": "2026-05-26T12:00:00Z"
+        },
+        {
+            "key": "visit_date",
+            "value": "2026-06-10"
+        },
+        {
+            "key": "visit_time",
+            "value": "14:30:00"
+        },
+        {
+            "key": "visit_region",
+            "value": "Oromia"
+        },
+        {
+            "key": "visit_zone",
+            "value": "East Shewa"
+        },
+        {
+            "key": "visit_woreda",
+            "value": "Ada'ama"
+        },
+        {
+            "key": "visit_kebele",
+            "value": "Kebele 02"
+        },
+        {
+            "key": "visit_location",
+            "value": "Cooperative Office"
+        },
+        {
+            "key": "visit_notes",
+            "value": "Bring farm certificates"
+        },
+        {
+            "key": "credit_loan_type",
+            "value": "Input loan (seeds, agrochemicals)"
+        },
+        {
+            "key": "credit_loan_amount",
+            "value": "90000.00"
+        },
+        {
+            "key": "credit_purpose",
+            "value": "Met with farmer at the cooperative office. Recommended for the Fertilizer 2026 campaign."
+        },
+        {
+            "key": "lead_update_status",
+            "value": "Processed"
+        },
+        {
+            "key": "lead_update_reason",
+            "value": "Lead meets criteria and is ready to be processed further."
+        },
+        {
+            "key": "agent_search_query",
+            "value": "Sara"
+        },
+        {
+            "key": "assigned_to",
+            "value": "sara.bekele@coopbank.com"
+        },
+        {
+            "key": "fayda_id",
+            "value": "1234-5678-9012"
+        },
+        {
+            "key": "otp_code",
+            "value": "111111"
+        },
+        {
+            "key": "consent_request",
+            "value": "G2P-CONS-12345"
+        },
+        {
+            "key": "consent_status",
+            "value": "Approved"
+        },
+        {
+            "key": "farmer_id",
+            "value": "FARMER-999"
+        },
+        {
+            "key": "farmer_name",
+            "value": "John Doe"
+        },
+        {
+            "key": "new_password",
+            "value": "NewSuperSecurePassword987!"
+        },
+        {
+            "key": "search_phone_number",
+            "value": "+251912345678"
         }
     ]
 }

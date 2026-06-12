@@ -81,7 +81,8 @@
    "fieldname": "lead_id",
    "fieldtype": "Link",
    "label": "Lead ID",
-   "options": "A2C Lead"
+   "options": "A2C Lead",
+   "search_index": 1
   },
   {
    "fieldname": "credit_info_section",
@@ -288,7 +289,13 @@
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
- "links": [],
+ "links": [
+  {
+   "link_doctype": "File",
+   "link_fieldname": "attached_to_name",
+   "group": "Attachments"
+  }
+ ],
  "modified": "2026-06-07 17:16:04.757867",
  "modified_by": "Administrator",
  "module": "OpenAgriNet Access to Credit",

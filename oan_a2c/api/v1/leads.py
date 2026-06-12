@@ -10,7 +10,9 @@ def get_leads(
 	status=None,
 	lead_source=None,
 	start_date=None,
-	end_date=None
+	end_date=None,
+	min_loan_amount=None,
+	max_loan_amount=None
 ):
 	"""
 	Retrieves a paginated list of A2C Leads with multi-faceted search and filter configurations.
@@ -65,6 +67,30 @@ def get_leads(
 		filters.append(["creation", ">=", start_date])
 	elif end_date:
 		filters.append(["creation", "<=", end_date])
+
+	# Apply Loan Amount Filter
+	if min_loan_amount is not None or max_loan_amount is not None:
+		from frappe.utils import flt
+		credit_filters = {}
+		if min_loan_amount is not None and max_loan_amount is not None:
+			credit_filters['loan_amount'] = ("between", [flt(min_loan_amount), flt(max_loan_amount)])
+		elif min_loan_amount is not None:
+			credit_filters['loan_amount'] = (">=", flt(min_loan_amount))
+		elif max_loan_amount is not None:
+			credit_filters['loan_amount'] = ("<=", flt(max_loan_amount))
+		
+		matching_credit_leads = frappe.get_all(
+			"A2C Credit Information",
+			filters=credit_filters,
+			pluck="lead",
+			distinct=True
+		)
+		
+		if matching_credit_leads:
+			filters.append(["name", "in", matching_credit_leads])
+		else:
+			# Ensure no leads match if the loan amount criteria yielded no matching credit infos
+			filters.append(["name", "in", ["__NONE__"]])
 
 	# 4. Construct Search Or-Filters
 	or_filters = []
@@ -192,7 +218,7 @@ def get_lead_summary():
 		count = cnt_res[0].get("COUNT(*)") if cnt_res else 0
 		counts_by_status[status] = count
 		total_count += count
-
+		
 	return {
 		"status": "success",
 		"total": total_count,

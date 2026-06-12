@@ -50,11 +50,23 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         if lead_id:
             lead_doc = frappe.get_doc("A2C Lead", lead_id)
             
-            farmer_profile = frappe.new_doc("A2C Farmer Profile")
+            existing_profile_name = None
+            if phone_number:
+                existing_profile_name = frappe.db.get_value("A2C Farmer Profile", {"phone_number": phone_number}, "name")
+            
+            if existing_profile_name:
+                farmer_profile = frappe.get_doc("A2C Farmer Profile", existing_profile_name)
+            else:
+                farmer_profile = frappe.new_doc("A2C Farmer Profile")
+
             for k, v in updates.items():
                 if v is not None and v != "":
                     farmer_profile.set(k, v)
-            farmer_profile.insert(ignore_permissions=True)
+
+            if existing_profile_name:
+                farmer_profile.save(ignore_permissions=True)
+            else:
+                farmer_profile.insert(ignore_permissions=True)
             
             # Link back to lead
             lead_doc.db_set("farmer_profile", farmer_profile.name)
@@ -66,7 +78,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         frappe.logger().error(f"Background Webhook Error: {str(e)}", exc_info=True)
 
 
-@frappe.whitelist(allow_guest=True)
+@frappe.whitelist(allow_guest=False)
 def receive_consent_data(**kwargs):
     """
     Webhook receiver for Odoo OpenG2P consent data.

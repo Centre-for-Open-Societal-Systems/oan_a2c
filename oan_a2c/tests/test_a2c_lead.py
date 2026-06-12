@@ -83,6 +83,12 @@ class TestA2CLead(unittest.TestCase):
 
 		self.assertTrue(new_lead.name.startswith("LEAD-"))
 
+		# Verify that updating/saving the Processed lead raises ValidationError
+		lead.email = "updated_processed_email@example.com"
+		with self.assertRaises(frappe.ValidationError):
+			lead.save()
+
+
 	# ------------------------------------------------------------------
 	# Webhook tests
 	# ------------------------------------------------------------------
@@ -502,8 +508,8 @@ class TestVisitScheduleAPI(unittest.TestCase):
 
 	def setUp(self):
 		frappe.set_user("Administrator")
-		# Reset lead status to Open
-		frappe.db.set_value("A2C Lead", self.lead_id, "status", "Open")
+		# Reset lead status to Active
+		frappe.db.set_value("A2C Lead", self.lead_id, "status", "Active")
 		# Delete all schedules before each test
 		for name in frappe.get_all("A2C Visit Schedule", pluck="name"):
 			frappe.delete_doc("A2C Visit Schedule", name, ignore_permissions=True, force=True)
@@ -546,7 +552,15 @@ class TestVisitScheduleAPI(unittest.TestCase):
 		from oan_a2c.api.v1.leads import update_visit_schedule_status
 		update_visit_schedule_status(schedule_id=res["schedule_id"], status="Completed")
 
-		# Verify Lead status was promoted to Verified after completion
+		# Verify Lead status remains Active (since promotion is manual in the UI)
+		lead_status = frappe.db.get_value("A2C Lead", self.lead_id, "status")
+		self.assertEqual(lead_status, "Active")
+
+		# Manually promote Lead status to Verified (simulating manual UI action)
+		from oan_a2c.api.v1.leads import update_lead_status
+		update_lead_status(lead_id=self.lead_id, status="Verified")
+
+		# Verify Lead status is now Verified
 		lead_status = frappe.db.get_value("A2C Lead", self.lead_id, "status")
 		self.assertEqual(lead_status, "Verified")
 

@@ -7,9 +7,11 @@ from oan_a2c.api.v1.loan_applications import (
     update_basic_profile,
     get_full_profile,
     get_supporting_documents,
+    download_supporting_document,
     delete_supporting_document,
     update_loan_step,
-    update_loan_status
+    update_loan_status,
+    create_loan_application
 )
 
 class TestLoansV1API(unittest.TestCase):
@@ -19,6 +21,7 @@ class TestLoansV1API(unittest.TestCase):
         frappe.db.sql("DELETE FROM `tabA2C Loan Application` WHERE lead_id='TEST_LEAD_999' OR first_name='API_TEST_FARMER'")
         frappe.db.sql("DELETE FROM `tabA2C Farmer Profile` WHERE lead_id='TEST_LEAD_999' OR phone_number='+251999888777'")
         frappe.db.sql("DELETE FROM `tabA2C Lead` WHERE name='TEST_LEAD_999'")
+        frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead='TEST_LEAD_999'")
         frappe.db.commit()
 
     def setUp(self):
@@ -51,6 +54,30 @@ class TestLoansV1API(unittest.TestCase):
             frappe.db.commit()
 
         farmer_profile_name = frappe.db.get_value("A2C Lead", "TEST_LEAD_999", "farmer_profile")
+
+        if not frappe.db.exists("A2C Consent Request", {"lead": "TEST_LEAD_999"}):
+            consent = frappe.get_doc({
+                "doctype": "A2C Consent Request",
+                "farmer": "API_TEST_FARMER Test",
+                "farmer_fayda_id": "123456789",
+                "partner": "Test Partner",
+                "lead": "TEST_LEAD_999",
+                "status": "Approved",
+                "otp_verified_at": "2026-06-11 12:00:00",
+                "consent_receipt": "{'signed': true}",
+                "websub_delivered_at": "2026-06-11 13:00:00",
+                "consent_type": "Personal Data Sharing",
+                "purpose": "Loan Credit Risk Analysis",
+                "validity_from": "2026-06-11",
+                "validity_to": "2027-06-11",
+                "requested_data_fields": [
+                    {"field_name": "Phone Number", "field_value": "+251999888777"},
+                    {"field_name": "Location", "field_value": "Addis Ababa"}
+                ]
+            })
+            consent.insert(ignore_permissions=True)
+            frappe.db.set_value("A2C Farmer Profile", farmer_profile_name, "consent_id", consent.name)
+            frappe.db.commit()
         
         doc = frappe.get_doc({
             "doctype": "A2C Loan Application",
@@ -71,24 +98,28 @@ class TestLoansV1API(unittest.TestCase):
     def tearDown(self):
         if hasattr(self, "app_id") and frappe.db.exists("A2C Loan Application", self.app_id):
             frappe.delete_doc("A2C Loan Application", self.app_id, ignore_permissions=True, force=True)
+        frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead='TEST_LEAD_999'")
         frappe.db.commit()
 
     def test_1_get_loan_summary(self):
         res = get_loan_summary()
         self.assertEqual(res["status"], "success")
-        self.assertIn("summary", res)
-        self.assertIn("total", res["summary"])
-        self.assertIn("tab_counts", res["summary"])
-        self.assertEqual(res["summary"]["tab_counts"]["all"], res["summary"]["total"])
-        self.assertIn("my", res["summary"]["tab_counts"])
-        self.assertIn("unassigned", res["summary"]["tab_counts"])
+        self.assertIn("data", res)
+        self.assertIn("total", res["data"])
+        self.assertIn("tab_counts", res["data"])
+        self.assertEqual(res["data"]["tab_counts"]["all"], res["data"]["total"])
+        self.assertIn("my", res["data"]["tab_counts"])
+        self.assertIn("unassigned", res["data"]["tab_counts"])
 
     def test_2_get_all_loans(self):
         res = get_all_loans(status="Draft", page_size=10)
         self.assertEqual(res["status"], "success")
-        self.assertTrue(len(res["results"]) > 0)
+        self.assertTrue(len(res["data"]) > 0)
+        self.assertIn("pagination", res)
+        self.assertEqual(res["pagination"]["limit"], 10)
+        self.assertEqual(res["pagination"]["page"], 1)
         found = False
-        for r in res["results"]:
+        for r in res["data"]:
             if r["application_id"] == self.app_id:
                 found = True
                 self.assertEqual(r["lead_id"], "TEST_LEAD_999")
@@ -98,9 +129,19 @@ class TestLoansV1API(unittest.TestCase):
         # Test filtering by lead_id
         res_lead = get_all_loans(lead_id="TEST_LEAD_999")
         self.assertEqual(res_lead["status"], "success")
-        self.assertTrue(len(res_lead["results"]) > 0)
-        for r in res_lead["results"]:
+        self.assertTrue(len(res_lead["data"]) > 0)
+        for r in res_lead["data"]:
             self.assertEqual(r["lead_id"], "TEST_LEAD_999")
+
+        # Test filtering by search_query (phone number)
+        res_phone = get_all_loans(search_query="+251999888777")
+        self.assertEqual(res_phone["status"], "success")
+        self.assertTrue(any(r["application_id"] == self.app_id for r in res_phone["data"]))
+
+        # Test filtering by search_query (first name)
+        res_name = get_all_loans(search_query="API_TEST_FARMER")
+        self.assertEqual(res_name["status"], "success")
+        self.assertTrue(any(r["application_id"] == self.app_id for r in res_name["data"]))
 
     def test_3_get_basic_profile(self):
         res = get_basic_profile(lead_id="TEST_LEAD_999")
@@ -108,6 +149,46 @@ class TestLoansV1API(unittest.TestCase):
         self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER")
         self.assertEqual(res["data"]["phone_number"], "+251999888777")
         self.assertNotIn("loan_amount", res["data"])
+        
+        # Verify consent fields are NOT returned by default
+        self.assertNotIn("websub_delivered_at", res["data"])
+        self.assertNotIn("consent_type", res["data"])
+        self.assertNotIn("purpose", res["data"])
+        self.assertNotIn("validity_from", res["data"])
+        self.assertNotIn("validity_to", res["data"])
+        self.assertNotIn("requested_data_fields", res["data"])
+
+        # Request with include_consent_data=1
+        res_consent = get_basic_profile(lead_id="TEST_LEAD_999", include_consent_data=1)
+        self.assertEqual(res_consent["status"], "success")
+        self.assertEqual(res_consent["data"]["websub_delivered_at"], "2026-06-11 13:00:00")
+        self.assertEqual(res_consent["data"]["consent_type"], "Personal Data Sharing")
+        self.assertEqual(res_consent["data"]["purpose"], "Loan Credit Risk Analysis")
+        self.assertEqual(res_consent["data"]["validity_from"], "2026-06-11")
+        self.assertEqual(res_consent["data"]["validity_to"], "2027-06-11")
+        self.assertIn("requested_data_fields", res_consent["data"])
+        self.assertEqual(len(res_consent["data"]["requested_data_fields"]), 2)
+        fields_dict = {f["field_name"]: f["field_value"] for f in res_consent["data"]["requested_data_fields"]}
+        self.assertEqual(fields_dict["Phone Number"], "+251999888777")
+        self.assertEqual(fields_dict["Location"], "Addis Ababa")
+
+    def test_3_get_basic_profile_errors(self):
+        # Missing lead_id
+        res = get_basic_profile(lead_id=None)
+        self.assertEqual(frappe.local.response.get("http_status_code"), 400)
+        self.assertIn("error", res)
+        self.assertEqual(res["error"]["code"], "LEAD_ID_REQUIRED")
+
+        # Reset response status code for next assertions
+        frappe.local.response["http_status_code"] = 200
+
+        # Nonexistent lead_id
+        res_nonexistent = get_basic_profile(lead_id="LEAD-2026-00000")
+        self.assertEqual(frappe.local.response.get("http_status_code"), 404)
+        self.assertIn("error", res_nonexistent)
+        self.assertEqual(res_nonexistent["error"]["code"], "LEAD_NOT_FOUND")
+        self.assertEqual(res_nonexistent["error"]["message"], "A2C Lead LEAD-2026-00000 not found")
+        frappe.local.response["http_status_code"] = 200
 
     def test_3b_update_basic_profile(self):
         res = update_basic_profile(
@@ -130,7 +211,7 @@ class TestLoansV1API(unittest.TestCase):
         res = get_full_profile(application_id=self.app_id)
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER")
-        self.assertEqual(res["data"]["loan_amount"], 5000)
+        self.assertEqual(res["data"]["loan_amount"], 5000.0)
         self.assertEqual(res["data"]["status"], "Draft")
 
     def test_5_supporting_documents(self):
@@ -150,8 +231,24 @@ class TestLoansV1API(unittest.TestCase):
         # 1. Get supporting documents
         res = get_supporting_documents(self.app_id)
         self.assertEqual(res["status"], "success")
-        self.assertEqual(len(res["files"]), 1)
-        self.assertEqual(res["files"][0]["name"], file_id)
+        self.assertEqual(len(res["data"]), 1)
+        self.assertEqual(res["data"][0]["name"], file_id)
+
+        # 1.5 Download supporting document
+        download_supporting_document(file_id)
+        self.assertEqual(frappe.local.response.filename, "test_doc.png")
+        
+        file_content = frappe.local.response.filecontent
+        if isinstance(file_content, bytes):
+            file_content = file_content.decode("utf-8")
+        self.assertEqual(file_content, "dummy content")
+        
+        self.assertEqual(frappe.local.response.type, "download")
+        self.assertIsNone(frappe.local.response.get("display_content_as"))
+
+        # Test downloading with view=1 (inline)
+        download_supporting_document(file_id, view=1)
+        self.assertEqual(frappe.local.response.display_content_as, "inline")
 
         # 2. Delete supporting document
         res_del = delete_supporting_document(self.app_id, file_id)
@@ -164,7 +261,7 @@ class TestLoansV1API(unittest.TestCase):
         # 4. Get again, should be empty
         res_after = get_supporting_documents(self.app_id)
         self.assertEqual(res_after["status"], "success")
-        self.assertEqual(len(res_after["files"]), 0)
+        self.assertEqual(len(res_after["data"]), 0)
 
     def test_6_update_loan_step(self):
         # 1. Update step
@@ -186,7 +283,58 @@ class TestLoansV1API(unittest.TestCase):
         doc.status = "Approved"
         self.assertRaises(frappe.ValidationError, doc.save)
 
-
-
-
-
+    def test_8_create_loan_application_copies_profile_details(self):
+        # 1. Clean up any existing loan application for TEST_LEAD_999 first (since setUp creates one)
+        app_name = frappe.db.exists("A2C Loan Application", {"lead_id": "TEST_LEAD_999"})
+        if app_name:
+            frappe.delete_doc("A2C Loan Application", app_name, ignore_permissions=True, force=True)
+            
+        # Clean up existing credit info
+        frappe.db.sql("DELETE FROM `tabA2C Credit Information` WHERE lead='TEST_LEAD_999'")
+        
+        # 2. Setup Farmer Profile details
+        farmer_profile_name = frappe.db.get_value("A2C Lead", "TEST_LEAD_999", "farmer_profile")
+        farmer = frappe.get_doc("A2C Farmer Profile", farmer_profile_name)
+        farmer.gender = "Male"
+        farmer.marital_status = "Married"
+        farmer.education_level = "Degree and above"
+        farmer.total_farmland_size_as_landowner = 15.5
+        farmer.save(ignore_permissions=True)
+        
+        # 3. Create Credit Info
+        credit_info = frappe.get_doc({
+            "doctype": "A2C Credit Information",
+            "lead": "TEST_LEAD_999",
+            "loan_type": "Input loan (seeds, agrochemicals)",
+            "loan_amount": 12000,
+            "purpose_message": "Test loan purpose"
+        })
+        credit_info.insert(ignore_permissions=True)
+        frappe.db.commit()
+        
+        # 4. Call create_loan_application API
+        res = create_loan_application(lead_id="TEST_LEAD_999")
+        self.assertEqual(res["status"], "success")
+        app_id = res["data"]["application_id"]
+        
+        # 5. Fetch the newly created loan application and assert fields were copied
+        loan_app = frappe.get_doc("A2C Loan Application", app_id)
+        self.assertEqual(loan_app.gender, "Male")
+        self.assertEqual(loan_app.marital_status, "Married")
+        self.assertEqual(loan_app.education_level, "Degree and above")
+        self.assertEqual(float(loan_app.total_farmland_size_as_landowner), 15.5)
+        self.assertEqual(float(loan_app.loan_amount), 12000.0)
+        self.assertEqual(loan_app.loan_reason, "Test loan purpose")
+        
+        # 6. Call get_full_profile API and verify response includes these fields
+        profile_res = get_full_profile(application_id=app_id)
+        self.assertEqual(profile_res["status"], "success")
+        self.assertEqual(profile_res["data"]["gender"], "Male")
+        self.assertEqual(profile_res["data"]["marital_status"], "Married")
+        self.assertEqual(profile_res["data"]["education_level"], "Degree and above")
+        self.assertEqual(float(profile_res["data"]["total_farmland_size_as_landowner"]), 15.5)
+        
+        # Clean up
+        frappe.delete_doc("A2C Loan Application", app_id, ignore_permissions=True, force=True)
+        frappe.delete_doc("A2C Credit Information", credit_info.name, ignore_permissions=True, force=True)
+        frappe.db.commit()
