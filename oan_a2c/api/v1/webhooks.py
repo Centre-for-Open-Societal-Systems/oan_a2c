@@ -75,10 +75,10 @@ def _update_existing_lead(lead_name, lead_source, external_ref_id, timestamp):
 		existing_doc.call_notes = event_note
 
 	# If the lead did not have an external_id set, populate it now
-	if external_ref_id and not existing_doc.external_id:
-		existing_doc.external_id = external_ref_id
+		if external_ref_id and not existing_doc.external_id:
+			existing_doc.external_id = external_ref_id
 
-	existing_doc.save(ignore_permissions=False)
+		existing_doc.save(ignore_permissions=False)
 
 	return {
 		"status": "success",
