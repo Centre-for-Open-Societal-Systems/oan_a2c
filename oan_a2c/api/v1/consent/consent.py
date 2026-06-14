@@ -134,9 +134,13 @@ def search_farmer(**kwargs):
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
 def request_otp(**kwargs):
-    """
-    NEW FLOW — Step 2: Request OTP and Create Consent in OpenG2P.
-    """
+	"""
+	NEW FLOW — Step 2: Request OTP and Create Consent in OpenG2P.
+
+	Attachment Inputs (Mutually Exclusive):
+	  - Option A: Pre-uploaded file URL via 'consent_form_attachment'.
+	  - Option B: Raw base64 upload via 'consent_form_base64' and 'consent_form_filename'.
+	"""
     _getter = _parse_request(kwargs)
 
     fayda_id                = _getter("fayda_id")
@@ -145,7 +149,6 @@ def request_otp(**kwargs):
     purpose                 = _getter("purpose", "Loan for seeds and fertilizer")
     validity_from           = _getter("validity_from")
     validity_to             = _getter("validity_to")
-    consent_form_attachment = _getter("consent_form_attachment")
     consent_form_attachment = _getter("consent_form_attachment")
 
     if not lead_id:
@@ -198,9 +201,12 @@ def request_otp(**kwargs):
             dn=lead_id if lead_id else None,
             is_private=1
         )
-        consent_form_attachment = saved_file.file_url
-    elif not consent_form_attachment:
-        frappe.throw(frappe._("An attachment is strictly required. Please provide consent_form_base64 and consent_form_filename."))
+		consent_form_attachment = saved_file.file_url
+	elif not consent_form_attachment:
+		frappe.throw(
+			frappe._("An attachment is strictly required. Please provide 'consent_form_base64' and 'consent_form_filename'."),
+			frappe.ValidationError
+		)
 
     # 2. Trigger Odoo OTP (which hits Fayda)
     try:
