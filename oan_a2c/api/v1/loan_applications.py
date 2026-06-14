@@ -4,48 +4,7 @@ from frappe.utils import cint, flt
 from functools import wraps
 import json
 
-def success_response(data=None, message="Success", meta=None, pagination=None):
-    res = {
-        "status": "success",
-        "message": message,
-        "data": data,
-        "meta": meta or {},
-    }
-    if pagination:
-        res["pagination"] = pagination
-    return res
-
-def error_response(message, code="GENERIC_ERROR", details=None):
-    return {
-        "status": "error",
-        "message": message,
-        "code": code,
-        "details": details or {},
-    }
-
-def handle_api_errors(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except frappe.PermissionError:
-            frappe.local.message_log = []
-            frappe.response.status_code = 403
-            return error_response("Permission denied", "PERMISSION_DENIED")
-        except frappe.DoesNotExistError:
-            frappe.local.message_log = []
-            frappe.response.status_code = 404
-            return error_response("Resource not found", "NOT_FOUND")
-        except frappe.ValidationError as e:
-            frappe.local.message_log = []
-            frappe.response.status_code = 400
-            return error_response(str(e), "VALIDATION_ERROR")
-        except Exception as e:
-            frappe.local.message_log = []
-            frappe.log_error(frappe.get_traceback(), f"API Error in {func.__name__}")
-            frappe.response.status_code = 500
-            return error_response("An unexpected error occurred", "INTERNAL_ERROR")
-    return wrapper
+from oan_a2c.api.utils import success_response, handle_api_errors
 
 def _get_app(application_id):
     if not frappe.db.exists("A2C Loan Application", application_id):
@@ -77,15 +36,6 @@ def get_basic_profile(lead_id=None, include_consent_data=None):
     """
     Retrieves the basic profile information of a farmer associated with a lead.
     """
-    if not lead_id:
-        frappe.local.response["http_status_code"] = 400
-        return {
-            "error": {
-                "code": "LEAD_ID_REQUIRED",
-                "message": "lead_id is required"
-            }
-        }
-    
     err = validate_lead(lead_id)
     if err:
         return err
@@ -131,7 +81,7 @@ def get_basic_profile(lead_id=None, include_consent_data=None):
         data.update(res_fields)
         data["requested_data_fields"] = requested_data_fields
 
-    return success_response(data, message="Basic profile retrieved successfully")
+    return success_response(data=data, message="Basic profile retrieved successfully")
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 @handle_api_errors
@@ -139,15 +89,6 @@ def update_basic_profile(lead_id=None, email=None, location=None):
     """
     Updates the email and location details for a lead's farmer profile.
     """
-    if not lead_id:
-        frappe.local.response["http_status_code"] = 400
-        return {
-            "error": {
-                "code": "LEAD_ID_REQUIRED",
-                "message": "lead_id is required"
-            }
-        }
-    
     err = validate_lead(lead_id)
     if err:
         return err
@@ -245,7 +186,7 @@ def get_full_profile(application_id=None):
         "certification_photo_url": doc.certification_photo_url
     }
     
-    return success_response(data, message="Full profile retrieved successfully")
+    return success_response(data=data, message="Full profile retrieved successfully")
 
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
@@ -297,7 +238,7 @@ def get_loan_summary():
         summary["tab_counts"]["my"] = my_applications
         summary["tab_counts"]["unassigned"] = unassigned
 
-    return success_response(summary, message="Loan summary retrieved successfully")
+    return success_response(data=summary, message="Loan summary retrieved successfully")
 
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
@@ -312,7 +253,7 @@ def get_loan_metadata():
     
     statuses = [s for s in status_field.options.split("\n") if s] if status_field and status_field.options else []
     
-    return success_response({"statuses": statuses}, message="Loan metadata retrieved successfully")
+    return success_response(data={"statuses": statuses}, message="Loan metadata retrieved successfully")
 
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
@@ -461,7 +402,7 @@ def upload_supporting_documents(application_id=None):
         })
 
     frappe.db.commit()
-    return success_response(uploaded_files, message="Supporting documents uploaded successfully")
+    return success_response(data=uploaded_files, message="Supporting documents uploaded successfully")
 
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
@@ -488,7 +429,7 @@ def get_supporting_documents(application_id=None):
     for f in files:
         f["creation"] = str(f["creation"])
 
-    return success_response(files, message="Supporting documents retrieved successfully")
+    return success_response(data=files, message="Supporting documents retrieved successfully")
 
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
@@ -545,15 +486,6 @@ def create_loan_application(lead_id=None):
     """
     Creates an A2C Loan Application by copying data from the Lead's linked Farmer Profile and Credit Information.
     """
-    if not lead_id:
-        frappe.local.response["http_status_code"] = 400
-        return {
-            "error": {
-                "code": "LEAD_ID_REQUIRED",
-                "message": "lead_id is required"
-            }
-        }
-
     err = validate_lead(lead_id)
     if err:
         return err
@@ -627,7 +559,19 @@ def create_loan_application(lead_id=None):
     frappe.db.commit()
     
     return success_response(
-        data={"application_id": loan_app.name},
+        data={
+            "application_id": loan_app.name,
+            "application": {
+                "name": loan_app.name,
+                "status": loan_app.status,
+                "farmer_profile": loan_app.farmer_profile,
+                "first_name": loan_app.first_name,
+                "last_name": loan_app.last_name,
+                "loan_type": loan_app.loan_type,
+                "loan_amount": loan_app.loan_amount,
+                "current_step": loan_app.current_step,
+            }
+        },
         message="Loan application created successfully"
     )
 

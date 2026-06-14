@@ -5,9 +5,10 @@ import datetime
 from frappe.auth import LoginManager
 from frappe.core.doctype.user.user import reset_password as reset_password_core
 from frappe.core.doctype.user.user import update_password
-
+from oan_a2c.api.utils import success_response, handle_api_errors
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def login(usr=None, pwd=None):
 	"""
 	Authenticates a user and returns a stateless JWT.
@@ -22,11 +23,7 @@ def login(usr=None, pwd=None):
 		login_manager.authenticate(usr, pwd)
 	except frappe.exceptions.AuthenticationError:
 		frappe.clear_messages()
-		frappe.local.response["http_status_code"] = 401
-		return {
-			"exception": "frappe.exceptions.AuthenticationError",
-			"message": _("Incorrect email or password.")
-		}
+		raise frappe.AuthenticationError(_("Incorrect email or password."))
 
 	user = frappe.get_doc("User", usr)
 	roles = [d.role for d in user.roles]
@@ -58,21 +55,21 @@ def login(usr=None, pwd=None):
 			"for_value"
 		)
 
-	# Return the inner dict only — Frappe's @whitelist wrapper automatically
-	# envelopes the return value in {"message": <return_value>} on the wire.
-	return {
-		"status": "success",
-		"token": token,
-		"user": {
-			"email": usr,
-			"full_name": user.full_name,
-			"roles": roles,
-			"bank": bank
+	return success_response(
+		data={
+			"token": token,
+			"user": {
+				"email": usr,
+				"full_name": user.full_name,
+				"roles": roles,
+				"bank": bank
+			}
 		}
-	}
+	)
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def forgot_password(email):
 	"""
 	Triggers Frappe's native secure password recovery flow via email.
@@ -84,13 +81,13 @@ def forgot_password(email):
 		# Do not leak whether the email exists — return success unconditionally.
 		pass
 
-	return {
-		"status": "success",
-		"message": _("Password reset instructions have been sent to your registered email.")
-	}
+	return success_response(
+		message=_("Password reset instructions have been sent to your registered email.")
+	)
 
 
 @frappe.whitelist(allow_guest=True)
+@handle_api_errors
 def reset_password(email, key, new_password):
 	"""
 	Decoupled bridge: accepts the key from the reset email link and sets a new password.
@@ -98,24 +95,13 @@ def reset_password(email, key, new_password):
 	user = frappe.db.get_value("User", {"email": email, "reset_password_key": key}, "name")
 
 	if not user:
-		frappe.local.response["http_status_code"] = 401
-		return {
-			"exception": "frappe.exceptions.AuthenticationError",
-			"message": _("Invalid or expired reset token.")
-		}
+		raise frappe.AuthenticationError(_("Invalid or expired reset token."))
 
-	try:
-		# user= must be passed explicitly. In a stateless (guest) context, omitting it
-		# causes Frappe to default to frappe.session.user which is "Guest", not the
-		# target account — resulting in a silent no-op or a permission error.
-		update_password(new_password=new_password, logout_all_sessions=True, key=key, user=user)
-		return {
-			"status": "success",
-			"message": _("Your password has been successfully updated. You may now login.")
-		}
-	except Exception as e:
-		frappe.local.response["http_status_code"] = 400
-		return {
-			"exception": "ValidationError",
-			"message": str(e)
-		}
+	# user= must be passed explicitly. In a stateless (guest) context, omitting it
+	# causes Frappe to default to frappe.session.user which is "Guest", not the
+	# target account — resulting in a silent no-op or a permission error.
+	update_password(new_password=new_password, logout_all_sessions=True, key=key, user=user)
+	return success_response(
+		message=_("Your password has been successfully updated. You may now login.")
+	)
+
