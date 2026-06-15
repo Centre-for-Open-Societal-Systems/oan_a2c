@@ -65,7 +65,7 @@ def get_basic_profile(lead_id=None, include_consent_data=None):
             res_fields = frappe.db.get_value(
                 "A2C Consent Request", 
                 doc.consent_id, 
-                ["websub_delivered_at", "consent_type", "purpose", "validity_from", "validity_to"], 
+                ["websub_delivered_at", "consent_type", "validity_from", "validity_to"], 
                 as_dict=True
             ) or {}
             for key in ["websub_delivered_at", "validity_from", "validity_to"]:
@@ -609,8 +609,12 @@ def update_loan_step(application_id=None, step=None):
     doc = _get_app(application_id)
     
     step_val = cint(step)
-    if step_val < 1:
-        frappe.throw(_("Step must be a positive integer"), frappe.ValidationError)
+    if step_val not in (1, 2, 3, 4):
+        frappe.throw(_("Step must be between 1 and 4"), frappe.ValidationError)
+
+    current_step = doc.current_step or 1
+    if step_val > current_step + 1:
+        frappe.throw(_("Invalid step transition. You cannot skip steps."), frappe.ValidationError)
 
     doc.current_step = step_val
     doc.save(ignore_permissions=False)

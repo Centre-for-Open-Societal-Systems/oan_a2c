@@ -3,7 +3,7 @@ import frappe
 import requests
 from frappe import _
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class OpenG2PConsentClient:
@@ -44,7 +44,7 @@ class OpenG2PConsentClient:
     # -------------------------------------------------------------------------
 
     def _now_iso_millis(self):
-        return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
 
     def _make_transaction_id(self):
         return uuid4().hex.upper()

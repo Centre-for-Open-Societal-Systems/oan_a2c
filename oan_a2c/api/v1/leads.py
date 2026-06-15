@@ -377,7 +377,7 @@ def update_lead_status(lead_id=None, status=None, reason=None):
 	Enforces:
 	  - JWT authentication.
 	  - Role permissions ('write' on A2C Lead).
-	  - Terminal locking (cannot change status if current status is Processed, Rejected, or Granted).
+	  - Terminal locking (cannot change status if current status is Processed, Rejected, Granted, or Dormant).
 	  - Inserts the reason/internal notes as a timeline comment.
 	"""
 	if not lead_id:
@@ -772,7 +772,7 @@ def get_visit_schedules(
 	end_date=None,
 	status=None,
 	start=0,
-	page_length=20
+	page_length=None
 ):
 	"""
 	Retrieves a paginated list of visit schedules.
