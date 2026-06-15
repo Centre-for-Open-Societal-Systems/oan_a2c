@@ -10,6 +10,7 @@ def get_leads(
 	search_query=None,
 	status=None,
 	lead_source=None,
+	loan_type=None,
 	start_date=None,
 	end_date=None,
 	min_loan_amount=None,
@@ -48,18 +49,36 @@ def get_leads(
 	# 3. Construct Filters
 	filters = []
 
-	# Apply Status Filter
-	if status:
-		# Sanitize input against valid choices
-		allowed_statuses = ("Active", "Verified", "Processed", "Granted", "Rejected", "Dormant")
-		if status in allowed_statuses:
-			filters.append(["status", "=", status])
+	def _parse_multi(value, allowed):
+		"""Split a comma-separated value into a list of allowlisted, de-duplicated items.
+		Invalid values are silently dropped. Returns [] when nothing valid remains."""
+		if value is None:
+			return []
+		if isinstance(value, (list, tuple)):
+			requested = [str(v).strip() for v in value]
+		else:
+			requested = [v.strip() for v in str(value).split(",")]
+		seen = set()
+		result = []
+		for v in requested:
+			if v and v in allowed and v not in seen:
+				seen.add(v)
+				result.append(v)
+		return result
 
-	# Apply Lead Source Filter
+	# Apply Status Filter (single or comma-separated multi-value)
+	if status:
+		allowed_statuses = ("Active", "Verified", "Processed", "Granted", "Rejected", "Dormant")
+		valid_statuses = _parse_multi(status, allowed_statuses)
+		if valid_statuses:
+			filters.append(["status", "in", valid_statuses])
+
+	# Apply Lead Source Filter (single or comma-separated multi-value)
 	if lead_source:
 		allowed_sources = ("Missed Call", "IVR", "SMS", "Agent Entry")
-		if lead_source in allowed_sources:
-			filters.append(["lead_source", "=", lead_source])
+		valid_sources = _parse_multi(lead_source, allowed_sources)
+		if valid_sources:
+			filters.append(["lead_source", "in", valid_sources])
 
 	# Apply Creation Date Range Filter
 	if start_date and end_date:
@@ -69,8 +88,19 @@ def get_leads(
 	elif end_date:
 		filters.append(["creation", "<=", end_date])
 
-	# Apply Loan Amount Filter
-	if min_loan_amount is not None or max_loan_amount is not None:
+	# Apply Loan Amount / Loan Type Filter via the linked A2C Credit Information.
+	# Amount range and loan_type (single or comma-separated multi-value) are intersected
+	# in one subquery so a lead must satisfy all supplied credit criteria.
+	valid_loan_types = []
+	if loan_type:
+		allowed_loan_types = tuple(
+			o.strip()
+			for o in (frappe.get_meta("A2C Credit Information").get_field("loan_type").options or "").split("\n")
+			if o.strip()
+		)
+		valid_loan_types = _parse_multi(loan_type, allowed_loan_types)
+
+	if min_loan_amount is not None or max_loan_amount is not None or valid_loan_types:
 		from frappe.utils import flt
 		credit_filters = {}
 		if min_loan_amount is not None and max_loan_amount is not None:
@@ -79,18 +109,21 @@ def get_leads(
 			credit_filters['loan_amount'] = (">=", flt(min_loan_amount))
 		elif max_loan_amount is not None:
 			credit_filters['loan_amount'] = ("<=", flt(max_loan_amount))
-		
+
+		if valid_loan_types:
+			credit_filters['loan_type'] = ("in", valid_loan_types)
+
 		matching_credit_leads = frappe.get_all(
 			"A2C Credit Information",
 			filters=credit_filters,
 			pluck="lead",
 			distinct=True
 		)
-		
+
 		if matching_credit_leads:
 			filters.append(["name", "in", matching_credit_leads])
 		else:
-			# Ensure no leads match if the loan amount criteria yielded no matching credit infos
+			# Ensure no leads match if the credit criteria yielded no matching credit infos
 			filters.append(["name", "in", ["__NONE__"]])
 
 	# 4. Construct Search Or-Filters
@@ -187,6 +220,12 @@ def create_lead(phone_number=None, first_name=None, last_name=None, email=None, 
 		from frappe.utils import validate_email_address
 		if not validate_email_address(email):
 			frappe.throw(_("Invalid email address format"), frappe.ValidationError)
+
+	if phone_number and frappe.db.exists("A2C Lead", {"phone_number": phone_number}):
+		frappe.throw(_("Lead with phone number {0} already exists").format(phone_number), frappe.DuplicateEntryError)
+
+	if external_id and frappe.db.exists("A2C Lead", {"external_id": external_id}):
+		frappe.throw(_("Lead with external ID {0} already exists").format(external_id), frappe.DuplicateEntryError)
 
 	lead = frappe.new_doc("A2C Lead")
 	lead.phone_number = phone_number
