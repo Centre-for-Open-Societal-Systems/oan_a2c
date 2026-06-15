@@ -2,9 +2,8 @@
 W3C WebSub subscriber endpoint for receiving OpenG2P consent events from a real
 WebSub hub (production).
 
-Unlike scripts/websub_hub.py (which *emulates* a hub for demos), this module is
-a strict, spec-compliant SUBSCRIBER. It talks to a real hub and must obey the
-W3C WebSub protocol exactly, or the hub will refuse to deliver:
+this module is a strict, spec-compliant SUBSCRIBER. It talks to a real hub and
+must obey the W3C WebSub protocol exactly, or the hub will refuse to deliver:
 
   - GET  (intent verification): the hub sends `hub.challenge`; we MUST reply
          200 with the bare challenge string as plain text — no JSON, no HTML.
