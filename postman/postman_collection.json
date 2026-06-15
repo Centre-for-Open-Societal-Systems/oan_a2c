@@ -1380,7 +1380,7 @@
             "name": "Loan Application Management",
             "item": [
                 {
-                    "name": "1. Webhook Process Consent Data",
+                    "name": "1. Webhook Receive Consent Data",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1395,14 +1395,14 @@
                             "raw": "{\n    \"consent\": {\n        \"consent_creation_request_id\": \"{{consent_request}}\",\n        \"status\": \"{{consent_status}}\"\n    },\n    \"farmer\": {\n        \"id\": \"{{farmer_id}}\",\n        \"name\": \"{{farmer_name}}\"\n    }\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhook_consent_data.process_webhook_data",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.webhook_consent_data.process_webhook_data"
+                                "oan_a2c.api.v1.webhook_consent_data.receive_consent_data"
                             ]
                         }
                     },
