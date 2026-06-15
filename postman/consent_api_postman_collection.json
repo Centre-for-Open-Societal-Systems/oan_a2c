@@ -1,12 +1,12 @@
 {
 	"info": {
 		"name": "OAN A2C Consent API",
-		"description": "API Contracts specifically for the Consent Management lifecycle.",
+		"description": "API Contracts specifically for the OpenG2P Consent Management lifecycle in A2C.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
 		{
-			"name": "1. Send OTP & Create Consent",
+			"name": "1. Search Farmer",
 			"request": {
 				"method": "POST",
 				"header": [
@@ -23,23 +23,23 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"fayda_id\": \"FAYDA-123\",\n    \"partner\": \"Test Partner\",\n    \"purpose\": \"Testing Consent API\",\n    \"validity_from\": \"2026-06-01 00:00:00\",\n    \"validity_to\": \"2027-06-01 00:00:00\",\n    \"loan_application\": \"{{application_id}}\"\n}"
+					"raw": "{\n    \"fayda_id\": \"FAYDA-123\"\n}"
 				},
 				"url": {
-					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.send_otp_and_create_consent",
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.search_farmer",
 					"host": [
 						"{{base_url}}"
 					],
 					"path": [
 						"api",
 						"method",
-						"oan_a2c.api.v1.consent.consent.send_otp_and_create_consent"
+						"oan_a2c.api.v1.consent.consent.search_farmer"
 					]
 				}
 			}
 		},
 		{
-			"name": "2. Verify OTP",
+			"name": "2. Request OTP",
 			"request": {
 				"method": "POST",
 				"header": [
@@ -56,17 +56,50 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"consent_request\": \"{{consent_request_id}}\",\n    \"otp_code\": \"123456\"\n}"
+					"raw": "{\n    \"fayda_id\": \"FAYDA-123\",\n    \"partner\": \"Test Partner\",\n    \"lead_id\": \"{{lead_id}}\",\n    \"purpose\": \"Testing Consent API\",\n    \"validity_from\": \"2026-06-01 00:00:00\",\n    \"validity_to\": \"2027-06-01 00:00:00\",\n    \"consent_form_attachment\": \"/files/consent.pdf\"\n}"
 				},
 				"url": {
-					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp",
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.request_otp",
 					"host": [
 						"{{base_url}}"
 					],
 					"path": [
 						"api",
 						"method",
-						"oan_a2c.api.v1.consent.consent.verify_otp"
+						"oan_a2c.api.v1.consent.consent.request_otp"
+					]
+				}
+			}
+		},
+		{
+			"name": "3. Verify OTP and Approve Consent",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"otp_code\": \"123456\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp_for_lead",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.consent.consent.verify_otp_for_lead"
 					]
 				}
 			}
@@ -82,12 +115,8 @@
 			"value": "PASTE_YOUR_TOKEN_HERE"
 		},
 		{
-			"key": "consent_request_id",
-			"value": "CR-YYYY-XXXXX"
-		},
-		{
-			"key": "application_id",
-			"value": "APP-YYYY-XXXXX"
+			"key": "lead_id",
+			"value": "LEAD-YYYY-XXXXX"
 		}
 	]
 }

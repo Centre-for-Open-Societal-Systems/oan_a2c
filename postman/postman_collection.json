@@ -1150,6 +1150,65 @@
                         "description": "Automated ingestion callback for external telecommunication IVR / missed call nodes. Bypasses JWT gateway and authenticates system-to-system via API Token."
                     },
                     "response": []
+                },
+                {
+                    "name": "WebSub Subscriber Intent Verification (GET)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.websub_subscriber.callback?hub.mode=subscribe&hub.topic=https://topic.url&hub.challenge=12345",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.websub_subscriber.callback"
+                            ],
+                            "query": [
+                                {
+                                    "key": "hub.mode",
+                                    "value": "subscribe"
+                                },
+                                {
+                                    "key": "hub.topic",
+                                    "value": "https://topic.url"
+                                },
+                                {
+                                    "key": "hub.challenge",
+                                    "value": "12345"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "WebSub Subscriber Content Delivery (POST)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"source\": \"openg2p\",\n    \"event_type\": \"WEBSUB_INDIVIDUAL_UPDATED\",\n    \"published_at\": \"2026-06-15 10:00:00\",\n    \"consent\": {\n        \"consent_creation_request_id\": \"{{openg2p_consent_id}}\",\n        \"status\": \"approved\",\n        \"approved_at\": \"2026-06-15 10:00:00\"\n    },\n    \"farmer\": {\n        \"id\": \"FARMER-123\",\n        \"name\": \"Jane Doe\"\n    },\n    \"selected_data\": {\n        \"farmer\": {\n            \"given_name\": \"Jane\",\n            \"family_name\": \"Doe\",\n            \"phone_no\": [\n                \"+254111222333\"\n            ]\n        }\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.websub_subscriber.callback",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.websub_subscriber.callback"
+                            ]
+                        }
+                    }
                 }
             ]
         },
@@ -1197,14 +1256,14 @@
                             "raw": "{\n  \"fayda_id\": \"{{fayda_id}}\"\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.api.search_farmer",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.search_farmer",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.consent.api.search_farmer"
+                                "oan_a2c.api.v1.consent.consent.search_farmer"
                             ]
                         }
                     }
@@ -1321,7 +1380,7 @@
             "name": "Loan Application Management",
             "item": [
                 {
-                    "name": "1. Webhook Receive Consent Data",
+                    "name": "1. Webhook Process Consent Data",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1336,14 +1395,14 @@
                             "raw": "{\n    \"consent\": {\n        \"consent_creation_request_id\": \"{{consent_request}}\",\n        \"status\": \"{{consent_status}}\"\n    },\n    \"farmer\": {\n        \"id\": \"{{farmer_id}}\",\n        \"name\": \"{{farmer_name}}\"\n    }\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhook_consent_data.process_webhook_data",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.webhook_consent_data.receive_consent_data"
+                                "oan_a2c.api.v1.webhook_consent_data.process_webhook_data"
                             ]
                         }
                     },
