@@ -94,24 +94,18 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         raise e
 
 
-@frappe.whitelist(allow_guest=False)
-@handle_api_errors
-def receive_consent_data(**kwargs):
+def validate_and_enqueue_consent(data, enforce_permission=True):
     """
-    Webhook receiver for Odoo OpenG2P consent data.
-    Validates identity and pushes processing to a background worker queue.
+    Internal: validate an OpenG2P consent payload and enqueue background
+    processing. Returns the resolved A2C Consent Request name.
+
+    Callable in-process (e.g. from the WebSub hub endpoint) without going
+    through HTTP auth. When called from the authenticated receiver, pass
+    enforce_permission=True so the caller's write permission is checked.
     """
-    data = {}
-    if frappe.request:
-        data = frappe.request.get_json(silent=True) or {}
-    if not data and kwargs:
-        data = kwargs
-
-    frappe.logger().info(f"🔗 Webhook received. Keys: {list(data.keys())}")
-
     consent_info = data.get("consent", {})
     consent_request_id = consent_info.get("consent_creation_request_id")
-    
+
     if not consent_request_id:
         frappe.throw(frappe._("Missing consent_creation_request_id"), frappe.ValidationError)
 
@@ -127,15 +121,16 @@ def receive_consent_data(**kwargs):
         frappe.throw(frappe._("Consent Request not found: {0}").format(consent_request_id), frappe.DoesNotExistError)
 
     consent_doc_name = consent_docs[0].name
-    
+
     # Pre-validate linked lead existence (Option 3)
     lead_id = frappe.db.get_value("A2C Consent Request", consent_doc_name, "lead")
     if lead_id and not frappe.db.exists("A2C Lead", lead_id):
         frappe.throw(frappe._("Linked Lead not found: {0}").format(lead_id), frappe.DoesNotExistError)
-    
-    # Enforce write permissions on the Consent Request
-    frappe.has_permission("A2C Consent Request", "write", doc=consent_doc_name, throw=True)
-    
+
+    # Enforce write permissions on the Consent Request (authenticated path only)
+    if enforce_permission:
+        frappe.has_permission("A2C Consent Request", "write", doc=consent_doc_name, throw=True)
+
     # Enqueue the processing job to prevent blocking the OpenG2P system
     frappe.enqueue(
         method=process_consent_data,
@@ -145,6 +140,27 @@ def receive_consent_data(**kwargs):
         consent_request_id=consent_request_id,
         job_name=f"process_consent_{consent_request_id}"
     )
+
+    return consent_doc_name
+
+
+@frappe.whitelist(allow_guest=False)
+@handle_api_errors
+def receive_consent_data(**kwargs):
+    """
+    Authenticated webhook receiver for OpenG2P consent data.
+    Requires `Authorization: token <api_key>:<api_secret>` and write permission
+    on A2C Consent Request. Used by direct callers (Postman, Odoo server action).
+    """
+    data = {}
+    if frappe.request:
+        data = frappe.request.get_json(silent=True) or {}
+    if not data and kwargs:
+        data = kwargs
+
+    frappe.logger().info(f"🔗 Webhook received. Keys: {list(data.keys())}")
+
+    consent_doc_name = validate_and_enqueue_consent(data, enforce_permission=True)
 
     frappe.response["http_status_code"] = 202
     return success_response(
