@@ -269,8 +269,9 @@ All endpoints use the standard envelope.
 | `start` | int | No | 0 | Offset (clamped to ≥ 0) |
 | `page_length` | int | No | 20 | Clamped to [1, 100] |
 | `search_query` | string | No | — | `LIKE` match on `name`, `phone_number`, `external_id` |
-| `status` | string | No | — | Silently ignored if not in allowlist; does not error |
-| `lead_source` | string | No | — | Silently ignored if not in allowlist |
+| `status` | string | No | — | Single value or **comma-separated** list. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
+| `lead_source` | string | No | — | Single value or **comma-separated** list. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
+| `loan_type` | string | No | — | Single value or **comma-separated** list. Validated against `A2C Credit Information.loan_type` options. Filters via subquery on A2C Credit Information |
 | `start_date` | string | No | — | ISO date. Used alone or with `end_date` |
 | `end_date` | string | No | — | ISO date. Used alone or with `start_date` |
 | `min_loan_amount` | float | No | — | Filters via subquery on A2C Credit Information |
@@ -278,8 +279,13 @@ All endpoints use the standard envelope.
 
 **Status allowlist:** `Active`, `Verified`, `Processed`, `Granted`, `Rejected`, `Dormant`
 **Lead source allowlist:** `Missed Call`, `IVR`, `SMS`, `Agent Entry`
+**Loan type allowlist:** dynamic — pulled from `A2C Credit Information.loan_type` Select options at request time.
 
-> **Important:** Invalid `status` or `lead_source` values are **silently dropped** — the filter is not applied rather than returning an error. No 400 is thrown.
+> **Multi-value filters:** `status`, `lead_source`, and `loan_type` accept either a single value or a comma-separated list (e.g. `status=Active,Verified`). Values are split, de-duplicated, and matched against the allowlist; valid values are combined with an `in` filter.
+
+> **Important:** Invalid `status`, `lead_source`, or `loan_type` values are **silently dropped** — the filter is not applied (or, for a multi-value list, only the invalid entries are removed) rather than returning an error. No 400 is thrown. If a list contains *only* invalid values, that filter is skipped entirely.
+
+> **Credit criteria intersection:** `loan_type`, `min_loan_amount`, and `max_loan_amount` share a single subquery against A2C Credit Information — a lead must satisfy all supplied credit criteria together to match.
 
 **Success response** (HTTP 200):
 ```json
@@ -1077,11 +1083,11 @@ No parameters.
 
 | Param | Type | Required | Default | Constraint |
 |-------|------|----------|---------|-----------|
-| `status` | string | No | — | Comma-separated. Each value validated against `{Draft, Processing, Approved, Rejected}`. Invalid values in the list are silently dropped. |
+| `status` | string | No | — | Single value or comma-separated list. Each value validated against `{Draft, Processing, Approved, Rejected}`, de-duplicated. Invalid values silently dropped (`in` filter). |
 | `loan_amount` | float | No | — | Exact match (overridden by min/max if both provided) |
 | `min_loan_amount` | float | No | — | |
 | `max_loan_amount` | float | No | — | |
-| `loan_type` | string | No | — | Exact match |
+| `loan_type` | string | No | — | Single value or comma-separated list (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is. |
 | `location` | string | No | — | `LIKE` match |
 | `phone_number` | string | No | — | `LIKE` match |
 | `from_date` | string | No | — | ISO date. Filters `creation` |

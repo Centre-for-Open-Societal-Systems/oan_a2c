@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from oan_a2c.api.utils import success_response, handle_api_errors
+from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value
 
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
@@ -49,34 +49,17 @@ def get_leads(
 	# 3. Construct Filters
 	filters = []
 
-	def _parse_multi(value, allowed):
-		"""Split a comma-separated value into a list of allowlisted, de-duplicated items.
-		Invalid values are silently dropped. Returns [] when nothing valid remains."""
-		if value is None:
-			return []
-		if isinstance(value, (list, tuple)):
-			requested = [str(v).strip() for v in value]
-		else:
-			requested = [v.strip() for v in str(value).split(",")]
-		seen = set()
-		result = []
-		for v in requested:
-			if v and v in allowed and v not in seen:
-				seen.add(v)
-				result.append(v)
-		return result
-
 	# Apply Status Filter (single or comma-separated multi-value)
 	if status:
 		allowed_statuses = ("Active", "Verified", "Processed", "Granted", "Rejected", "Dormant")
-		valid_statuses = _parse_multi(status, allowed_statuses)
+		valid_statuses = parse_multi_value(status, allowed_statuses)
 		if valid_statuses:
 			filters.append(["status", "in", valid_statuses])
 
 	# Apply Lead Source Filter (single or comma-separated multi-value)
 	if lead_source:
 		allowed_sources = ("Missed Call", "IVR", "SMS", "Agent Entry")
-		valid_sources = _parse_multi(lead_source, allowed_sources)
+		valid_sources = parse_multi_value(lead_source, allowed_sources)
 		if valid_sources:
 			filters.append(["lead_source", "in", valid_sources])
 
@@ -98,7 +81,7 @@ def get_leads(
 			for o in (frappe.get_meta("A2C Credit Information").get_field("loan_type").options or "").split("\n")
 			if o.strip()
 		)
-		valid_loan_types = _parse_multi(loan_type, allowed_loan_types)
+		valid_loan_types = parse_multi_value(loan_type, allowed_loan_types)
 
 	if min_loan_amount is not None or max_loan_amount is not None or valid_loan_types:
 		from frappe.utils import flt

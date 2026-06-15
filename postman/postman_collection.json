@@ -22,8 +22,8 @@
                                     "",
                                     "const json = pm.response.json();",
                                     "",
-                                    "if (json.message.token) {",
-                                    "    pm.collectionVariables.set('jwt_token', json.message.token);",
+                                    "if (json.message.data.token) {",
+                                    "    pm.collectionVariables.set('jwt_token', json.message.data.token);",
                                     "}"
                                 ],
                                 "type": "text/javascript"
@@ -136,7 +136,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&start_date=&end_date=&min_loan_amount=&max_loan_amount=",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&loan_type=&start_date=&end_date=&min_loan_amount=&max_loan_amount=",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -160,11 +160,18 @@
                                 },
                                 {
                                     "key": "status",
-                                    "value": ""
+                                    "value": "",
+                                    "description": "Single value or comma-separated list, e.g. Active,Verified. Invalid values dropped."
                                 },
                                 {
                                     "key": "lead_source",
-                                    "value": ""
+                                    "value": "",
+                                    "description": "Single value or comma-separated list, e.g. IVR,SMS. Invalid values dropped."
+                                },
+                                {
+                                    "key": "loan_type",
+                                    "value": "",
+                                    "description": "Single value or comma-separated list. Validated against A2C Credit Information.loan_type options; intersected with min/max loan amount."
                                 },
                                 {
                                     "key": "start_date",
@@ -186,7 +193,7 @@
                                 }
                             ]
                         },
-                        "description": "Fetches a paginated, filtered, and searchable list of A2C leads. Automatically applies multi-tenant RBAC and User Permissions at the query layer."
+                        "description": "Fetches a paginated, filtered, and searchable list of A2C leads. Automatically applies multi-tenant RBAC and User Permissions at the query layer.\n\nMulti-value filters: 'status', 'lead_source', and 'loan_type' accept a single value OR a comma-separated list (e.g. status=Active,Verified). Invalid values are silently dropped. loan_type / min_loan_amount / max_loan_amount are intersected in one A2C Credit Information subquery."
                     },
                     "response": [],
                     "event": [
@@ -2282,7 +2289,8 @@
                             "query": [
                                 {
                                     "key": "status",
-                                    "value": "Approved"
+                                    "value": "Approved",
+                                    "description": "Single value or comma-separated list, e.g. Processing,Approved. Validated against {Draft, Processing, Approved, Rejected}; invalid values dropped."
                                 },
                                 {
                                     "key": "page",
@@ -2300,7 +2308,8 @@
                                 },
                                 {
                                     "key": "loan_type",
-                                    "value": "Input Loan",
+                                    "value": "Input loan (seeds, agrochemicals),Land loan",
+                                    "description": "Single value or comma-separated list (in filter). Free-text field, not allowlist-validated.",
                                     "disabled": true
                                 },
                                 {

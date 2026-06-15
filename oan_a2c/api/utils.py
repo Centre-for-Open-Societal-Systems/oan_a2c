@@ -2,6 +2,31 @@ import frappe
 from frappe import _
 from functools import wraps
 
+def parse_multi_value(value, allowed=None):
+    """Split a single value or comma-separated string into a de-duplicated list.
+
+    - Accepts a string ("a,b"), a list/tuple, or None.
+    - When `allowed` is provided (a collection), values not in it are silently dropped.
+    - When `allowed` is None, all non-empty values are kept (use for free-text fields).
+    - Order is preserved; duplicates are removed. Returns [] when nothing valid remains.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        requested = [str(v).strip() for v in value]
+    else:
+        requested = [v.strip() for v in str(value).split(",")]
+    seen = set()
+    result = []
+    for v in requested:
+        if not v or v in seen:
+            continue
+        if allowed is not None and v not in allowed:
+            continue
+        seen.add(v)
+        result.append(v)
+    return result
+
 def success_response(data=None, message="Success", meta=None, pagination=None):
     """
     Developer-facing payload builder. Decoupled from the final JSON envelope.

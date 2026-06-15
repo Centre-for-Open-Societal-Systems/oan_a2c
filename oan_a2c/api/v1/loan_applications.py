@@ -4,7 +4,7 @@ from frappe.utils import cint, flt
 from functools import wraps
 import json
 
-from oan_a2c.api.utils import success_response, handle_api_errors
+from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value
 
 def _get_app(application_id):
     if not frappe.db.exists("A2C Loan Application", application_id):
@@ -271,14 +271,14 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
     filters = {}
 
     if status:
-        allowed_statuses = {"Draft", "Processing", "Approved", "Rejected"}
-        valid_statuses = [s.strip() for s in status.split(",") if s.strip() in allowed_statuses]
+        allowed_statuses = ("Draft", "Processing", "Approved", "Rejected")
+        valid_statuses = parse_multi_value(status, allowed_statuses)
         if valid_statuses:
             filters['status'] = ["in", valid_statuses]
-    
+
     if lead_id:
         filters['lead_id'] = lead_id
-    
+
     if min_loan_amount is not None and max_loan_amount is not None:
         filters['loan_amount'] = ("between", [flt(min_loan_amount), flt(max_loan_amount)])
     elif min_loan_amount is not None:
@@ -289,7 +289,11 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
         filters['loan_amount'] = flt(loan_amount)
 
     if loan_type:
-        filters['loan_type'] = loan_type
+        # loan_type on A2C Loan Application is a free-text Data field (no Select options),
+        # so accept the provided value(s) as-is. Single value or comma-separated multi-value.
+        valid_loan_types = parse_multi_value(loan_type)
+        if valid_loan_types:
+            filters['loan_type'] = ["in", valid_loan_types]
 
     if location:
         filters['location'] = ("like", f"%{location}%")
