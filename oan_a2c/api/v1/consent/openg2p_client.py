@@ -3,21 +3,21 @@ import frappe
 import requests
 from frappe import _
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class OpenG2PConsentClient:
     def __init__(self, portal_session_id=None, cookie_dict=None):
         self.base_url = frappe.conf.get("openg2p_base_url")
-        self.db = frappe.conf.get("openg2p_db", "openg2p")
+        self.db = frappe.conf.get("openg2p_db","")
 
         # Portal user — for consent creation
-        self.username = frappe.conf.get("openg2p_username", "megha")
-        self.password = frappe.conf.get("openg2p_password", "megha")
+        self.username = frappe.conf.get("openg2p_username", "")
+        self.password = frappe.conf.get("openg2p_password", "")
 
         # Admin user — for res.partner / g2p.reg.id lookups
-        self.admin_username = frappe.conf.get("openg2p_admin_username", "admin")
-        self.admin_password = frappe.conf.get("openg2p_admin_password", "admin")
+        self.admin_username = frappe.conf.get("openg2p_admin_username", "")
+        self.admin_password = frappe.conf.get("openg2p_admin_password", "")
 
         if not self.base_url:
             frappe.throw(_("OpenG2P Base URL is missing in site_config.json"))
@@ -38,73 +38,13 @@ class OpenG2PConsentClient:
             
         self._authenticate(self.admin_session, self.admin_username, self.admin_password)
 
-        # Fayda direct config (same env vars Odoo uses)
-        self.fayda_base_url = (
-            frappe.conf.get("fayda_otp_base_url")
-            or os.getenv("G2P_FAYDA_OTP_BASE_URL")
-            or f"{self.base_url}"  # fallback to openg2p host
-        ).rstrip("/")
-        self.fayda_client_id = (
-            frappe.conf.get("fayda_client_id")
-            or os.getenv("G2P_FAYDA_OTP_CLIENT_ID")
-            or os.getenv("MOCK_FAYDA_CLIENT_ID")
-            or "demo-client"
-        )
-        self.fayda_client_secret = (
-            frappe.conf.get("fayda_client_secret")
-            or os.getenv("G2P_FAYDA_OTP_CLIENT_SECRET")
-            or os.getenv("MOCK_FAYDA_CLIENT_SECRET")
-            or "demo-secret"
-        )
-        self.fayda_env = (
-            frappe.conf.get("fayda_env")
-            or os.getenv("G2P_FAYDA_OTP_ENV")
-            or os.getenv("MOCK_FAYDA_ENV")
-            or "prod"
-        )
-        self.fayda_domain_uri = (
-            frappe.conf.get("fayda_domain_uri")
-            or os.getenv("G2P_FAYDA_OTP_DOMAIN_URI")
-            or os.getenv("MOCK_FAYDA_DOMAIN_URI")
-            or "fayda.et"
-        )
-        self.fayda_channel = (
-            frappe.conf.get("fayda_channel")
-            or os.getenv("G2P_FAYDA_OTP_CHANNEL")
-            or "phone"
-        )
-        self.fayda_identifier_type = (
-            frappe.conf.get("fayda_identifier_type")
-            or os.getenv("G2P_FAYDA_OTP_ID_TYPE")
-            or "FIN"
-        ).upper()
-        self.fayda_version = (
-            frappe.conf.get("fayda_version")
-            or os.getenv("G2P_FAYDA_OTP_VERSION")
-            or "1.0"
-        )
-        self.fayda_thumbprint = (
-            frappe.conf.get("fayda_thumbprint")
-            or os.getenv("G2P_FAYDA_OTP_THUMBPRINT")
-            or ""
-        )
-        self.fayda_request_session_key = (
-            frappe.conf.get("fayda_request_session_key")
-            or os.getenv("G2P_FAYDA_OTP_REQUEST_SESSION_KEY")
-            or ""
-        )
-        self.fayda_request_hmac = (
-            frappe.conf.get("fayda_request_hmac")
-            or os.getenv("G2P_FAYDA_OTP_REQUEST_HMAC")
-            or ""
-        )
 
     # -------------------------------------------------------------------------
     # Internal helpers
     # -------------------------------------------------------------------------
 
     def _now_iso_millis(self):
-        return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
+        return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
 
     def _make_transaction_id(self):
         return uuid4().hex.upper()

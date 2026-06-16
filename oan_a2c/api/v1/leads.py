@@ -1,14 +1,16 @@
 import frappe
 from frappe import _
-
+from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def get_leads(
 	start=0,
 	page_length=20,
 	search_query=None,
 	status=None,
 	lead_source=None,
+	loan_type=None,
 	start_date=None,
 	end_date=None,
 	min_loan_amount=None,
@@ -47,18 +49,19 @@ def get_leads(
 	# 3. Construct Filters
 	filters = []
 
-	# Apply Status Filter
+	# Apply Status Filter (single or comma-separated multi-value)
 	if status:
-		# Sanitize input against valid choices
 		allowed_statuses = ("Active", "Verified", "Processed", "Granted", "Rejected", "Dormant")
-		if status in allowed_statuses:
-			filters.append(["status", "=", status])
+		valid_statuses = parse_multi_value(status, allowed_statuses)
+		if valid_statuses:
+			filters.append(["status", "in", valid_statuses])
 
-	# Apply Lead Source Filter
+	# Apply Lead Source Filter (single or comma-separated multi-value)
 	if lead_source:
 		allowed_sources = ("Missed Call", "IVR", "SMS", "Agent Entry")
-		if lead_source in allowed_sources:
-			filters.append(["lead_source", "=", lead_source])
+		valid_sources = parse_multi_value(lead_source, allowed_sources)
+		if valid_sources:
+			filters.append(["lead_source", "in", valid_sources])
 
 	# Apply Creation Date Range Filter
 	if start_date and end_date:
@@ -68,8 +71,19 @@ def get_leads(
 	elif end_date:
 		filters.append(["creation", "<=", end_date])
 
-	# Apply Loan Amount Filter
-	if min_loan_amount is not None or max_loan_amount is not None:
+	# Apply Loan Amount / Loan Type Filter via the linked A2C Credit Information.
+	# Amount range and loan_type (single or comma-separated multi-value) are intersected
+	# in one subquery so a lead must satisfy all supplied credit criteria.
+	valid_loan_types = []
+	if loan_type:
+		allowed_loan_types = tuple(
+			o.strip()
+			for o in (frappe.get_meta("A2C Credit Information").get_field("loan_type").options or "").split("\n")
+			if o.strip()
+		)
+		valid_loan_types = parse_multi_value(loan_type, allowed_loan_types)
+
+	if min_loan_amount is not None or max_loan_amount is not None or valid_loan_types:
 		from frappe.utils import flt
 		credit_filters = {}
 		if min_loan_amount is not None and max_loan_amount is not None:
@@ -78,18 +92,21 @@ def get_leads(
 			credit_filters['loan_amount'] = (">=", flt(min_loan_amount))
 		elif max_loan_amount is not None:
 			credit_filters['loan_amount'] = ("<=", flt(max_loan_amount))
-		
+
+		if valid_loan_types:
+			credit_filters['loan_type'] = ("in", valid_loan_types)
+
 		matching_credit_leads = frappe.get_all(
 			"A2C Credit Information",
 			filters=credit_filters,
 			pluck="lead",
 			distinct=True
 		)
-		
+
 		if matching_credit_leads:
 			filters.append(["name", "in", matching_credit_leads])
 		else:
-			# Ensure no leads match if the loan amount criteria yielded no matching credit infos
+			# Ensure no leads match if the credit criteria yielded no matching credit infos
 			filters.append(["name", "in", ["__NONE__"]])
 
 	# 4. Construct Search Or-Filters
@@ -121,32 +138,47 @@ def get_leads(
 		order_by="creation desc"
 	)
 
-	# Fetch linked loan_type and loan_amount from Credit Information for each lead
-	for lead in leads:
-		credit_infos = frappe.get_all(
+	# Fetch linked loan_type and loan_amount from Credit Information for each lead in a single query (resolving N+1 query issue)
+	if leads:
+		lead_names = [lead["name"] for lead in leads]
+		all_credit_infos = frappe.get_all(
 			"A2C Credit Information",
-			filters={"lead": lead["name"]},
-			fields=["loan_type", "loan_amount"],
-			order_by="creation desc",
-			limit=1
+			filters={"lead": ["in", lead_names]},
+			fields=["lead", "loan_type", "loan_amount"],
+			order_by="creation desc"
 		)
-		if credit_infos:
-			lead["loan_type"] = credit_infos[0]["loan_type"]
-			lead["loan_amount"] = credit_infos[0]["loan_amount"]
-		else:
-			lead["loan_type"] = None
-			lead["loan_amount"] = None
 
-	return {
-		"status": "success",
-		"start": start,
-		"page_length": page_length,
-		"total_count": total_count,
-		"results": leads
+		latest_credit_map = {}
+		for info in all_credit_infos:
+			lead_name = info["lead"]
+			if lead_name not in latest_credit_map:
+				latest_credit_map[lead_name] = info
+
+		for lead in leads:
+			info = latest_credit_map.get(lead["name"])
+			lead["loan_type"] = info.get("loan_type") if info else None
+			lead["loan_amount"] = info.get("loan_amount") if info else None
+
+	total_pages = -(-total_count // page_length)
+	has_next = start + page_length < total_count
+
+	pagination = {
+		"page": (start // page_length) + 1,
+		"limit": page_length,
+		"total": total_count,
+		"total_pages": total_pages,
+		"has_next": has_next
 	}
+
+	return success_response(
+		data=leads,
+		message="Leads retrieved successfully",
+		pagination=pagination
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def create_lead(phone_number=None, first_name=None, last_name=None, email=None, lead_source="Agent Entry", external_id=None):
 	"""
 	Natively creates a new A2C Lead document from the A2C application interface.
@@ -172,6 +204,12 @@ def create_lead(phone_number=None, first_name=None, last_name=None, email=None, 
 		if not validate_email_address(email):
 			frappe.throw(_("Invalid email address format"), frappe.ValidationError)
 
+	if phone_number and frappe.db.exists("A2C Lead", {"phone_number": phone_number}):
+		frappe.throw(_("Lead with phone number {0} already exists").format(phone_number), frappe.DuplicateEntryError)
+
+	if external_id and frappe.db.exists("A2C Lead", {"external_id": external_id}):
+		frappe.throw(_("Lead with external ID {0} already exists").format(external_id), frappe.DuplicateEntryError)
+
 	lead = frappe.new_doc("A2C Lead")
 	lead.phone_number = phone_number
 	lead.first_name = first_name
@@ -189,14 +227,26 @@ def create_lead(phone_number=None, first_name=None, last_name=None, email=None, 
 	audit_event.event_description = f"Imported from {lead_source}" if lead_source else "Manually created"
 	audit_event.insert()
 
-	return {
-		"status": "success",
-		"lead_id": lead.name,
-		"message": _("Lead created successfully.")
-	}
+	return success_response(
+		data={
+			"lead_id": lead.name,
+			"lead": {
+				"name": lead.name,
+				"phone_number": lead.phone_number,
+				"first_name": lead.first_name,
+				"last_name": lead.last_name,
+				"email": lead.email,
+				"lead_source": lead.lead_source,
+				"external_id": lead.external_id,
+				"status": lead.status,
+			}
+		},
+		message="Lead created successfully."
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def get_lead_summary():
 	"""
 	Returns aggregated lead counts: total count and status-wise counts.
@@ -219,14 +269,17 @@ def get_lead_summary():
 		counts_by_status[status] = count
 		total_count += count
 		
-	return {
-		"status": "success",
-		"total": total_count,
-		"by_status": counts_by_status
-	}
+	return success_response(
+		data={
+			"total": total_count,
+			"by_status": counts_by_status
+		},
+		message="Lead summary retrieved successfully"
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def get_lead_metadata():
 	"""
 	Returns dynamic options for dropdown fields in A2C Lead and Credit Information forms.
@@ -245,15 +298,18 @@ def get_lead_metadata():
 	loan_type_field = credit_meta.get_field("loan_type")
 	loan_types = loan_type_field.options.split("\n") if loan_type_field else []
 
-	return {
-		"status": "success",
-		"statuses": statuses,
-		"sources": sources,
-		"loan_types": loan_types
-	}
+	return success_response(
+		data={
+			"statuses": statuses,
+			"sources": sources,
+			"loan_types": loan_types
+		},
+		message="Lead metadata retrieved successfully"
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def add_lead_credit_info(lead_id=None, loan_type=None, loan_amount=None, purpose_message=None):
 	"""
 	Creates a new A2C Credit Information record associated with a lead.
@@ -303,14 +359,14 @@ def add_lead_credit_info(lead_id=None, loan_type=None, loan_amount=None, purpose
 	)
 	audit_event.insert()
 
-	return {
-		"status": "success",
-		"credit_info_id": credit_info.name,
-		"message": _("Credit information added successfully.")
-	}
+	return success_response(
+		data={"credit_info_id": credit_info.name},
+		message="Credit information added successfully."
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def get_lead_credit_infos(lead_id=None):
 	"""
 	Retrieves a list of A2C Credit Information records for a specific lead.
@@ -319,6 +375,7 @@ def get_lead_credit_infos(lead_id=None):
 	if not lead_id:
 		frappe.throw(_("lead_id is required"), frappe.MandatoryError)
 
+	frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
 	frappe.has_permission("A2C Credit Information", "read", throw=True)
 
 	results = frappe.get_list(
@@ -328,20 +385,21 @@ def get_lead_credit_infos(lead_id=None):
 		order_by="creation desc"
 	)
 
-	return {
-		"status": "success",
-		"results": results
-	}
+	return success_response(
+		data=results,
+		message="Lead credit information retrieved successfully"
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def update_lead_status(lead_id=None, status=None, reason=None):
 	"""
 	Updates the status of an A2C Lead.
 	Enforces:
 	  - JWT authentication.
 	  - Role permissions ('write' on A2C Lead).
-	  - Terminal locking (cannot change status if current status is Processed, Rejected, or Granted).
+	  - Terminal locking (cannot change status if current status is Processed, Rejected, Granted, or Dormant).
 	  - Inserts the reason/internal notes as a timeline comment.
 	"""
 	if not lead_id:
@@ -387,23 +445,30 @@ def update_lead_status(lead_id=None, status=None, reason=None):
 	audit_event.event_description = description
 	audit_event.insert()
 
-	return {
-		"status": "success",
-		"lead_id": lead_id,
-		"new_status": status,
-		"message": _("Lead status updated successfully.")
-	}
+	return success_response(
+		data={
+			"lead_id": lead_id,
+			"new_status": status
+		},
+		message="Lead status updated successfully."
+	)
 
 
 @frappe.whitelist(allow_guest=False)
-def get_assignable_users(search_query=None):
+@handle_api_errors
+def get_assignable_users(search_query=None, start=0, page_length=20):
 	"""
 	Retrieves potential lead assignees: active Users having roles 'Development Agent' or 'Bank Agent'.
-	Optionally filters by search_query (full_name, name, or email).
+	Optionally filters by search_query (full_name, name, or email) and supports pagination.
 	"""
 	frappe.has_permission("A2C Lead", "read", throw=True)
 
-	# Fetch Users linked to either 'Development Agent' or 'Bank Agent' role
+	start_idx = frappe.utils.cint(start)
+	page_len = min(frappe.utils.cint(page_length) or 20, 100)
+
+	# Fetch Users linked to either 'Development Agent' or 'Bank Agent' role.
+	# ignore_permissions=True is required here because standard users (like Bank Agent)
+	# do not have permission to read/query the Has Role doctype.
 	role_users = frappe.get_list(
 		"Has Role",
 		filters={"role": ["in", ["Development Agent", "Bank Agent"]]},
@@ -412,8 +477,19 @@ def get_assignable_users(search_query=None):
 	)
 
 	if not role_users:
-		return {"status": "success", "results": []}
+		return success_response(
+			data=[],
+			message="Assignable users retrieved successfully",
+			pagination={
+				"start": start_idx,
+				"page_length": page_len,
+				"total_count": 0,
+				"has_next": False
+			}
+		)
 
+	# TODO: Implement tenant/bank isolation context checks if scoped assignment requirements are introduced in the future.
+	# TODO: Create or use a dedicated Bank Agent mapping/relation table for get and assignable tasks in the future.
 	# Construct DB query filters
 	user_filters = {
 		"name": ["in", list(set(role_users))],
@@ -428,13 +504,27 @@ def get_assignable_users(search_query=None):
 		or_filters.append(["email", "like", fuzzy])
 		or_filters.append(["name", "like", fuzzy])
 
-	# Query Users
+	# Query total count for pagination.
+	# ignore_permissions=True is required because standard users lack permissions to query the system User table.
+	count_res = frappe.get_list(
+		"User",
+		filters=user_filters,
+		or_filters=or_filters or None,
+		fields=[{"COUNT": "*"}],
+		ignore_permissions=True
+	)
+	total_count = count_res[0].get("COUNT(*)") if count_res else 0
+
+	# Query Users.
+	# ignore_permissions=True is required because standard users lack permissions to query the system User table.
 	users = frappe.get_list(
 		"User",
 		fields=["name", "email", "full_name", "username", "location"],
 		filters=user_filters,
 		or_filters=or_filters or None,
 		order_by="full_name asc",
+		limit_start=start_idx,
+		page_length=page_len,
 		ignore_permissions=True
 	)
 
@@ -453,13 +543,23 @@ def get_assignable_users(search_query=None):
 			"region": region
 		})
 
-	return {
-		"status": "success",
-		"results": formatted_results
+	has_next = (start_idx + page_len) < total_count
+	pagination = {
+		"start": start_idx,
+		"page_length": page_len,
+		"total_count": total_count,
+		"has_next": has_next
 	}
+
+	return success_response(
+		data=formatted_results,
+		message="Assignable users retrieved successfully",
+		pagination=pagination
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def assign_lead(lead_id=None, assigned_to=None):
 	"""
 	Assigns a lead to a specified agent.
@@ -505,16 +605,18 @@ def assign_lead(lead_id=None, assigned_to=None):
 	audit_event.event_description = _("Assigned to {0}").format(assignee_name)
 	audit_event.insert()
 
-	return {
-		"status": "success",
-		"lead_id": lead_id,
-		"assigned_to": assigned_to,
-		"assigned_date": now_date,
-		"message": _("Lead assigned successfully.")
-	}
+	return success_response(
+		data={
+			"lead_id": lead_id,
+			"assigned_to": assigned_to,
+			"assigned_date": now_date
+		},
+		message="Lead assigned successfully."
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def add_lead_comment(lead_id=None, content=None):
 	"""
 	Decoupled API bridge to attach a comment or manual timeline note to a specific A2C Lead.
@@ -535,14 +637,14 @@ def add_lead_comment(lead_id=None, content=None):
 	audit_event.event_description = content
 	audit_event.insert(ignore_permissions=False)
 
-	return {
-		"status": "success",
-		"comment_id": audit_event.name,
-		"message": _("Comment added successfully.")
-	}
+	return success_response(
+		data={"comment_id": audit_event.name},
+		message="Comment added successfully."
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def get_lead_timeline(lead_id=None, event_type=None):
 	"""
 	Retrieves the historical timeline of comments and system activities for a specific lead.
@@ -566,14 +668,17 @@ def get_lead_timeline(lead_id=None, event_type=None):
 		order_by="creation desc"
 	)
 
-	return {
-		"status": "success",
-		"lead_id": lead_id,
-		"timeline": timeline
-	}
+	return success_response(
+		data={
+			"lead_id": lead_id,
+			"timeline": timeline
+		},
+		message="Lead timeline retrieved successfully"
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def get_lead_call_logs(lead_id=None):
 	"""
 	Retrieves and parses the call history/event logs for a specific A2C Lead.
@@ -601,14 +706,17 @@ def get_lead_call_logs(lead_id=None):
 		if log_entry:
 			parsed_logs.append(log_entry)
 
-	return {
-		"status": "success",
-		"lead_id": lead_id,
-		"call_logs": parsed_logs
-	}
+	return success_response(
+		data={
+			"lead_id": lead_id,
+			"call_logs": parsed_logs
+		},
+		message="Lead call logs retrieved successfully"
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def schedule_visit(
 	lead_id=None,
 	visit_date=None,
@@ -624,7 +732,6 @@ def schedule_visit(
 	Schedules a new visit for an A2C Lead.
 	- Enforces JWT session validation via allow_guest=False.
 	- Enforces user write permissions on the Lead and create permissions on the Visit Schedule.
-	- Updates A2C Lead status to "Initiated" if it is "Open".
 	- Inserts a system Comment on the lead's timeline.
 	"""
 	if not lead_id:
@@ -673,21 +780,21 @@ def schedule_visit(
 	)
 	audit_event.insert()
 
-	return {
-		"status": "success",
-		"schedule_id": schedule.name,
-		"message": _("Visit scheduled successfully.")
-	}
+	return success_response(
+		data={"schedule_id": schedule.name},
+		message="Visit scheduled successfully."
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def get_visit_schedules(
 	lead_id=None,
 	start_date=None,
 	end_date=None,
 	status=None,
 	start=0,
-	page_length=20
+	page_length=None
 ):
 	"""
 	Retrieves a paginated list of visit schedules.
@@ -696,6 +803,8 @@ def get_visit_schedules(
 	- Utilizes frappe.get_list for RBAC & user permission isolation.
 	"""
 	frappe.has_permission("A2C Visit Schedule", "read", throw=True)
+	if lead_id:
+		frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
 
 	try:
 		start = int(start or 0)
@@ -746,16 +855,26 @@ def get_visit_schedules(
 		order_by="visit_date desc, visit_time desc"
 	)
 
-	return {
-		"status": "success",
-		"start": start,
-		"page_length": page_length,
-		"total_count": total_count,
-		"results": schedules
+	total_pages = -(-total_count // page_length)
+	has_next = start + page_length < total_count
+
+	pagination = {
+		"page": (start // page_length) + 1,
+		"limit": page_length,
+		"total": total_count,
+		"total_pages": total_pages,
+		"has_next": has_next
 	}
+
+	return success_response(
+		data=schedules,
+		message="Visit schedules retrieved successfully",
+		pagination=pagination
+	)
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def update_visit_schedule_status(schedule_id=None, status=None):
 	"""
 	Updates the status of an A2C Visit Schedule (Scheduled, Completed, Cancelled, Missed).
@@ -775,15 +894,19 @@ def update_visit_schedule_status(schedule_id=None, status=None):
 	if status not in allowed_statuses:
 		frappe.throw(_("Invalid status: {0}").format(status), frappe.ValidationError)
 
+	if schedule.status in ("Missed", "Completed") and schedule.status != status:
+		frappe.throw(_("Cannot update status of a {0} visit.").format(schedule.status), frappe.ValidationError)
+
 	schedule.status = status
 	schedule.save(ignore_permissions=False)
 
-	return {
-		"status": "success",
-		"schedule_id": schedule_id,
-		"new_status": status,
-		"message": _("Visit schedule status updated successfully.")
-	}
+	return success_response(
+		data={
+			"schedule_id": schedule_id,
+			"new_status": status
+		},
+		message="Visit schedule status updated successfully."
+	)
 
 
 

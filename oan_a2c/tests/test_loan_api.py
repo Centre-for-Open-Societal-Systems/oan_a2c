@@ -264,14 +264,32 @@ class TestLoansV1API(unittest.TestCase):
         self.assertEqual(len(res_after["data"]), 0)
 
     def test_6_update_loan_step(self):
-        # 1. Update step
+        # Ensure it starts at 1
+        frappe.db.set_value("A2C Loan Application", self.app_id, "current_step", 1)
+        frappe.db.commit()
+
+        # 1. Invalid jump: 1 to 3 should raise ValidationError
+        self.assertRaises(frappe.ValidationError, update_loan_step, self.app_id, 3)
+
+        # 2. Valid sequential step: 1 to 2
+        res = update_loan_step(self.app_id, 2)
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["message"], "Loan application step updated to 2")
+
+        # 3. Invalid jump: 2 to 4 should raise ValidationError
+        self.assertRaises(frappe.ValidationError, update_loan_step, self.app_id, 4)
+
+        # 4. Valid sequential step: 2 to 3
         res = update_loan_step(self.app_id, 3)
         self.assertEqual(res["status"], "success")
-        self.assertEqual(res["message"], "Loan application step updated to 3")
 
-        # 2. Check if updated
-        doc = frappe.get_doc("A2C Loan Application", self.app_id)
-        self.assertEqual(doc.current_step, 3)
+        # 5. Backward step: 3 to 1 should be allowed
+        res = update_loan_step(self.app_id, 1)
+        self.assertEqual(res["status"], "success")
+
+        # 6. Step out of bounds: 0 or 5 should raise ValidationError
+        self.assertRaises(frappe.ValidationError, update_loan_step, self.app_id, 0)
+        self.assertRaises(frappe.ValidationError, update_loan_step, self.app_id, 5)
 
     def test_7_rejected_loan_status_locked(self):
         # 1. Reject the loan application

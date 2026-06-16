@@ -22,8 +22,8 @@
                                     "",
                                     "const json = pm.response.json();",
                                     "",
-                                    "if (json.message.token) {",
-                                    "    pm.collectionVariables.set('jwt_token', json.message.token);",
+                                    "if (json.message.data.token) {",
+                                    "    pm.collectionVariables.set('jwt_token', json.message.data.token);",
                                     "}"
                                 ],
                                 "type": "text/javascript"
@@ -136,7 +136,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&start_date=&end_date=&min_loan_amount=&max_loan_amount=",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&loan_type=&start_date=&end_date=&min_loan_amount=&max_loan_amount=",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -160,11 +160,18 @@
                                 },
                                 {
                                     "key": "status",
-                                    "value": ""
+                                    "value": "",
+                                    "description": "Single value or comma-separated list, e.g. Active,Verified. Invalid values dropped."
                                 },
                                 {
                                     "key": "lead_source",
-                                    "value": ""
+                                    "value": "",
+                                    "description": "Single value or comma-separated list, e.g. IVR,SMS. Invalid values dropped."
+                                },
+                                {
+                                    "key": "loan_type",
+                                    "value": "",
+                                    "description": "Single value or comma-separated list. Validated against A2C Credit Information.loan_type options; intersected with min/max loan amount."
                                 },
                                 {
                                     "key": "start_date",
@@ -186,7 +193,7 @@
                                 }
                             ]
                         },
-                        "description": "Fetches a paginated, filtered, and searchable list of A2C leads. Automatically applies multi-tenant RBAC and User Permissions at the query layer."
+                        "description": "Fetches a paginated, filtered, and searchable list of A2C leads. Automatically applies multi-tenant RBAC and User Permissions at the query layer.\n\nMulti-value filters: 'status', 'lead_source', and 'loan_type' accept a single value OR a comma-separated list (e.g. status=Active,Verified). Invalid values are silently dropped. loan_type / min_loan_amount / max_loan_amount are intersected in one A2C Credit Information subquery."
                     },
                     "response": [],
                     "event": [
@@ -255,6 +262,16 @@
                     },
                     "response": [],
                     "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "exec": [
+                                    "pm.variables.set('phone_number', '+2519' + Math.floor(10000000 + Math.random() * 90000000).toString());",
+                                    "pm.variables.set('external_id', 'EXT-' + Math.floor(100000 + Math.random() * 900000).toString());"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        },
                         {
                             "listen": "test",
                             "script": {
@@ -1149,7 +1166,78 @@
                         },
                         "description": "Automated ingestion callback for external telecommunication IVR / missed call nodes. Bypasses JWT gateway and authenticates system-to-system via API Token."
                     },
-                    "response": []
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "exec": [
+                                    "pm.variables.set('phone_number', '+2519' + Math.floor(10000000 + Math.random() * 90000000).toString());",
+                                    "pm.variables.set('external_ref_id', 'EXT-' + Math.floor(100000 + Math.random() * 900000).toString());"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "WebSub Subscriber Intent Verification (GET)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.websub_subscriber.callback?hub.mode=subscribe&hub.topic=https://topic.url&hub.challenge=12345",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.websub_subscriber.callback"
+                            ],
+                            "query": [
+                                {
+                                    "key": "hub.mode",
+                                    "value": "subscribe"
+                                },
+                                {
+                                    "key": "hub.topic",
+                                    "value": "https://topic.url"
+                                },
+                                {
+                                    "key": "hub.challenge",
+                                    "value": "12345"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "WebSub Subscriber Content Delivery (POST)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"source\": \"openg2p\",\n    \"event_type\": \"WEBSUB_INDIVIDUAL_UPDATED\",\n    \"published_at\": \"2026-06-15 10:00:00\",\n    \"consent\": {\n        \"consent_creation_request_id\": \"{{openg2p_consent_id}}\",\n        \"status\": \"approved\",\n        \"approved_at\": \"2026-06-15 10:00:00\"\n    },\n    \"farmer\": {\n        \"id\": \"FARMER-123\",\n        \"name\": \"Jane Doe\"\n    },\n    \"selected_data\": {\n        \"farmer\": {\n            \"given_name\": \"Jane\",\n            \"family_name\": \"Doe\",\n            \"phone_no\": [\n                \"+254111222333\"\n            ]\n        }\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.websub_subscriber.callback",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.websub_subscriber.callback"
+                            ]
+                        }
+                    }
                 }
             ]
         },
@@ -1163,17 +1251,28 @@
                             "listen": "test",
                             "script": {
                                 "exec": [
+                                    "// Frappe wraps the @handle_api_errors envelope under the top-level 'message' key.",
+                                    "// Envelope: { status, message, data: { farmer_db_id, farmer: { id, name, mobile, phone } }, meta }",
                                     "var resp = pm.response.json();",
-                                    "var msg  = resp.message || resp;",
-                                    "if (msg.status === 'success') {",
-                                    "    if (msg.farmer_db_id) {",
-                                    "        pm.collectionVariables.set('farmer_id', msg.farmer_db_id.toString());",
-                                    "    } else if (msg.farmer && msg.farmer.id) {",
-                                    "        pm.collectionVariables.set('farmer_id', msg.farmer.id.toString());",
+                                    "var env  = resp.message || resp;",
+                                    "var data = env.data || {};",
+                                    "",
+                                    "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                                    "pm.test('envelope status is success', function () { pm.expect(env.status).to.eql('success'); });",
+                                    "pm.test('farmer found', function () { pm.expect(data).to.have.property('farmer_db_id'); });",
+                                    "",
+                                    "if (env.status === 'success') {",
+                                    "    if (data.farmer_db_id !== undefined && data.farmer_db_id !== null) {",
+                                    "        pm.collectionVariables.set('farmer_id', data.farmer_db_id.toString());",
+                                    "    } else if (data.farmer && data.farmer.id) {",
+                                    "        pm.collectionVariables.set('farmer_id', data.farmer.id.toString());",
                                     "    }",
-                                    "    if (msg.farmer && msg.farmer.name) {",
-                                    "        pm.collectionVariables.set('farmer_name', msg.farmer.name);",
+                                    "    if (data.farmer && data.farmer.name) {",
+                                    "        pm.collectionVariables.set('farmer_name', data.farmer.name);",
                                     "    }",
+                                    "    console.log('Farmer found:', (data.farmer || {}).name, '(db id', data.farmer_db_id + ')');",
+                                    "} else {",
+                                    "    console.log('Search failed:', env.message);",
                                     "}"
                                 ],
                                 "type": "text/javascript"
@@ -1197,14 +1296,14 @@
                             "raw": "{\n  \"fayda_id\": \"{{fayda_id}}\"\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.api.search_farmer",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.search_farmer",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.consent.api.search_farmer"
+                                "oan_a2c.api.v1.consent.consent.search_farmer"
                             ]
                         }
                     }
@@ -1216,9 +1315,24 @@
                             "listen": "test",
                             "script": {
                                 "exec": [
+                                    "// Envelope data: { consent_request, transaction_id, masked_phone }",
                                     "var resp = pm.response.json();",
-                                    "var msg  = resp.message || resp;",
-                                    "if (msg.consent_request) { pm.collectionVariables.set('consent_request', msg.consent_request); }"
+                                    "var env  = resp.message || resp;",
+                                    "var data = env.data || {};",
+                                    "",
+                                    "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                                    "pm.test('envelope status is success', function () { pm.expect(env.status).to.eql('success'); });",
+                                    "pm.test('transaction_id returned', function () { pm.expect(data).to.have.property('transaction_id'); });",
+                                    "pm.test('consent_request created', function () { pm.expect(data.consent_request).to.not.be.empty; });",
+                                    "",
+                                    "if (env.status === 'success') {",
+                                    "    if (data.consent_request) { pm.collectionVariables.set('consent_request', data.consent_request); }",
+                                    "    if (data.transaction_id) { pm.collectionVariables.set('transaction_id', data.transaction_id.toString()); }",
+                                    "    if (data.masked_phone) { pm.collectionVariables.set('masked_phone', data.masked_phone); }",
+                                    "    console.log('OTP sent to', data.masked_phone, '| txn:', data.transaction_id, '| consent request:', data.consent_request);",
+                                    "} else {",
+                                    "    console.log('Request OTP failed:', env.message);",
+                                    "}"
                                 ],
                                 "type": "text/javascript"
                             }
@@ -1255,6 +1369,37 @@
                 },
                 {
                     "name": "4.3 Verify OTP and Approve Consent",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "// Envelope data: { lead_id, consent_request, openg2p_consent_id, consent_receipt,",
+                                    "//                   farmer_preview: { given_name, family_name, email, phone_no: [] } }",
+                                    "var resp = pm.response.json();",
+                                    "var env  = resp.message || resp;",
+                                    "var data = env.data || {};",
+                                    "",
+                                    "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                                    "pm.test('envelope status is success', function () { pm.expect(env.status).to.eql('success'); });",
+                                    "pm.test('openg2p_consent_id returned', function () { pm.expect(data).to.have.property('openg2p_consent_id'); });",
+                                    "pm.test('consent_receipt returned', function () { pm.expect(data).to.have.property('consent_receipt'); });",
+                                    "",
+                                    "if (env.status === 'success') {",
+                                    "    if (data.openg2p_consent_id) { pm.collectionVariables.set('openg2p_consent_id', data.openg2p_consent_id.toString()); }",
+                                    "    if (data.consent_request) { pm.collectionVariables.set('consent_request', data.consent_request); }",
+                                    "    if (data.consent_receipt) { pm.collectionVariables.set('consent_receipt', data.consent_receipt); }",
+                                    "    var preview = data.farmer_preview || {};",
+                                    "    console.log('Consent approved. openg2p_consent_id:', data.openg2p_consent_id);",
+                                    "    console.log('Farmer:', preview.given_name, preview.family_name, '| phone:', (preview.phone_no || []).join(', '));",
+                                    "} else {",
+                                    "    console.log('Verify OTP failed:', env.message);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1333,7 +1478,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"consent\": {\n        \"consent_creation_request_id\": \"{{consent_request}}\",\n        \"status\": \"{{consent_status}}\"\n    },\n    \"farmer\": {\n        \"id\": \"{{farmer_id}}\",\n        \"name\": \"{{farmer_name}}\"\n    }\n}"
+                            "raw": "{\n    \"consent\": {\n        \"consent_creation_request_id\": \"{{openg2p_consent_id}}\",\n        \"status\": \"{{consent_status}}\"\n    },\n    \"farmer\": {\n        \"id\": \"{{farmer_id}}\",\n        \"name\": \"{{farmer_name}}\"\n    }\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
@@ -2144,7 +2289,8 @@
                             "query": [
                                 {
                                     "key": "status",
-                                    "value": "Approved"
+                                    "value": "Approved",
+                                    "description": "Single value or comma-separated list, e.g. Processing,Approved. Validated against {Draft, Processing, Approved, Rejected}; invalid values dropped."
                                 },
                                 {
                                     "key": "page",
@@ -2162,7 +2308,8 @@
                                 },
                                 {
                                     "key": "loan_type",
-                                    "value": "Input Loan",
+                                    "value": "Input loan (seeds, agrochemicals),Land loan",
+                                    "description": "Single value or comma-separated list (in filter). Free-text field, not allowlist-validated.",
                                     "disabled": true
                                 },
                                 {
@@ -2419,6 +2566,22 @@
         {
             "key": "consent_request",
             "value": "G2P-CONS-12345"
+        },
+        {
+            "key": "transaction_id",
+            "value": ""
+        },
+        {
+            "key": "masked_phone",
+            "value": ""
+        },
+        {
+            "key": "openg2p_consent_id",
+            "value": "G2P-CONS-12345"
+        },
+        {
+            "key": "consent_receipt",
+            "value": ""
         },
         {
             "key": "consent_status",

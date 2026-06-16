@@ -607,6 +607,58 @@ class TestVisitScheduleAPI(unittest.TestCase):
 		self.assertEqual(res_filtered["total_count"], 1)
 		self.assertEqual(str(res_filtered["results"][0]["visit_date"]), "2026-06-11")
 
+	def test_visit_status_transitions(self):
+		"""Verifies that transitioning from Missed or Completed status is blocked, but Cancelled is allowed."""
+		from oan_a2c.api.v1.leads import schedule_visit, update_visit_schedule_status
+
+		# 1. Create a visit (defaults to Scheduled)
+		res = schedule_visit(
+			lead_id=self.lead_id,
+			visit_date="2026-06-10",
+			visit_time="10:00:00",
+			region="Oromia",
+			zone="East Shewa",
+			woreda="Ada'ama",
+			kebele="01"
+		)
+		schedule_id = res["schedule_id"]
+
+		# 2. Transition from Scheduled to Cancelled (should be allowed)
+		update_visit_schedule_status(schedule_id=schedule_id, status="Cancelled")
+		self.assertEqual(frappe.db.get_value("A2C Visit Schedule", schedule_id, "status"), "Cancelled")
+
+		# 3. Transition from Cancelled back to Scheduled (should be allowed)
+		update_visit_schedule_status(schedule_id=schedule_id, status="Scheduled")
+		self.assertEqual(frappe.db.get_value("A2C Visit Schedule", schedule_id, "status"), "Scheduled")
+
+		# 4. Transition from Scheduled to Completed (should be allowed)
+		update_visit_schedule_status(schedule_id=schedule_id, status="Completed")
+		self.assertEqual(frappe.db.get_value("A2C Visit Schedule", schedule_id, "status"), "Completed")
+
+		# 5. Attempting to transition from Completed to Cancelled (should be blocked)
+		with self.assertRaises(frappe.ValidationError):
+			update_visit_schedule_status(schedule_id=schedule_id, status="Cancelled")
+
+		# 6. Create another visit to test Missed
+		res2 = schedule_visit(
+			lead_id=self.lead_id,
+			visit_date="2026-06-10",
+			visit_time="10:00:00",
+			region="Oromia",
+			zone="East Shewa",
+			woreda="Ada'ama",
+			kebele="01"
+		)
+		schedule_id_2 = res2["schedule_id"]
+
+		# 7. Transition from Scheduled to Missed (should be allowed)
+		update_visit_schedule_status(schedule_id=schedule_id_2, status="Missed")
+		self.assertEqual(frappe.db.get_value("A2C Visit Schedule", schedule_id_2, "status"), "Missed")
+
+		# 8. Attempting to transition from Missed to Scheduled (should be blocked)
+		with self.assertRaises(frappe.ValidationError):
+			update_visit_schedule_status(schedule_id=schedule_id_2, status="Scheduled")
+
 
 class TestLeadStatusUpdateAPI(unittest.TestCase):
 	"""Tests for A2C Lead status updates and transition locking API endpoint."""

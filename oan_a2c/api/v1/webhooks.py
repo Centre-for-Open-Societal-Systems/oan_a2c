@@ -1,8 +1,10 @@
 import frappe
 from frappe import _
+from oan_a2c.api.utils import success_response, handle_api_errors
 
 
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
 def lead_inbound(phone_number=None, lead_source="Missed Call", external_ref_id=None, timestamp=None):
 	"""
 	Automated lead intake from external telco systems (IVR / missed call gateways).
@@ -57,11 +59,10 @@ def lead_inbound(phone_number=None, lead_source="Missed Call", external_ref_id=N
 	new_lead.call_notes = _build_event_note(lead_source, external_ref_id, timestamp)
 	new_lead.insert(ignore_permissions=False)
 
-	return {
-		"status": "success",
-		"lead_id": new_lead.name,
-		"message": "Lead captured successfully.",
-	}
+	return success_response(
+		data={"lead_id": new_lead.name},
+		message="Lead captured successfully."
+	)
 
 
 def _update_existing_lead(lead_name, lead_source, external_ref_id, timestamp):
@@ -80,11 +81,10 @@ def _update_existing_lead(lead_name, lead_source, external_ref_id, timestamp):
 
 	existing_doc.save(ignore_permissions=False)
 
-	return {
-		"status": "success",
-		"lead_id": lead_name,
-		"message": "Existing active lead updated with new event.",
-	}
+	return success_response(
+		data={"lead_id": lead_name},
+		message="Existing active lead updated with new event."
+	)
 
 
 def _build_event_note(lead_source, external_ref_id, timestamp):
