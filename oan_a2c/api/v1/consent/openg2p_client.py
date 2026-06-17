@@ -21,6 +21,12 @@ class OpenG2PConsentClient:
 
         if not self.base_url:
             frappe.throw(_("OpenG2P Base URL is missing in site_config.json"))
+            
+        if not self.username or not self.password:
+            frappe.throw(_("OpenG2P portal credentials (openg2p_username, openg2p_password) are missing in site_config.json"))
+            
+        if not self.admin_username or not self.admin_password:
+            frappe.throw(_("OpenG2P admin credentials (openg2p_admin_username, openg2p_admin_password) are missing in site_config.json"))
 
         self.session = requests.Session()        # portal user session
         self.admin_session = requests.Session()  # admin session
@@ -95,19 +101,19 @@ class OpenG2PConsentClient:
             if session_id:
                 headers["X-Openerp-Session-Id"] = session_id
 
-            print(f">>>>>> [DEBUG RPC] Sending to {endpoint} with session_id: {session_id}")
+            frappe.logger().debug(f"[DEBUG RPC] Sending to {endpoint} with session_id: {session_id}")
             
             # Print EXACT request headers and cookies before sending
             session = self.admin_session if use_admin else self.session
             req = requests.Request('POST', url, json=payload, headers=headers)
             prepared = session.prepare_request(req)
             
-            print(f">>>>>> [DEBUG RPC] Sending POST to {url} with headers {prepared.headers}")
+            frappe.logger().debug(f"[DEBUG RPC] Sending POST to {url} with headers {prepared.headers}")
             response = session.send(prepared)
             
             # Print response headers and body for debugging
-            print(f">>>>>> [DEBUG RPC] Response headers: {response.headers}")
-            print(f">>>>>> [DEBUG RPC] Response body: {response.text}")
+            frappe.logger().debug(f"[DEBUG RPC] Response headers: {response.headers}")
+            frappe.logger().debug(f"[DEBUG RPC] Response body: {response.text}")
             
             response.raise_for_status()
             data = response.json()
@@ -151,7 +157,44 @@ class OpenG2PConsentClient:
         response = self.admin_session.post(url, json=payload)
         data = response.json()
         if "error" in data:
-            print(f">>>>>> admin_search_read error on {model}: {data['error']}")
+            frappe.logger().error(f"admin_search_read error on {model}: {data['error']}")
+            return []
+        return data.get("result", [])
+
+    def _search_read(self, model, domain, fields, limit=1):
+        """Run a search_read using the normal portal session."""
+        url = f"{self.base_url}/web/dataset/call_kw"
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "call",
+            "params": {
+                "model": model,
+                "method": "search_read",
+                "args": [domain],
+                "kwargs": {"fields": fields, "limit": limit}
+            }
+        }
+        
+        session_id = None
+        if hasattr(self, "portal_session_id") and self.portal_session_id:
+            session_id = self.portal_session_id
+        else:
+            for cookie in self.session.cookies:
+                if cookie.name == "session_id":
+                    session_id = cookie.value
+                    break
+
+        headers = {"Content-Type": "application/json"}
+        if session_id:
+            headers["X-Openerp-Session-Id"] = session_id
+            
+        req = requests.Request('POST', url, json=payload, headers=headers)
+        prepared = self.session.prepare_request(req)
+        response = self.session.send(prepared)
+        
+        data = response.json()
+        if "error" in data:
+            frappe.logger().error(f"search_read error on {model}: {data['error']}")
             return []
         return data.get("result", [])
 
@@ -161,40 +204,25 @@ class OpenG2PConsentClient:
 
     def get_farmer_by_fayda_id(self, fayda_id):
         """
-        Find farmer's res.partner ID by Fayda/national ID.
-        Tries: unique_id field, then g2p.reg.id value.
+        Find farmer's res.partner ID by Fayda/national ID using the Odoo backend endpoint.
         """
-        base_domain = [("is_registrant", "=", True), ("is_group", "=", False)]
-
-        # Try 1: unique_id field
+        params = {"query": fayda_id}
+        frappe.logger().debug(f"Calling Odoo /consent/search_farmer: {params}")
+        
         try:
-            result = self._admin_search_read(
-                "res.partner",
-                base_domain + [("unique_id", "=", fayda_id)],
-                ["id", "name"]
-            )
-            if result:
-                print(f">>>>>> Found farmer by unique_id: {result[0]}")
-                return result[0]["id"]
+            # We use the normal portal session here via _call_rpc
+            result = self._call_rpc("/consent/search_farmer", "call", params)
+            frappe.logger().debug(f"Odoo search_farmer response: {result}")
+            
+            if result and isinstance(result, dict):
+                farmers = result.get("data", {}).get("farmers", [])
+                if farmers and isinstance(farmers, list) and len(farmers) > 0:
+                    return farmers[0]
+                
         except Exception as e:
-            print(f">>>>>> unique_id search failed: {str(e)}")
-
-        # Try 2: g2p.reg.id value
-        try:
-            reg_result = self._admin_search_read(
-                "g2p.reg.id",
-                [("value", "=", fayda_id)],
-                ["id", "partner_id"]
-            )
-            if reg_result:
-                partner = reg_result[0].get("partner_id")
-                if isinstance(partner, (list, tuple)):
-                    print(f">>>>>> Found farmer by reg_id: {partner}")
-                    return partner[0]
-        except Exception as e:
-            print(f">>>>>> reg_id search failed: {str(e)}")
-
-        print(f">>>>>> Farmer with Fayda ID '{fayda_id}' not found")
+            frappe.logger().error(f"/consent/search_farmer failed: {str(e)}")
+            
+        frappe.logger().debug(f"Farmer with Fayda ID '{fayda_id}' not found via /consent/search_farmer")
         return None
 
     def _get_farmer_fayda_identifier(self, farmer_db_id):
@@ -211,7 +239,7 @@ class OpenG2PConsentClient:
             ["id", "value", "id_type"],
             limit=50
         )
-        print(f">>>>>> farmer {farmer_db_id} reg_ids: {reg_result}")
+        frappe.logger().debug(f"farmer {farmer_db_id} reg_ids: {reg_result}")
 
         for reg in reg_result:
             id_type = reg.get("id_type", [])
@@ -221,13 +249,13 @@ class OpenG2PConsentClient:
             if preferred_type in type_name or type_name in preferred_type:
                 val = reg.get("value", "").strip()
                 if val:
-                    print(f">>>>>> Found Fayda identifier: {val} (type: {type_name})")
+                    frappe.logger().debug(f"Found Fayda identifier: {val} (type: {type_name})")
                     return val
 
         # Fallback: return first available value
         if reg_result:
             val = reg_result[0].get("value", "").strip()
-            print(f">>>>>> Fallback Fayda identifier: {val}")
+            frappe.logger().debug(f"Fallback Fayda identifier: {val}")
             return val
 
         return ""
@@ -262,11 +290,11 @@ class OpenG2PConsentClient:
             )
             if result:
                 ids = result[0].get("allowed_data_field_ids", [])
-                print(f">>>>>> Partner {partner_record_id} allowed_data_field_ids: {ids}")
+                frappe.logger().debug(f"Partner {partner_record_id} allowed_data_field_ids: {ids}")
                 return ids
             return []
         except Exception as e:
-            print(f">>>>>> Failed to fetch allowed_data_field_ids: {str(e)}")
+            frappe.logger().error(f"Failed to fetch allowed_data_field_ids: {str(e)}")
             return []
 
     # -------------------------------------------------------------------------
@@ -290,13 +318,13 @@ class OpenG2PConsentClient:
             response = self.admin_session.post(url, json=payload)
             data = response.json()
             if "error" in data:
-                print(f">>>>>> Error fetching consent partners: {data['error']}")
+                frappe.logger().error(f"Error fetching consent partners: {data['error']}")
                 return []
             result = data.get("result", [])
-            print(f">>>>>> Found {len(result)} Consent Partners")
+            frappe.logger().debug(f"Found {len(result)} Consent Partners")
             return result
         except Exception as e:
-            print(f">>>>>> Failed to fetch consent partners: {str(e)}")
+            frappe.logger().error(f"Failed to fetch consent partners: {str(e)}")
             return []
 
     # -------------------------------------------------------------------------
@@ -309,9 +337,9 @@ class OpenG2PConsentClient:
             "attachment_base64": attachment_base64,
             "attachment_filename": attachment_filename
         }
-        print(f">>>>>> Uploading attachment to OpenG2P: {attachment_filename}")
+        frappe.logger().debug(f"Uploading attachment to OpenG2P: {attachment_filename}")
         result = self._call_rpc("/api/consent/attachment/upload", "call", params)
-        print(f">>>>>> OpenG2P attachment response: {result}")
+        frappe.logger().debug(f"OpenG2P attachment response: {result}")
         
         # OpenG2P returns {"success": True, "data": {"attachment_id": 123}}
         if not result or not result.get("success"):
@@ -322,18 +350,18 @@ class OpenG2PConsentClient:
     def create_consent_request(self, partner_id, farmer_db_id, consent_type, purpose,
                                 validity_from, validity_to, allowed_data_field_ids,
                                 attachment_ids=None, attachment_base64=None, attachment_filename=None):
-        
+
         # If base64 is provided, upload it first to get the attachment_id
         if attachment_base64:
             uploaded_id = self.upload_attachment(attachment_base64, attachment_filename or "consent.pdf")
             if uploaded_id:
                 attachment_ids = [uploaded_id]
-
+        print(allowed_data_field_ids)
         params = {
             "partner_id": partner_id,
             "farmer_db_id": farmer_db_id,
             "consent_type": consent_type,
-            "purpose": purpose,
+            "consent_reason_id": purpose,  # OpenG2P expects consent_reason_id instead of string purpose currently only value is 1
             "validity_from": validity_from,
             "validity_to": validity_to,
             "allowed_data_field_ids": allowed_data_field_ids,
@@ -342,18 +370,18 @@ class OpenG2PConsentClient:
         if attachment_ids:
             params["attachment_ids"] = attachment_ids if not isinstance(attachment_ids, list) else attachment_ids[0]
 
-        print(f">>>>>> Sending consent to OpenG2P: {params}")
+        frappe.logger().debug(f"Sending consent to OpenG2P: {params}")
         result = self._call_rpc("/api/consent/request/create", "call", params)
-        print(f">>>>>> OpenG2P consent response: {result}")
+        frappe.logger().debug(f"OpenG2P consent response: {result}")
         return result
 
     def approve_consent_request(self, consent_creation_request_id):
         params = {
             "consent_creation_request_id": consent_creation_request_id
         }
-        print(f">>>>>> Approving consent in OpenG2P: {params}")
+        frappe.logger().debug(f"Approving consent in OpenG2P: {params}")
         result = self._call_rpc("/api/consent/request/approve", "call", params)
-        print(f">>>>>> OpenG2P approve response: {result}")
+        frappe.logger().debug(f"OpenG2P approve response: {result}")
         return result
 
     # -------------------------------------------------------------------------
@@ -366,7 +394,7 @@ class OpenG2PConsentClient:
         # We must initialize Odoo's internal session dictionary before requesting an OTP.
         # Calling verify_otp with a dummy transaction but a valid farmer_id reaches
         # _get_fayda_otp_session_store and forces Werkzeug to initialize and flush `{}`.
-        print(f">>>>>> [DEBUG] Priming Odoo session for farmer_id: {farmer_id}")
+        frappe.logger().debug(f"[DEBUG] Priming Odoo session for farmer_id: {farmer_id}")
         prime_payload = {
             "jsonrpc": "2.0",
             "method": "call",
@@ -382,9 +410,9 @@ class OpenG2PConsentClient:
             pass
 
         params = {"farmer_id": farmer_id}
-        print(f">>>>>> Calling Odoo /consent/fayda/request_otp: {params}")
+        frappe.logger().debug(f"Calling Odoo /consent/fayda/request_otp: {params}")
         result = self._call_rpc("/consent/fayda/request_otp", "call", params)
-        print(f">>>>>> Odoo request_otp response: {result}")
+        frappe.logger().debug(f"Odoo request_otp response: {result}")
         return result
 
     def verify_otp(self, farmer_id, transaction_id, otp_code):
@@ -396,9 +424,9 @@ class OpenG2PConsentClient:
             "transaction_id": transaction_id,
             "otp_code": str(otp_code)
         }
-        print(f">>>>>> Calling Odoo /consent/fayda/verify_otp: {params}")
+        frappe.logger().debug(f"Calling Odoo /consent/fayda/verify_otp: {params}")
         result = self._call_rpc("/consent/fayda/verify_otp", "call", params)
-        print(f">>>>>> Odoo verify_otp response: {result}")
+        frappe.logger().debug(f"Odoo verify_otp response: {result}")
         return result
 
     # -------------------------------------------------------------------------
@@ -424,7 +452,7 @@ class OpenG2PConsentClient:
             if not os.path.exists(file_path):
                 file_path = f"{site_path}/private{file_url}"
 
-        print(f">>>>>> Reading attachment from: {file_path}")
+        frappe.logger().debug(f"Reading attachment from: {file_path}")
 
         with open(file_path, "rb") as f:
             file_content_b64 = base64.b64encode(f.read()).decode("utf-8")

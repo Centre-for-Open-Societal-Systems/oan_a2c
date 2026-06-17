@@ -84,11 +84,7 @@ def handle_api_errors(func):
             frappe.local.message_log = []
             frappe.response.status_code = 401
             return error_response(str(e) or "Authentication failed", "AUTHENTICATION_ERROR")
-        except frappe.DoesNotExistError:
-            frappe.local.message_log = []
-            frappe.response.status_code = 404
-            return error_response("Resource not found", "NOT_FOUND")
-        except (frappe.ValidationError, getattr(frappe, 'MandatoryError', Exception), getattr(frappe, 'UniqueValidationError', Exception), getattr(frappe, 'DuplicateEntryError', Exception), getattr(frappe, 'DataError', Exception)) as e:
+        except frappe.DoesNotExistError as e:
             error_msg = str(e)
             
             # Extract Frappe's real error message from message_log if it exists
@@ -105,6 +101,30 @@ def handle_api_errors(func):
                             parsed_msgs.append(str(m))
                     except Exception:
                         parsed_msgs.append(str(m))
+                
+                if parsed_msgs:
+                    error_msg = " | ".join(parsed_msgs)
+
+            frappe.local.message_log = []
+            frappe.response.status_code = 404
+            return error_response(error_msg or "Resource not found", "NOT_FOUND")
+        except (frappe.ValidationError, getattr(frappe, 'MandatoryError', Exception), getattr(frappe, 'UniqueValidationError', Exception), getattr(frappe, 'DuplicateEntryError', Exception), getattr(frappe, 'DataError', Exception)) as e:
+            error_msg = str(e)
+            
+            # Extract Frappe's real error message from message_log if it exists
+            messages = getattr(frappe.local, 'message_log', [])
+            if messages:
+                import json
+                parsed_msgs = []
+                for m in messages:
+                    try:
+                        parsed = json.loads(m)
+                        if isinstance(parsed, dict) and "message" in parsed:
+                            parsed_msgs.append(str(parsed["message"]))
+                        else:
+                            parsed_msgs.append(str(m))
+                    except Exception:
+                            parsed_msgs.append(str(m))
                 
                 if parsed_msgs:
                     error_msg = " | ".join(parsed_msgs)

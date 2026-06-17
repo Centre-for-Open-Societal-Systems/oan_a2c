@@ -33,35 +33,28 @@ def _fetch_and_save_farmer_data(client, fayda_id, target_doctype, target_name, o
     import json as _json
 
     try:
-        farmer_db_id = client.get_farmer_by_fayda_id(fayda_id)
+        farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
         farmer_record = {}
         selected_data = {}
 
-        if farmer_db_id:
-            farmer_records = client._admin_search_read(
-                "res.partner",
-                [["id", "=", farmer_db_id]],
-                ["id", "name", "email", "mobile", "phone"]
-            )
-            frappe.logger().debug(f"Direct fetch res.partner: {farmer_records}")
+        if farmer_dict:
+            farmer_db_id = farmer_dict.get("id")
+            
+            full_name = (farmer_dict.get("name") or "").strip()
+            parts = full_name.split()
+            given_name  = parts[0].title() if parts else ""
+            family_name = " ".join(p.title() for p in parts[1:]) if len(parts) > 1 else ""
+            mobile = farmer_dict.get("mobile") or farmer_dict.get("phone") or ""
 
-            if farmer_records:
-                f = farmer_records[0]
-                full_name = (f.get("name") or "").strip()
-                parts = full_name.split()
-                given_name  = parts[0].title() if parts else ""
-                family_name = " ".join(p.title() for p in parts[1:]) if len(parts) > 1 else ""
-                mobile = f.get("mobile") or f.get("phone") or ""
-
-                farmer_record = {"id": f.get("id"), "name": full_name}
-                selected_data = {
-                    "farmer": {
-                        "given_name":  given_name,
-                        "family_name": family_name,
-                        "email":       f.get("email") or "",
-                        "phone_no":    [mobile] if mobile else [],
-                    }
+            farmer_record = {"id": farmer_db_id, "name": full_name}
+            selected_data = {
+                "farmer": {
+                    "given_name":  given_name,
+                    "family_name": family_name,
+                    "email":       farmer_dict.get("email") or "",
+                    "phone_no":    [mobile] if mobile else [],
                 }
+            }
 
         synthetic_payload = {
             "source": "frappe_direct_fetch",
@@ -109,24 +102,23 @@ def search_farmer(**kwargs):
         frappe.throw(frappe._("fayda_id is required"))
 
     client = OpenG2PConsentClient()
-    farmer_db_id = client.get_farmer_by_fayda_id(fayda_id)
+    farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
     
-    if not farmer_db_id:
+    if not farmer_dict:
         frappe.throw(frappe._("Farmer with Fayda ID '{0}' not found in OpenG2P.").format(fayda_id), frappe.DoesNotExistError)
 
-    # Optionally fetch basic profile to show who it is
-    farmer_records = client._admin_search_read(
-        "res.partner",
-        [["id", "=", farmer_db_id]],
-        ["id", "name", "mobile", "phone"]
-    )
-    
-    farmer_data = farmer_records[0] if farmer_records else {"id": farmer_db_id}
+    farmer_db_id = farmer_dict.get("id")
+
+    # Strictly return only the PII needed by the frontend
+    farmer_data_for_frontend = {
+        "name": farmer_dict.get("name"),
+        "mobile": farmer_dict.get("mobile"),
+        "phone": farmer_dict.get("phone")
+    }
 
     return success_response(
         data={
-            "farmer_db_id": farmer_db_id,
-            "farmer": farmer_data
+            "farmer": farmer_data_for_frontend
         },
         message="Farmer found successfully."
     )
@@ -146,7 +138,7 @@ def request_otp(**kwargs):
     fayda_id                = _getter("fayda_id")
     partner                 = _getter("partner")
     lead_id                 = _getter("lead_id")
-    purpose                 = _getter("purpose", "Loan for seeds and fertilizer")
+    purpose                 = _getter("consent_reason_id", 1)  # OpenG2P requires an integer ID
     validity_from           = _getter("validity_from")
     validity_to             = _getter("validity_to")
     consent_form_attachment = _getter("consent_form_attachment")
@@ -165,9 +157,11 @@ def request_otp(**kwargs):
 
     client = OpenG2PConsentClient()
 
-    farmer_db_id = client.get_farmer_by_fayda_id(fayda_id)
-    if not farmer_db_id:
+    farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
+    if not farmer_dict:
         frappe.throw(frappe._("Farmer with Fayda ID '{0}' not found in OpenG2P.").format(fayda_id))
+        
+    farmer_db_id = farmer_dict.get("id")
 
     partner_id_openg2p = client.get_partner_id(partner)
     if not partner_id_openg2p:
@@ -346,9 +340,11 @@ def verify_otp_for_lead(**kwargs):
         frappe.logger().debug(f"Retrieved fallback Odoo session_id: {odoo_session_id} for transaction_id: {transaction_id}")
         client = OpenG2PConsentClient(portal_session_id=odoo_session_id)
 
-    farmer_db_id = client.get_farmer_by_fayda_id(fayda_id)
-    if not farmer_db_id:
+    farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
+    if not farmer_dict:
         frappe.throw(frappe._("Farmer with Fayda ID '{0}' not found in OpenG2P.").format(fayda_id))
+        
+    farmer_db_id = farmer_dict.get("id")
 
     # 1. Verify OTP with Odoo (Fayda)
     try:
