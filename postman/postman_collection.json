@@ -117,9 +117,179 @@
                         "description": "Sets a new password using the temporary key. Expected to be called by the Headless Frontend after a user clicks the reset link in their email."
                     },
                     "response": []
+                },
+                {
+                    "name": "4. Keycloak Login (Password Grant)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Login HTTP 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const json = pm.response.json();",
+                                    "",
+                                    "if (json.access_token) {",
+                                    "    pm.collectionVariables.set('jwt_token', json.access_token);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/x-www-form-urlencoded",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "urlencoded",
+                            "urlencoded": [
+                                {
+                                    "key": "client_id",
+                                    "value": "{{keycloak_client_id}}",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "username",
+                                    "value": "{{keycloak_username}}",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "password",
+                                    "value": "{{keycloak_password}}",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "grant_type",
+                                    "value": "password",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "scope",
+                                    "value": "openid",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{keycloak_url}}/realms/{{keycloak_realm}}/protocol/openid-connect/token",
+                            "host": [
+                                "{{keycloak_url}}"
+                            ],
+                            "path": [
+                                "realms",
+                                "{{keycloak_realm}}",
+                                "protocol",
+                                "openid-connect",
+                                "token"
+                            ]
+                        },
+                        "description": "Authenticates against Keycloak using Resource Owner Password Credentials grant and automatically saves the retrieved access_token to the collection's jwt_token variable."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "5. Keycloak Login (Authorization Code)",
+                    "request": {
+                        "auth": {
+                            "type": "oauth2",
+                            "oauth2": [
+                                {
+                                    "key": "grant_type",
+                                    "value": "authorization_code",
+                                    "type": "string"
+                                },
+                                {
+                                    "key": "authUrl",
+                                    "value": "{{keycloak_url}}/realms/{{keycloak_realm}}/protocol/openid-connect/auth",
+                                    "type": "string"
+                                },
+                                {
+                                    "key": "accessTokenUrl",
+                                    "value": "{{keycloak_url}}/realms/{{keycloak_realm}}/protocol/openid-connect/token",
+                                    "type": "string"
+                                },
+                                {
+                                    "key": "clientId",
+                                    "value": "{{keycloak_client_id}}",
+                                    "type": "string"
+                                },
+                                {
+                                    "key": "scope",
+                                    "value": "openid",
+                                    "type": "string"
+                                },
+                                {
+                                    "key": "addTokenTo",
+                                    "value": "header",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Host",
+                                "value": "{{host_header}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.whoami",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.whoami"
+                            ]
+                        },
+                        "description": "Uses Postman's built-in OAuth 2.0 helper to request an authorization code via Keycloak login page, exchange it for a token, and use that token."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "6. Get Profile (Whoami)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Host",
+                                "value": "{{host_header}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.whoami",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.whoami"
+                            ]
+                        },
+                        "description": "Returns details of the currently authenticated user session. Works with either the legacy HS256 token or the Keycloak RS256 token."
+                    },
+                    "response": []
                 }
             ]
         },
+
         {
             "name": "Business API (Requires JWT)",
             "item": [
@@ -2157,6 +2327,30 @@
         {
             "key": "pwd",
             "value": "test_agent@1234"
+        },
+        {
+            "key": "keycloak_url",
+            "value": "http://localhost:8080"
+        },
+        {
+            "key": "keycloak_realm",
+            "value": "oan"
+        },
+        {
+            "key": "keycloak_client_id",
+            "value": "oan-a2c"
+        },
+        {
+            "key": "keycloak_username",
+            "value": "dev"
+        },
+        {
+            "key": "keycloak_password",
+            "value": "dev@coss"
+        },
+        {
+            "key": "host_header",
+            "value": "development.localhost"
         }
     ]
 }

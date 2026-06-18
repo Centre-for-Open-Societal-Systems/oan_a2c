@@ -119,3 +119,43 @@ def reset_password(email, key, new_password):
 			"exception": "ValidationError",
 			"message": str(e)
 		}
+
+
+@frappe.whitelist()
+def whoami():
+	"""
+	Returns the current user's A2C profile based on their JWT.
+
+	Works with both HS256 (legacy) and RS256 (Keycloak) tokens.
+	Useful for frontends that authenticate via Keycloak directly and need
+	to fetch A2C-specific metadata (full name, roles, linked bank).
+
+	This endpoint is JWT-protected via the middleware — not guest-accessible.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.local.response["http_status_code"] = 401
+		return {
+			"status": "error",
+			"message": _("Not authenticated"),
+		}
+
+	user = frappe.get_doc("User", frappe.session.user)
+	roles = [d.role for d in user.roles]
+
+	bank = None
+	if "Bank Agent" in roles:
+		bank = frappe.db.get_value(
+			"User Permission",
+			{"user": frappe.session.user, "allow": "Participating Bank"},
+			"for_value",
+		)
+
+	return {
+		"status": "success",
+		"user": {
+			"email": user.email,
+			"full_name": user.full_name,
+			"roles": roles,
+			"bank": bank,
+		},
+	}
