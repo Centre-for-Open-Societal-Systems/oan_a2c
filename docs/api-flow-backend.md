@@ -891,7 +891,7 @@ All endpoints use `@handle_api_errors` and standard envelope.
 }
 ```
 
-**Success response — with `include_consent_data=1`** (HTTP 200):
+**Success response — with `include_consent_data=1`** (HTTP 200)
 ```json
 {
   "status": "success",
@@ -902,6 +902,8 @@ All endpoints use `@handle_api_errors` and standard envelope.
     "email": null,
     "location": "Oromia",
     "websub_delivered_at": "2026-01-15 10:00:00 or null",
+    "consent_type": "OTP or OAuth or null",
+    "purpose": "Credit check or null",
     "validity_from": "2026-01-01 00:00:00",
     "validity_to": "2027-01-01 00:00:00",
     "requested_data_fields": [
@@ -1483,7 +1485,7 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 ---
 
-#### `GET/POST /api/method/oan_a2c.api.v1.consent.api.search_farmer`
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.search_farmer`
 
 **Parameters:**
 
@@ -1513,28 +1515,20 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 | Condition | HTTP | code | message |
 |-----------|------|------|---------|
 | `fayda_id` missing | 400 | `VALIDATION_ERROR` | `"fayda_id is required"` |
-| Farmer not found in OpenG2P | 404 | `NOT_FOUND` | `"Farmer with Fayda ID '{id}' not found in OpenG2P."` |
+| Farmer not found  | 404 | `NOT_FOUND` | `"Farmer with Fayda ID '{id}' not found ."` |
 | OpenG2P unreachable | 500 | `INTERNAL_ERROR` | |
 
 ---
 
-#### `GET/POST /api/method/oan_a2c.api.v1.consent.api.request_otp`
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.request_otp`
 
 **Parameters:**
 
 | Param | Type | Required | Notes |
 |-------|------|----------|-------|
 | **`fayda_id`** | string | Yes | |
-| **`partner`** | string | Yes | Partner name in OpenG2P |
 | **`lead_id`** | string | Yes | |
-| `purpose` | string | No | Default: `"Loan for seeds and fertilizer"` |
-| `validity_from` | string | No | ISO datetime. Defaults to now if omitted |
-| `validity_to` | string | No | ISO datetime. Defaults to now + 1 year if omitted |
-| **`consent_form_attachment`** | string | Conditional | Pre-uploaded file URL. Required if base64 not provided. |
-| **`consent_form_base64`** | string | Conditional | Base64 encoded file. Required if URL not provided. |
-| **`consent_form_filename`** | string | Conditional | Required when `consent_form_base64` provided. |
-
-> One of `consent_form_attachment` OR (`consent_form_base64` + `consent_form_filename`) is **mandatory**.
+| `idempotency_key` | string | No | Optional key to prevent duplicate OTP requests |
 
 **Success response** (HTTP 200):
 ```json
@@ -1553,41 +1547,69 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 | Condition | HTTP | code | message |
 |-----------|------|------|---------|
-| `lead_id` missing | 400 | `VALIDATION_ERROR` | `"lead_id is required"` |
-| `lead_id` not found | 404 | `NOT_FOUND` | `"A2C Lead {id} not found"` |
-| `fayda_id` missing | 400 | `VALIDATION_ERROR` | `"fayda_id is required"` |
-| `partner` missing | 400 | `VALIDATION_ERROR` | `"partner is required"` |
-| No attachment provided | 400 | `VALIDATION_ERROR` | `"An attachment is strictly required..."` |
-| Farmer not found in OpenG2P | 400 | `VALIDATION_ERROR` | `"Farmer with Fayda ID '{id}' not found in OpenG2P."` |
-| Partner not found in OpenG2P | 400 | `VALIDATION_ERROR` | `"Partner '{partner}' not found in OpenG2P."` |
-| OTP request to Fayda fails | 500 | `INTERNAL_ERROR` | `"Failed to request OTP from the identity provider."` |
-| OTP response has no transaction_id | 500 | `INTERNAL_ERROR` | `"Identity provider did not return a transaction ID."` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` | |
+| `lead_id` missing | 400 | `VALIDATION_ERROR` | |
+| `fayda_id` missing | 400 | `VALIDATION_ERROR` | |
+| Rate limit exceeded | 429 | `VALIDATION_ERROR` | `"Rate limit exceeded. Try again later."` |
 
 **Side effects:**
-- Stores Odoo session cookies in Redis: key `odoo_session_dict_{transaction_id}`, TTL 1800s
-- Creates `A2C Consent Request` with status `"Pending OTP"`
-- If `consent_form_base64` provided: saves as private file attached to the lead
+- Stores Odoo session cookie/dict in Redis.
+- Creates `A2C Consent Request` with status `"Pending OTP"`.
 
 ---
 
-#### `GET/POST /api/method/oan_a2c.api.v1.consent.api.verify_otp_for_lead`
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.verify_otp`
 
 **Parameters:**
 
 | Param | Type | Required | Notes |
 |-------|------|----------|-------|
 | **`lead_id`** | string | Yes | |
+| **`consent_request`** | string | Yes | |
 | **`otp_code`** | string | Yes | |
 
 **Success response** (HTTP 200):
 ```json
 {
   "status": "success",
-  "message": "OTP verified. Consent approved and saved to Lead.",
+  "message": "OTP verified successfully. Proceed to submit consent.",
   "data": {
     "lead_id": "LEAD-2026-0001",
     "consent_request": "CONREQ-2026-0001",
+    "transaction_id": "TXN-ABC-123",
+    "status": "OTP Verified"
+  }
+}
+```
+
+**Side effects:**
+- Sets `otp_verified_at` on the `A2C Consent Request`.
+
+---
+
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.submit_consent`
+
+**Parameters:**
+
+| Param | Type | Required | Notes |
+|-------|------|----------|-------|
+| **`lead_id`** | string | Yes | |
+| **`consent_request`** | string | Yes | |
+| `consent_type` | string | No | Default: `"specific"` |
+| `consent_reason_id` | integer | No | Default: `1` |
+| `validity_months` | integer | No | Default: `12` |
+| **`consent_form_filename`** | string | Yes | |
+| **`consent_form_base64`** | string | Yes | Base64-encoded PDF/Image file |
+| `allowed_data_field_ids` | array | No | List of permitted OpenG2P field IDs |
+
+**Success response** (HTTP 200):
+```json
+{
+  "status": "success",
+  "message": "Consent submitted and approved successfully.",
+  "data": {
+    "lead_id": "LEAD-2026-0001",
+    "consent_request": "CONREQ-2026-0001",
+    "status": "Approved",
     "openg2p_consent_id": "OG2P-CONSENT-001",
     "consent_receipt": "HMAC_SIGNATURE_STRING",
     "farmer_preview": {
@@ -1600,26 +1622,70 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 }
 ```
 
-> **`farmer_preview`** is the raw farmer data from OpenG2P — keys are `given_name`, `family_name`, `email`, `phone_no` (list). Not the same shape as the Lead object.
-> **After this call:** The lead's `first_name`, `last_name`, and `phone_number` are updated from `farmer_preview` if the values are non-empty.
+**Side effects:**
+- Uploads consent document attachment to OpenG2P.
+- Submits and approves the consent request .
+- Marks `A2C Consent Request` as `"Approved"` and updates the lead with the farmer profile data.
+- Queues WebSub delivery payload.
 
-**Error cases:**
+---
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `lead_id` or `otp_code` missing | 400 | `VALIDATION_ERROR` | `"X is required"` |
-| No `Pending OTP` consent request for lead | 400 | `VALIDATION_ERROR` | `"No pending A2C Consent Request found for Lead '{id}'. Did you call request_otp first?"` |
-| Consent request has no `otp_transaction_id` | 400 | `VALIDATION_ERROR` | `"OTP was not requested for this consent"` |
-| Farmer not found in OpenG2P | 400 | `VALIDATION_ERROR` | |
-| OTP verification rejected by Fayda | 500 | `INTERNAL_ERROR` | `"OTP verification failed. Please check your code and try again."` |
-| Attachment upload to OpenG2P fails | 500 | `INTERNAL_ERROR` | `"Failed to upload consent attachment."` |
-| Consent creation in OpenG2P fails | 500 | `INTERNAL_ERROR` | `"Failed to create consent request in the identity system."` |
-| No consent ID returned from OpenG2P | 500 | `INTERNAL_ERROR` | `"Consent request created but no identification ID was returned."` |
-| Partner not found in OpenG2P | 400 | `VALIDATION_ERROR` | `"Partner '{partner}' not found in OpenG2P."` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` | |
-| No write permission on consent request | 403 | `PERMISSION_DENIED` | |
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.get_partner_allowed_data_field_ids`
 
-> **Atomicity warning:** This endpoint makes 5 sequential external calls. Failure at step 2–5 leaves the OTP verified in Fayda but consent incomplete in OpenG2P and Frappe — partial state with no rollback or retry mechanism.
+No parameters.
+
+**Success response** (HTTP 200):
+```json
+{
+  "status": "success",
+  "message": "Allowed data field IDs retrieved successfully.",
+  "data": {
+    "allowed_data_field_ids": [1, 2]
+  }
+}
+```
+
+---
+
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.get_consent_reasons`
+
+No parameters.
+
+**Success response** (HTTP 200):
+```json
+{
+  "status": "success",
+  "message": "Consent reasons retrieved successfully.",
+  "data": [
+    {
+      "id": 1,
+      "name": "Loan credit analysis"
+    }
+  ]
+}
+```
+
+---
+
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.get_consent_allowed_fields`
+
+No parameters.
+
+**Success response** (HTTP 200):
+```json
+{
+  "status": "success",
+  "message": "Allowed data fields retrieved successfully.",
+  "data": [
+    {
+      "id": 1,
+      "name": "Phone Number"
+    }
+  ]
+}
+```
+
+---
 
 ---
 

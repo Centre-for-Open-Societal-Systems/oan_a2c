@@ -1,164 +1,165 @@
 {
- "actions": [],
- "autoname": "format:LEAD-{YYYY}-{#####}",
- "creation": "2026-05-19 00:00:00.000000",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "phone_number",
-  "external_id",
-  "first_name",
-  "last_name",
-  "email",
-  "lead_source",
-  "status",
-  "assigned_to",
-  "assigned_date",
-  "section_notes",
-  "call_notes"
- ],
- "fields": [
-  {
-   "fieldname": "phone_number",
-   "fieldtype": "Data",
-   "label": "Phone Number",
-   "mandatory_depends_on": "",
-   "reqd": 1,
-   "unique": 0,
-   "options": "Phone",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "search_index": 1
-  },
-  {
-   "fieldname": "external_id",
-   "fieldtype": "Data",
-   "label": "External Reference ID",
-   "unique": 0,
-   "search_index": 1,
-   "in_list_view": 1,
-   "in_standard_filter": 1
-  },
-  {
-   "fieldname": "first_name",
-   "fieldtype": "Data",
-   "label": "First Name",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "last_name",
-   "fieldtype": "Data",
-   "label": "Last Name",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "email",
-   "fieldtype": "Data",
-   "label": "Email",
-   "options": "Email",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "lead_source",
-   "fieldtype": "Select",
-   "label": "Source",
-   "options": "Missed Call\nIVR\nSMS\nAgent Entry",
-   "default": "Missed Call",
-   "reqd": 1,
-   "in_list_view": 1,
-   "in_standard_filter": 1
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "label": "Lead Status",
-   "options": "Active\nVerified\nProcessed\nGranted\nRejected\nDormant",
-   "default": "Active",
-   "reqd": 1,
-   "in_list_view": 1,
-   "in_standard_filter": 1
-  },
-  {
-   "fieldname": "assigned_to",
-   "fieldtype": "Link",
-   "label": "Assigned Agent",
-   "options": "User",
-   "in_list_view": 1
-  },
-  {
-   "fieldname": "assigned_date",
-   "fieldtype": "Date",
-   "label": "Assigned Date",
-   "read_only": 1
-  },
-  {
-   "fieldname": "section_notes",
-   "fieldtype": "Section Break",
-   "label": "Notes"
-  },
-  {
-   "fieldname": "call_notes",
-   "fieldtype": "Text",
-   "label": "Initial Call Notes"
-  },
-  {
-   "fieldname": "farmer_profile",
-   "fieldtype": "Link",
-   "label": "Farmer Profile",
-   "options": "A2C Farmer Profile"
-  }
- ],
- "index_web_pages_for_search": 0,
- "is_submittable": 0,
- "links": [],
- "modified": "2026-05-19 00:00:00.000000",
- "modified_by": "Administrator",
- "module": "OpenAgriNet Access to Credit",
- "name": "A2C Lead",
- "naming_rule": "Expression",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 0,
-   "email": 0,
-   "export": 0,
-   "print": 0,
-   "read": 1,
-   "report": 0,
-   "role": "Development Agent",
-   "share": 0,
-   "write": 1
-  },
-  {
-   "create": 0,
-   "delete": 0,
-   "email": 0,
-   "export": 0,
-   "print": 0,
-   "read": 1,
-   "report": 0,
-   "role": "Bank Agent",
-   "share": 0,
-   "write": 0
-  },
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  }
- ],
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": [],
- "title_field": "phone_number",
- "track_changes": 1
+    "actions": [],
+    "autoname": "format:LEAD-{YYYY}-{#####}",
+    "creation": "2026-05-19 00:00:00.000000",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+        "phone_number",
+        "external_id",
+        "first_name",
+        "last_name",
+        "email",
+        "lead_source",
+        "status",
+        "assigned_to",
+        "assigned_date",
+        "section_notes",
+        "call_notes",
+        "farmer_profile"
+    ],
+    "fields": [
+        {
+            "fieldname": "phone_number",
+            "fieldtype": "Data",
+            "label": "Phone Number",
+            "mandatory_depends_on": "",
+            "reqd": 1,
+            "unique": 0,
+            "options": "Phone",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "search_index": 1
+        },
+        {
+            "fieldname": "external_id",
+            "fieldtype": "Data",
+            "label": "External Reference ID",
+            "unique": 0,
+            "search_index": 1,
+            "in_list_view": 1,
+            "in_standard_filter": 1
+        },
+        {
+            "fieldname": "first_name",
+            "fieldtype": "Data",
+            "label": "First Name",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "last_name",
+            "fieldtype": "Data",
+            "label": "Last Name",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "email",
+            "fieldtype": "Data",
+            "label": "Email",
+            "options": "Email",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "lead_source",
+            "fieldtype": "Select",
+            "label": "Source",
+            "options": "Missed Call\nIVR\nSMS\nAgent Entry",
+            "default": "Missed Call",
+            "reqd": 1,
+            "in_list_view": 1,
+            "in_standard_filter": 1
+        },
+        {
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "label": "Lead Status",
+            "options": "Active\nVerified\nProcessed\nGranted\nRejected\nDormant",
+            "default": "Active",
+            "reqd": 1,
+            "in_list_view": 1,
+            "in_standard_filter": 1
+        },
+        {
+            "fieldname": "assigned_to",
+            "fieldtype": "Link",
+            "label": "Assigned Agent",
+            "options": "User",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "assigned_date",
+            "fieldtype": "Date",
+            "label": "Assigned Date",
+            "read_only": 1
+        },
+        {
+            "fieldname": "section_notes",
+            "fieldtype": "Section Break",
+            "label": "Notes"
+        },
+        {
+            "fieldname": "call_notes",
+            "fieldtype": "Text",
+            "label": "Initial Call Notes"
+        },
+        {
+            "fieldname": "farmer_profile",
+            "fieldtype": "Link",
+            "label": "Farmer Profile",
+            "options": "A2C Farmer Profile"
+        }
+    ],
+    "index_web_pages_for_search": 0,
+    "is_submittable": 0,
+    "links": [],
+    "modified": "2026-05-19 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "OpenAgriNet Access to Credit",
+    "name": "A2C Lead",
+    "naming_rule": "Expression",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 0,
+            "email": 0,
+            "export": 0,
+            "print": 0,
+            "read": 1,
+            "report": 0,
+            "role": "Development Agent",
+            "share": 0,
+            "write": 1
+        },
+        {
+            "create": 0,
+            "delete": 0,
+            "email": 0,
+            "export": 0,
+            "print": 0,
+            "read": 1,
+            "report": 0,
+            "role": "Bank Agent",
+            "share": 0,
+            "write": 0
+        },
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": [],
+    "title_field": "phone_number",
+    "track_changes": 1
 }

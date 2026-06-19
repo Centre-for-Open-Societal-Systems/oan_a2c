@@ -1,14 +1,64 @@
 import frappe
 from frappe import _
 from functools import wraps
+from pydantic import BaseModel, BeforeValidator, ValidationError as PydanticValidationError
+from typing import Annotated, Optional
+import inspect
+
+class _DummyException(Exception):
+    pass
+
+
+def validate_request(schema: type[BaseModel]):
+    """Decorator to validate whitelisted API inputs using a Pydantic schema.
+
+    Parses, casts types, and validates the inputs.
+    Returns a standardized error response if validation fails.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            sig = inspect.signature(func)
+            bound = sig.bind_partial(*args, **kwargs)
+            bound.apply_defaults()
+            
+            params = {}
+            for k, v in bound.arguments.items():
+                if k == "kwargs" and isinstance(v, dict):
+                    params.update(v)
+                else:
+                    params[k] = v
+            
+            try:
+                validated = schema(**params)
+            except PydanticValidationError as e:
+                errors = {}
+                for err in e.errors():
+                    loc = ".".join(str(loc_item) for loc_item in err["loc"])
+                    errors[loc] = err["msg"]
+                
+                frappe.response["http_status_code"] = 400
+                frappe.local.message_log = []
+                return error_response(
+                    message="Validation failed",
+                    code="VALIDATION_ERROR",
+                    details=errors
+                )
+            
+            # The native ** unpacking operator automatically maps to named parameters
+            # or collects into **kwargs, depending on the decorated function's signature.
+            validated_dict = validated.model_dump()
+            return func(**validated_dict)
+        return wrapper
+    return decorator
 
 def parse_multi_value(value, allowed=None):
     """Split a single value or comma-separated string into a de-duplicated list.
 
     - Accepts a string ("a,b"), a list/tuple, or None.
-    - When `allowed` is provided (a collection), values not in it are silently dropped.
+    - When `allowed` is provided (a collection), values not in it raise a ValidationError.
     - When `allowed` is None, all non-empty values are kept (use for free-text fields).
-    - Order is preserved; duplicates are removed. Returns [] when nothing valid remains.
+    - Order is preserved; duplicates are removed.
     """
     if value is None:
         return []
@@ -22,10 +72,38 @@ def parse_multi_value(value, allowed=None):
         if not v or v in seen:
             continue
         if allowed is not None and v not in allowed:
-            continue
+            allowed_list = ", ".join(str(a) for a in allowed)
+            frappe.throw(
+                _("Invalid value '{0}'. Allowed values: {1}").format(v, allowed_list),
+                frappe.ValidationError
+            )
         seen.add(v)
         result.append(v)
     return result
+
+def validate_date_string(v):
+    """Validate that a string represents a valid date or datetime."""
+    if v:
+        try:
+            import datetime
+            try:
+                datetime.date.fromisoformat(v)
+            except ValueError:
+                datetime.datetime.fromisoformat(v)
+        except ValueError:
+            raise ValueError("Invalid date format. Expected YYYY-MM-DD or ISO 8601 string.")
+    return v
+
+def validate_email_string(v):
+    """Validate that a string represents a valid email address."""
+    if v:
+        from frappe.utils import validate_email_address
+        if not validate_email_address(v):
+            raise ValueError("Invalid email address format")
+    return v
+
+SafeDate = Annotated[Optional[str], BeforeValidator(validate_date_string)]
+SafeEmail = Annotated[Optional[str], BeforeValidator(validate_email_string)]
 
 def success_response(data=None, message="Success", meta=None, pagination=None):
     """
@@ -46,23 +124,89 @@ def _envelope_success(data=None, message="Success", meta=None, pagination=None):
         "data": data,
         "meta": meta or {},
     }
+    req_id = getattr(frappe.local, "request_id", None)
+    if req_id:
+        res["request_id"] = req_id
     if pagination:
         res["pagination"] = pagination
     return res
 
 def error_response(message, code="GENERIC_ERROR", details=None):
-    return {
+    res = {
         "status": "error",
         "message": message,
         "code": code,
         "details": details or {},
     }
+    req_id = getattr(frappe.local, "request_id", None)
+    if req_id:
+        res["request_id"] = req_id
+    return res
+
+def extract_message_from_str(val):
+    if val.startswith("{") and val.endswith("}"):
+        try:
+            import json
+            import ast
+            try:
+                parsed = json.loads(val)
+            except Exception:
+                parsed = ast.literal_eval(val)
+            if isinstance(parsed, dict) and "message" in parsed:
+                return str(parsed["message"])
+        except Exception:
+            pass
+    return val
+
+def get_error_message(e, default_msg="Validation Error"):
+    error_msg = ""
+    if hasattr(e, "args") and e.args:
+        first_arg = e.args[0]
+        if isinstance(first_arg, dict):
+            error_msg = first_arg.get("message") or str(first_arg)
+        elif isinstance(first_arg, str):
+            error_msg = extract_message_from_str(first_arg)
+        else:
+            error_msg = str(first_arg)
+    else:
+        error_msg = str(e)
+
+    error_msg = extract_message_from_str(error_msg)
+
+    messages = getattr(frappe.local, 'message_log', [])
+    if messages:
+        parsed_msgs = []
+        for m in messages:
+            if isinstance(m, dict):
+                msg_str = m.get("message") or str(m)
+            elif isinstance(m, str):
+                msg_str = extract_message_from_str(m)
+            else:
+                msg_str = str(m)
+            if msg_str:
+                parsed_msgs.append(msg_str)
+        if parsed_msgs:
+            return " | ".join(parsed_msgs)
+    return error_msg or default_msg
 
 def handle_api_errors(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
+        if not getattr(frappe.local, "request_id", None):
+            req_id = None
+            if frappe.request:
+                req_id = frappe.request.headers.get("X-Request-Id") or frappe.request.environ.get("REQUEST_ID")
+            if not req_id:
+                import uuid
+                req_id = str(uuid.uuid4())
+            frappe.local.request_id = req_id
+
         try:
             res = func(*args, **kwargs)
+            
+            # Bypass JSON envelope wrapping for binary/file download responses
+            if getattr(frappe.local, "response", None) and frappe.local.response.get("type") == "download":
+                return res
             
             message = "Success"
             pagination = None
@@ -78,64 +222,65 @@ def handle_api_errors(func):
             return _envelope_success(data=data, message=message, pagination=pagination, meta=meta)
         except frappe.PermissionError:
             frappe.local.message_log = []
-            frappe.response.status_code = 403
+            frappe.response["http_status_code"] = 403
             return error_response("Permission denied", "PERMISSION_DENIED")
         except frappe.AuthenticationError as e:
             frappe.local.message_log = []
-            frappe.response.status_code = 401
+            frappe.response["http_status_code"] = 401
             return error_response(str(e) or "Authentication failed", "AUTHENTICATION_ERROR")
+        except PydanticValidationError as e:
+            errors = {}
+            for err in e.errors():
+                loc = ".".join(str(loc_item) for loc_item in err["loc"])
+                errors[loc] = err["msg"]
+            frappe.local.message_log = []
+            frappe.response["http_status_code"] = 400
+            return error_response(
+                message="Validation failed",
+                code="VALIDATION_ERROR",
+                details=errors
+            )
         except frappe.DoesNotExistError as e:
-            error_msg = str(e)
-            
-            # Extract Frappe's real error message from message_log if it exists
-            messages = getattr(frappe.local, 'message_log', [])
-            if messages:
-                import json
-                parsed_msgs = []
-                for m in messages:
-                    try:
-                        parsed = json.loads(m)
-                        if isinstance(parsed, dict) and "message" in parsed:
-                            parsed_msgs.append(str(parsed["message"]))
-                        else:
-                            parsed_msgs.append(str(m))
-                    except Exception:
-                        parsed_msgs.append(str(m))
-                
-                if parsed_msgs:
-                    error_msg = " | ".join(parsed_msgs)
-
+            error_msg = get_error_message(e, "Resource not found")
             frappe.local.message_log = []
-            frappe.response.status_code = 404
-            return error_response(error_msg or "Resource not found", "NOT_FOUND")
-        except (frappe.ValidationError, getattr(frappe, 'MandatoryError', Exception), getattr(frappe, 'UniqueValidationError', Exception), getattr(frappe, 'DuplicateEntryError', Exception), getattr(frappe, 'DataError', Exception)) as e:
-            error_msg = str(e)
-            
-            # Extract Frappe's real error message from message_log if it exists
-            messages = getattr(frappe.local, 'message_log', [])
-            if messages:
-                import json
-                parsed_msgs = []
-                for m in messages:
-                    try:
-                        parsed = json.loads(m)
-                        if isinstance(parsed, dict) and "message" in parsed:
-                            parsed_msgs.append(str(parsed["message"]))
-                        else:
-                            parsed_msgs.append(str(m))
-                    except Exception:
-                            parsed_msgs.append(str(m))
-                
-                if parsed_msgs:
-                    error_msg = " | ".join(parsed_msgs)
-
+            frappe.response["http_status_code"] = 404
+            return error_response(error_msg, "NOT_FOUND")
+        except frappe.ValidationError as e:
+            error_msg = get_error_message(e, "Validation Error")
             frappe.local.message_log = []
-            frappe.response.status_code = 400
-            return error_response(error_msg or "Validation Error", "VALIDATION_ERROR")
+            frappe.response["http_status_code"] = 400
+            return error_response(error_msg, "VALIDATION_ERROR")
+        except (getattr(frappe, 'MandatoryError', _DummyException), 
+                getattr(frappe, 'UniqueValidationError', _DummyException), 
+                getattr(frappe, 'DuplicateEntryError', _DummyException), 
+                getattr(frappe, 'DataError', _DummyException)) as e:
+            import json
+            log_title = f"DB/Constraint Error | {func.__name__}"
+            log_message = json.dumps({
+                "request_id": getattr(frappe.local, "request_id", None),
+                "endpoint": func.__name__,
+                "user": frappe.session.user if frappe.session else None,
+                "traceback": frappe.get_traceback(),
+                "exception": str(e)
+            }, indent=2)
+            frappe.log_error(title=log_title, message=log_message)
+            frappe.local.message_log = []
+            frappe.response["http_status_code"] = 400
+            return error_response("Database constraint or data validation error occurred", "VALIDATION_ERROR")
         except Exception as e:
+            import json
+            log_title = f"API Error | {func.__name__}"
+            log_message = json.dumps({
+                "request_id": getattr(frappe.local, "request_id", None),
+                "endpoint": func.__name__,
+                "user": frappe.session.user if frappe.session else None,
+                "traceback": frappe.get_traceback(),
+                "exception": str(e)
+            }, indent=2)
+            frappe.log_error(title=log_title, message=log_message)
             frappe.local.message_log = []
-            frappe.log_error(frappe.get_traceback(), f"API Error in {func.__name__}")
-            frappe.response.status_code = 500
+            frappe.response["http_status_code"] = 500
             return error_response("An unexpected error occurred", "INTERNAL_ERROR")
     return wrapper
+
 

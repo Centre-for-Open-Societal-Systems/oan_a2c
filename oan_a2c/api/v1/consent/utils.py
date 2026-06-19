@@ -79,7 +79,7 @@ def deliver_websub_payload(receipt, consent_request_name):
                         "password": openg2p_password,
                     }
                 },
-                timeout=10
+                timeout=(5, 10)
             )
             auth_resp.raise_for_status()
             frappe.logger().info(f"Odoo auth response: {auth_resp.status_code}")
@@ -91,7 +91,7 @@ def deliver_websub_payload(receipt, consent_request_name):
                     "fayda_otp_transaction_id": consent.otp_transaction_id or "",
                     "fayda_otp_verified_at": str(consent.otp_verified_at) if consent.otp_verified_at else "",
                 },
-                timeout=10
+                timeout=(5, 10)
             )
             resp.raise_for_status()
             frappe.logger().info(f"Odoo callback response: {resp.status_code} {resp.text[:500]}")

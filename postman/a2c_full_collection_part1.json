@@ -255,14 +255,14 @@
                             "raw": "{\n  \"fayda_id\": \"{{fayda_id}}\"\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.search_farmer",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.search_farmer",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.leads.search_farmer"
+                                "oan_a2c.api.v1.consent.consent.search_farmer"
                             ]
                         }
                     }
@@ -275,8 +275,9 @@
                             "script": {
                                 "exec": [
                                     "var resp = pm.response.json();",
-                                    "var msg  = resp.message || resp;",
-                                    "if (msg.consent_request) { pm.collectionVariables.set('consent_request', msg.consent_request); }"
+                                    "var data = resp.data || {};",
+                                    "if (data.consent_request) { pm.collectionVariables.set('consent_request', data.consent_request); }",
+                                    "if (data.transaction_id) { pm.collectionVariables.set('transaction_id', data.transaction_id); }"
                                 ],
                                 "type": "text/javascript"
                             }
@@ -296,7 +297,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"fayda_id\": \"{{farmer_fayda_id}}\",\n  \"partner\": \"OAN partner\",\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_form_filename\": \"signed_consent.txt\",\n  \"consent_form_base64\": \"VGhpcyBpcyBhIHNhbXBsZSBzaWduZWQgY29uc2VudCBmb3JtLg==\"\n}"
+                            "raw": "{\n  \"fayda_id\": \"{{farmer_fayda_id}}\",\n  \"lead_id\": \"{{lead_id}}\"\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.request_otp",
@@ -312,7 +313,7 @@
                     }
                 },
                 {
-                    "name": "4.3 Verify OTP and Approve Consent",
+                    "name": "4.3 Verify OTP",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -327,23 +328,54 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"otp_code\": \"111111\"\n}"
+                            "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_request\": \"{{consent_request}}\",\n  \"transaction_id\": \"{{transaction_id}}\",\n  \"otp_code\": \"111111\"\n}"
                         },
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp_for_lead",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.consent.consent.verify_otp_for_lead"
+                                "oan_a2c.api.v1.consent.consent.verify_otp"
                             ]
                         }
                     }
                 },
                 {
-                    "name": "4.4 Send Success Notification",
+                    "name": "4.4 Submit Consent",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_request\": \"{{consent_request}}\",\n  \"consent_type\": \"specific\",\n  \"consent_reason_id\": 1,\n  \"validity_from\": \"2026-06-01\",\n  \"validity_to\": \"2027-06-01\",\n  \"consent_form_filename\": \"signed_consent.txt\",\n  \"consent_form_base64\": \"VGhpcyBpcyBhIHNhbXBsZSBzaWduZWQgY29uc2VudCBmb3JtLg==\",\n  \"allowed_data_field_ids\": [1, 2]\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.submit_consent",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.consent.consent.submit_consent"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "4.5 Send Success Notification",
                     "request": {
                         "method": "POST",
                         "header": [

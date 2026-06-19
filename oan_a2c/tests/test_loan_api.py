@@ -99,6 +99,14 @@ class TestLoansV1API(unittest.TestCase):
         if hasattr(self, "app_id") and frappe.db.exists("A2C Loan Application", self.app_id):
             frappe.delete_doc("A2C Loan Application", self.app_id, ignore_permissions=True, force=True)
         frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead='TEST_LEAD_999'")
+        
+        # Reset response state to avoid test pollution
+        if getattr(frappe.local, "response", None):
+            frappe.local.response.type = None
+            frappe.local.response.filename = None
+            frappe.local.response.filecontent = None
+            frappe.local.response.display_content_as = None
+            
         frappe.db.commit()
 
     def test_1_get_loan_summary(self):
@@ -146,6 +154,7 @@ class TestLoansV1API(unittest.TestCase):
     def test_3_get_basic_profile(self):
         res = get_basic_profile(lead_id="TEST_LEAD_999")
         self.assertEqual(res["status"], "success")
+        self.assertTrue(res["data"]["farmer_profile_created"])
         self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER")
         self.assertEqual(res["data"]["phone_number"], "+251999888777")
         self.assertNotIn("loan_amount", res["data"])
@@ -176,8 +185,8 @@ class TestLoansV1API(unittest.TestCase):
         # Missing lead_id
         res = get_basic_profile(lead_id=None)
         self.assertEqual(frappe.local.response.get("http_status_code"), 400)
-        self.assertIn("error", res)
-        self.assertEqual(res["error"]["code"], "LEAD_ID_REQUIRED")
+        self.assertEqual(res.get("status"), "error")
+        self.assertEqual(res.get("code"), "VALIDATION_ERROR")
 
         # Reset response status code for next assertions
         frappe.local.response["http_status_code"] = 200
@@ -185,10 +194,62 @@ class TestLoansV1API(unittest.TestCase):
         # Nonexistent lead_id
         res_nonexistent = get_basic_profile(lead_id="LEAD-2026-00000")
         self.assertEqual(frappe.local.response.get("http_status_code"), 404)
-        self.assertIn("error", res_nonexistent)
-        self.assertEqual(res_nonexistent["error"]["code"], "LEAD_NOT_FOUND")
-        self.assertEqual(res_nonexistent["error"]["message"], "A2C Lead LEAD-2026-00000 not found")
+        self.assertEqual(res_nonexistent.get("status"), "error")
+        self.assertEqual(res_nonexistent.get("code"), "NOT_FOUND")
+        self.assertEqual(res_nonexistent.get("message"), "A2C Lead LEAD-2026-00000 not found")
         frappe.local.response["http_status_code"] = 200
+
+    def test_3c_get_basic_profile_pending_consent(self):
+        # 1. Create a lead with no farmer profile linked
+        lead_name = "TEST_LEAD_PENDING"
+        if not frappe.db.exists("A2C Lead", lead_name):
+            lead = frappe.get_doc({
+                "doctype": "A2C Lead",
+                "phone_number": "+251999888111",
+                "lead_source": "Agent Entry",
+                "status": "Active"
+            })
+            lead.insert(ignore_permissions=True)
+            frappe.db.sql("UPDATE `tabA2C Lead` SET name=%s WHERE name=%s", (lead_name, lead.name))
+            frappe.db.commit()
+
+        # Ensure no farmer profile is linked
+        frappe.db.set_value("A2C Lead", lead_name, "farmer_profile", None)
+        # Delete any existing consent requests for this test lead
+        frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead=%s", (lead_name,))
+        frappe.db.commit()
+
+        # 2. Call get_basic_profile - should return 400 ValidationError response
+        res_error = get_basic_profile(lead_id=lead_name)
+        self.assertEqual(frappe.local.response.get("http_status_code"), 400)
+        self.assertEqual(res_error.get("status"), "error")
+        self.assertEqual(res_error.get("code"), "VALIDATION_ERROR")
+        self.assertIn("Farmer Profile not found", res_error.get("message"))
+        frappe.local.response["http_status_code"] = 200
+
+        # 3. Create a pending consent request linked to this lead
+        consent = frappe.get_doc({
+            "doctype": "A2C Consent Request",
+            "farmer": "Pending Farmer",
+            "farmer_fayda_id": "987654321",
+            "partner": "Test Partner",
+            "lead": lead_name,
+            "status": "Pending OTP"
+        })
+        consent.insert(ignore_permissions=True)
+        frappe.db.commit()
+
+        # 4. Call get_basic_profile again - should return 200 with farmer_profile_created: False
+        res = get_basic_profile(lead_id=lead_name)
+        self.assertEqual(res["status"], "success")
+        self.assertFalse(res["data"]["farmer_profile_created"])
+        self.assertEqual(res["data"]["consent_request"]["name"], consent.name)
+        self.assertEqual(res["data"]["consent_request"]["status"], "Pending OTP")
+
+        # Clean up
+        frappe.delete_doc("A2C Consent Request", consent.name, ignore_permissions=True, force=True)
+        frappe.delete_doc("A2C Lead", lead_name, ignore_permissions=True, force=True)
+        frappe.db.commit()
 
     def test_3b_update_basic_profile(self):
         res = update_basic_profile(
@@ -229,13 +290,13 @@ class TestLoansV1API(unittest.TestCase):
         file_id = file_doc.name
 
         # 1. Get supporting documents
-        res = get_supporting_documents(self.app_id)
+        res = get_supporting_documents(application_id=self.app_id)
         self.assertEqual(res["status"], "success")
         self.assertEqual(len(res["data"]), 1)
         self.assertEqual(res["data"][0]["name"], file_id)
 
         # 1.5 Download supporting document
-        download_supporting_document(file_id)
+        download_supporting_document(file_id=file_id)
         self.assertEqual(frappe.local.response.filename, "test_doc.png")
         
         file_content = frappe.local.response.filecontent
@@ -247,11 +308,18 @@ class TestLoansV1API(unittest.TestCase):
         self.assertIsNone(frappe.local.response.get("display_content_as"))
 
         # Test downloading with view=1 (inline)
-        download_supporting_document(file_id, view=1)
+        download_supporting_document(file_id=file_id, view=1)
         self.assertEqual(frappe.local.response.display_content_as, "inline")
 
+        # Reset response state to avoid test pollution
+        if getattr(frappe.local, "response", None):
+            frappe.local.response.type = None
+            frappe.local.response.filename = None
+            frappe.local.response.filecontent = None
+            frappe.local.response.display_content_as = None
+
         # 2. Delete supporting document
-        res_del = delete_supporting_document(self.app_id, file_id)
+        res_del = delete_supporting_document(application_id=self.app_id, file_id=file_id)
         self.assertEqual(res_del["status"], "success")
         self.assertEqual(res_del["message"], "File deleted successfully")
 
@@ -259,7 +327,7 @@ class TestLoansV1API(unittest.TestCase):
         self.assertFalse(frappe.db.exists("File", file_id))
 
         # 4. Get again, should be empty
-        res_after = get_supporting_documents(self.app_id)
+        res_after = get_supporting_documents(application_id=self.app_id)
         self.assertEqual(res_after["status"], "success")
         self.assertEqual(len(res_after["data"]), 0)
 
@@ -269,31 +337,40 @@ class TestLoansV1API(unittest.TestCase):
         frappe.db.commit()
 
         # 1. Invalid jump: 1 to 3 should raise ValidationError
-        self.assertRaises(frappe.ValidationError, update_loan_step, self.app_id, 3)
+        res = update_loan_step(application_id=self.app_id, step=3)
+        self.assertEqual(res.get("status"), "error")
+        self.assertEqual(res.get("code"), "VALIDATION_ERROR")
 
         # 2. Valid sequential step: 1 to 2
-        res = update_loan_step(self.app_id, 2)
+        res = update_loan_step(application_id=self.app_id, step=2)
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["message"], "Loan application step updated to 2")
 
         # 3. Invalid jump: 2 to 4 should raise ValidationError
-        self.assertRaises(frappe.ValidationError, update_loan_step, self.app_id, 4)
+        res = update_loan_step(application_id=self.app_id, step=4)
+        self.assertEqual(res.get("status"), "error")
+        self.assertEqual(res.get("code"), "VALIDATION_ERROR")
 
         # 4. Valid sequential step: 2 to 3
-        res = update_loan_step(self.app_id, 3)
+        res = update_loan_step(application_id=self.app_id, step=3)
         self.assertEqual(res["status"], "success")
 
         # 5. Backward step: 3 to 1 should be allowed
-        res = update_loan_step(self.app_id, 1)
+        res = update_loan_step(application_id=self.app_id, step=1)
         self.assertEqual(res["status"], "success")
 
         # 6. Step out of bounds: 0 or 5 should raise ValidationError
-        self.assertRaises(frappe.ValidationError, update_loan_step, self.app_id, 0)
-        self.assertRaises(frappe.ValidationError, update_loan_step, self.app_id, 5)
+        res = update_loan_step(application_id=self.app_id, step=0)
+        self.assertEqual(res.get("status"), "error")
+        self.assertEqual(res.get("code"), "VALIDATION_ERROR")
+
+        res = update_loan_step(application_id=self.app_id, step=5)
+        self.assertEqual(res.get("status"), "error")
+        self.assertEqual(res.get("code"), "VALIDATION_ERROR")
 
     def test_7_rejected_loan_status_locked(self):
         # 1. Reject the loan application
-        res = update_loan_status(self.app_id, "Rejected")
+        res = update_loan_status(application_id=self.app_id, status="Rejected")
         self.assertEqual(res["status"], "success")
 
         # 2. Try to change it to Approved, should fail or throw ValidationError

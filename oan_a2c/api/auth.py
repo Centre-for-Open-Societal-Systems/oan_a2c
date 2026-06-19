@@ -5,9 +5,25 @@ import datetime
 from frappe.auth import LoginManager
 from frappe.core.doctype.user.user import reset_password as reset_password_core
 from frappe.core.doctype.user.user import update_password
-from oan_a2c.api.utils import success_response, handle_api_errors
+from oan_a2c.api.utils import success_response, handle_api_errors, validate_request, SafeEmail
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional
+
+class LoginSchema(BaseModel):
+	usr: str = Field(..., min_length=1)
+	pwd: str = Field(..., min_length=1)
+
+class ForgotPasswordSchema(BaseModel):
+	email: SafeEmail = None
+
+class ResetPasswordSchema(BaseModel):
+	email: SafeEmail = None
+	key: str = Field(..., min_length=1)
+	new_password: str = Field(..., min_length=1)
+
 
 @frappe.whitelist(allow_guest=True)
+@validate_request(LoginSchema)
 @handle_api_errors
 def login(usr=None, pwd=None):
 	"""
@@ -43,7 +59,7 @@ def login(usr=None, pwd=None):
 		"roles": roles
 	}
 
-	token = jwt.encode(payload, secret, algorithm="HS256")
+	token = jwt.encode(payload, secret, algorithm="HS256", headers={"kid": "v1"})
 
 	# Fetch the user's linked bank via User Permissions (populated once
 	# the Participating Bank DocType and permission fixtures are active).
@@ -69,6 +85,7 @@ def login(usr=None, pwd=None):
 
 
 @frappe.whitelist(allow_guest=True)
+@validate_request(ForgotPasswordSchema)
 @handle_api_errors
 def forgot_password(email):
 	"""
@@ -87,6 +104,7 @@ def forgot_password(email):
 
 
 @frappe.whitelist(allow_guest=True)
+@validate_request(ResetPasswordSchema)
 @handle_api_errors
 def reset_password(email, key, new_password):
 	"""
@@ -104,4 +122,36 @@ def reset_password(email, key, new_password):
 	return success_response(
 		message=_("Your password has been successfully updated. You may now login.")
 	)
+
+
+@frappe.whitelist()
+@handle_api_errors
+def get_me():
+	"""
+	Returns the authenticated user's profile details: name, email, roles, and linked bank.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.AuthenticationError)
+
+	user = frappe.get_doc("User", frappe.session.user)
+	roles = [d.role for d in user.roles]
+
+	# Fetch the user's linked bank via User Permissions
+	bank = None
+	if "Bank Agent" in roles:
+		bank = frappe.db.get_value(
+			"User Permission",
+			{"user": frappe.session.user, "allow": "Participating Bank"},
+			"for_value"
+		)
+
+	return success_response(
+		data={
+			"email": user.email,
+			"full_name": user.full_name,
+			"roles": roles,
+			"bank": bank
+		}
+	)
+
 

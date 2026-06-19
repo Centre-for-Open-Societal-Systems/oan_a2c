@@ -22,7 +22,8 @@ def validate_jwt_request(request=None):
         "/api/method/oan_a2c.api.auth.forgot_password",
         "/api/method/oan_a2c.api.auth.reset_password",
         "/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
-        "/api/method/oan_a2c.api.v1.webhooks.lead_inbound"
+        "/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
+        "/api/method/oan_a2c.api.v1.websub_subscriber.callback"
     ]:
         return
 
@@ -39,13 +40,23 @@ def validate_jwt_request(request=None):
         raise frappe.AuthenticationError("System encryption key missing")
 
     try:
+        # Verify Key ID (kid) in the JWT header
+        header = jwt.get_unverified_header(token)
+        if not header or header.get("kid") != "v1":
+            raise frappe.AuthenticationError("Invalid Key ID")
+
         # Decode and validate cryptographically
         payload = jwt.decode(token, secret, algorithms=["HS256"])
         
+        # Verify the user is active/enabled (revocation check)
+        user_name = payload.get("sub")
+        if not user_name or not frappe.db.get_value("User", user_name, "enabled"):
+            raise frappe.AuthenticationError("User is disabled or does not exist")
+
         # Log the user context into the Python thread memory for Frappe's ORM RBAC
         # Save and restore form_dict as frappe.set_user() resets local.form_dict = _dict()
         temp_form_dict = getattr(frappe.local, "form_dict", None)
-        frappe.set_user(payload.get("sub"))
+        frappe.set_user(user_name)
         if temp_form_dict is not None:
             frappe.local.form_dict = temp_form_dict
         

@@ -1,58 +1,144 @@
 import frappe
 from frappe import _
-from frappe.utils import now_datetime, add_to_date
+from frappe.utils import now_datetime
 from .openg2p_client import OpenG2PConsentClient
 from .utils import generate_consent_receipt, enqueue_websub_delivery
-from oan_a2c.api.utils import success_response, handle_api_errors
+from oan_a2c.api.utils import success_response, handle_api_errors, validate_request, SafeDate
+from pydantic import BaseModel, Field
+from typing import Optional, List
 
 
-# ─── Shared helper ────────────────────────────────────────────────────────────
+# ─── Pydantic Validation Schemas ──────────────────────────────────────────────
 
-def _parse_request(kwargs):
-    """Merge kwargs, JSON body, and form_dict into one dict — returns a getter callable."""
-    data = {}
-    form = getattr(frappe, "form_dict", {})
-    try:
-        if frappe.request:
-            data = frappe.request.get_json(silent=True) or {}
-    except Exception:
-        pass
-
-    def _getter(key, default=None):
-        return kwargs.get(key) or data.get(key) or form.get(key) or default
-
-    return _getter
+class SearchFarmerSchema(BaseModel):
+    fayda_id: str = Field(..., min_length=1)
+    lead_id: Optional[str] = None
 
 
-def _fetch_and_save_farmer_data(client, fayda_id, target_doctype, target_name, openg2p_consent_id):
+class RequestOTPSchema(BaseModel):
+    fayda_id: str = Field(..., min_length=1)
+    lead_id: str = Field(..., min_length=1)
+    idempotency_key: Optional[str] = None
+
+
+class VerifyOTPSchema(BaseModel):
+    lead_id: str = Field(..., min_length=1)
+    otp_code: str = Field(..., min_length=1)
+    transaction_id: Optional[str] = None
+    consent_request: str = Field(..., min_length=1)
+
+
+class SubmitConsentSchema(BaseModel):
+    lead_id: str = Field(..., min_length=1)
+    consent_request: str = Field(..., min_length=1)
+    consent_type: Optional[str] = "specific"
+    consent_reason_id: Optional[int] = 1
+    validity_months: Optional[int] = None
+    consent_form_filename: str = Field(..., min_length=1)
+    consent_form_base64: str = Field(..., min_length=1)
+    allowed_data_field_ids: Optional[List[int]] = None
+
+
+class GetConsentAllowedFieldsSchema(BaseModel):
+    pass
+
+
+# ─── Rate Limiting & Helpers ──────────────────────────────────────────────────
+
+def check_rate_limit(key: str, limit: int, window: int):
     """
-    Directly fetch farmer profile from OpenG2P and save it as consent_data
-    on the target document. Mirrors what the WebSub webhook would have sent.
-    Non-fatal on failure.
+    Apply rate limits using Redis counter.
+    key    — unique per user+endpoint
+    limit  — max calls allowed in window
+    window — seconds
+    """
+    cache = frappe.cache()
+    count = cache.get_value(key) or 0
+
+    if int(count) >= limit:
+        frappe.response.status_code = 429
+        frappe.throw(_("Rate limit exceeded. Try again later."), frappe.ValidationError)
+
+    pipeline = cache.pipeline()
+    pipeline.incr(key)
+    pipeline.expire(key, window)
+    pipeline.execute()
+
+
+def _get_farmer_preview_from_lead(lead_id):
+    """Reconstruct a farmer preview dict from the lead's linked Farmer Profile."""
+    farmer_profile_name = frappe.db.get_value("A2C Lead", lead_id, "farmer_profile")
+    if farmer_profile_name:
+        profile = frappe.get_doc("A2C Farmer Profile", farmer_profile_name)
+        return {
+            "given_name": profile.first_name,
+            "family_name": profile.last_name,
+            "email": profile.email,
+            "phone_no": [profile.phone_number] if profile.phone_number else [],
+        }
+    return {}
+
+
+# ─── Private helpers ──────────────────────────────────────────────────────────
+
+def _client_for_transaction(transaction_id):
+    """Rebuild the OpenG2P client bound to the Odoo session that issued the OTP."""
+    cookie_dict = frappe.cache().get_value(f"odoo_session_dict_{transaction_id}")
+    if cookie_dict:
+        return OpenG2PConsentClient(cookie_dict=cookie_dict)
+    odoo_session_id = frappe.cache().get_value(f"odoo_session_{transaction_id}")
+    return OpenG2PConsentClient(portal_session_id=odoo_session_id)
+
+
+def _get_consent_request_and_client(consent_request, expected_status=None, check_verified=False):
+    """Retrieve A2C Consent Request doc and rebuild its associated client."""
+    # Pessimistic lock to prevent race conditions
+    status = frappe.db.get_value("A2C Consent Request", consent_request, "status", for_update=True)
+    if not status:
+        frappe.throw(_("A2C Consent Request '{0}' not found.").format(consent_request), frappe.DoesNotExistError)
+
+    cr_doc = frappe.get_doc("A2C Consent Request", consent_request)
+
+    if expected_status and cr_doc.status != expected_status:
+        frappe.throw(_("A2C Consent Request '{0}' must be in status '{1}'. Current status: '{2}'.").format(consent_request, expected_status, cr_doc.status), frappe.ValidationError)
+
+    if check_verified and not cr_doc.otp_verified_at:
+        frappe.throw(_("OTP has not been verified for consent request '{0}'.").format(consent_request), frappe.ValidationError)
+
+    transaction_id = cr_doc.otp_transaction_id
+    if not transaction_id:
+        frappe.throw(_("Transaction ID is missing for consent request '{0}'.").format(consent_request), frappe.ValidationError)
+
+    client = _client_for_transaction(transaction_id)
+    return cr_doc, client, transaction_id
+
+
+def _save_farmer_data_to_lead(lead_id, farmer_dict, openg2p_consent_id):
+    """
+    Persist the OpenG2P farmer profile onto the lead as consent_data — mirrors
+    what the WebSub webhook would deliver. Non-fatal on failure.
+    Returns the farmer preview dict.
     """
     import json as _json
 
     try:
-        farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
         farmer_record = {}
         selected_data = {}
 
         if farmer_dict:
-            farmer_db_id = farmer_dict.get("id")
-            
             full_name = (farmer_dict.get("name") or "").strip()
             parts = full_name.split()
-            given_name  = parts[0].title() if parts else ""
+            given_name = parts[0].title() if parts else ""
             family_name = " ".join(p.title() for p in parts[1:]) if len(parts) > 1 else ""
             mobile = farmer_dict.get("mobile") or farmer_dict.get("phone") or ""
 
-            farmer_record = {"id": farmer_db_id, "name": full_name}
+            farmer_record = {"id": farmer_dict.get("id"), "name": full_name}
             selected_data = {
                 "farmer": {
-                    "given_name":  given_name,
+                    "given_name": given_name,
                     "family_name": family_name,
-                    "email":       farmer_dict.get("email") or "",
-                    "phone_no":    [mobile] if mobile else [],
+                    "email": farmer_dict.get("email") or "",
+                    "phone_no": [mobile] if mobile else [],
                 }
             }
 
@@ -69,391 +155,386 @@ def _fetch_and_save_farmer_data(client, fayda_id, target_doctype, target_name, o
             "selected_data": selected_data,
         }
 
-        doc = frappe.get_doc(target_doctype, target_name)
-        doc.consent_data   = _json.dumps(synthetic_payload, indent=2, ensure_ascii=False)
-        if target_doctype == "A2C Loan Application":
-            doc.fayda_verified = 1
-        doc.save(ignore_permissions=True)
-        frappe.logger().info(f"Farmer data saved to {target_doctype} {target_name}")
-        return selected_data.get("farmer", {}), farmer_record
+        lead_doc = frappe.get_doc("A2C Lead", lead_id)
+        lead_doc.consent_data = _json.dumps(synthetic_payload, indent=2, ensure_ascii=False)
+        # Using ignore_permissions=False is required here for secure row-level permission enforcement.
+        lead_doc.save(ignore_permissions=False)
+        frappe.logger().info(f"Farmer data saved to A2C Lead {lead_id}")
+        return selected_data.get("farmer", {})
 
     except Exception as e:
-        frappe.logger().warning(f"Direct farmer data fetch failed: {e}")
-        frappe.log_error(f"Direct consent data fetch failed: {e}", "Consent Data Fetch")
-        return {}, {}
+        frappe.logger().warning(f"Direct farmer data save failed: {e}")
+        frappe.log_error(f"Direct consent data save failed: {e}", "Consent Data Save")
+        return {}
 
 
-# ─── NEW FLOW ─────────────────────────────────────────────────────────────────
-# Step 2: request_otp  (farmer must already be found via search_farmer)
-# Step 3: verify_otp_and_create  (verify OTP → create consent → create Lead Application)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
+# 1 ───────────────────────────────────────────────────────────────────────────
 @frappe.whitelist(allow_guest=False)
+@validate_request(SearchFarmerSchema)
 @handle_api_errors
 def search_farmer(**kwargs):
-    """
-    NEW FLOW — Step 1: Search for Farmer in OpenG2P using Fayda ID.
-    """
-    _getter = _parse_request(kwargs)
-    fayda_id = _getter("fayda_id")
+    """Find a farmer  by Fayda ID. → client.get_farmer_by_fayda_id"""
+    check_rate_limit(f"rl:search_farmer:{frappe.session.user}", limit=20, window=60)
 
-    if not fayda_id:
-        frappe.throw(frappe._("fayda_id is required"))
+    fayda_id = kwargs.get("fayda_id")
+    lead_id = kwargs.get("lead_id")
+
+    if lead_id:
+        frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
+    else:
+        if not (frappe.has_permission("A2C Lead", "read") or "System Manager" in frappe.get_roles()):
+            frappe.throw(_("Not permitted to search farmer profile"), frappe.PermissionError)
 
     client = OpenG2PConsentClient()
     farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
-    
-    if not farmer_dict:
-        frappe.throw(frappe._("Farmer with Fayda ID '{0}' not found in OpenG2P.").format(fayda_id), frappe.DoesNotExistError)
-
-    farmer_db_id = farmer_dict.get("id")
-
-    # Strictly return only the PII needed by the frontend
-    farmer_data_for_frontend = {
-        "name": farmer_dict.get("name"),
-        "mobile": farmer_dict.get("mobile"),
-        "phone": farmer_dict.get("phone")
-    }
 
     return success_response(
         data={
-            "farmer": farmer_data_for_frontend
+            "farmer": {
+                "name": farmer_dict.get("name"),
+                "mobile": farmer_dict.get("mobile"),
+                "phone": farmer_dict.get("phone"),
+            }
         },
-        message="Farmer found successfully."
+        message="Farmer found successfully.",
     )
 
+
+# 2 ───────────────────────────────────────────────────────────────────────────
 @frappe.whitelist(allow_guest=False)
+@handle_api_errors
+def get_partner_allowed_data_field_ids():
+    """Return the allowed data field IDs for the consent partner.
+    → client.get_partner_allowed_data_field_ids"""
+    client = OpenG2PConsentClient()
+    field_ids = client.get_partner_allowed_data_field_ids()
+
+    return success_response(
+        data={"allowed_data_field_ids": field_ids},
+        message="Allowed data field IDs retrieved successfully.",
+    )
+
+
+# 3 ───────────────────────────────────────────────────────────────────────────
+@frappe.whitelist(allow_guest=False)
+@validate_request(RequestOTPSchema)
 @handle_api_errors
 def request_otp(**kwargs):
-    """
-    NEW FLOW — Step 2: Request OTP and Create Consent in OpenG2P.
+    """Open a pending consent request and ask OpenG2P/Fayda for an OTP."""
+    check_rate_limit(f"rl:request_otp:{frappe.session.user}", limit=5, window=60)
 
-    Attachment Inputs (Mutually Exclusive):
-      - Option A: Pre-uploaded file URL via 'consent_form_attachment'.
-      - Option B: Raw base64 upload via 'consent_form_base64' and 'consent_form_filename'.
-    """
-    _getter = _parse_request(kwargs)
+    fayda_id = kwargs.get("fayda_id")
+    lead_id  = kwargs.get("lead_id")
+    idempotency_key = kwargs.get("idempotency_key")
 
-    fayda_id                = _getter("fayda_id")
-    partner                 = _getter("partner")
-    lead_id                 = _getter("lead_id")
-    purpose                 = _getter("consent_reason_id", 1)  # OpenG2P requires an integer ID
-    validity_from           = _getter("validity_from")
-    validity_to             = _getter("validity_to")
-    consent_form_attachment = _getter("consent_form_attachment")
-
-    if not lead_id:
-        frappe.throw(frappe._("lead_id is required"))
     if not frappe.db.exists("A2C Lead", lead_id):
-        frappe.throw(frappe._("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
-
+        frappe.throw(_("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
     frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
 
-    if not fayda_id:
-        frappe.throw(frappe._("fayda_id is required"))
-    if not partner:
-        frappe.throw(frappe._("partner is required"))
+    # Idempotency lock & check using Redis cache
+    if idempotency_key:
+        lock_key = f"lock:request_otp:{idempotency_key}"
+        if frappe.cache().get_value(lock_key):
+            frappe.throw(_("Request in progress, please retry in a moment."), frappe.ValidationError)
+        frappe.cache().set_value(lock_key, "1", expires_in_sec=10)
 
-    client = OpenG2PConsentClient()
+        # Check cached response
+        cached_res = frappe.cache().get_value(f"idempotency:request_otp:{idempotency_key}")
+        if cached_res:
+            frappe.cache().delete_value(lock_key)
+            return cached_res
 
-    farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
-    if not farmer_dict:
-        frappe.throw(frappe._("Farmer with Fayda ID '{0}' not found in OpenG2P.").format(fayda_id))
-        
-    farmer_db_id = farmer_dict.get("id")
+        # Check existing mapping in cache
+        existing_req_name = frappe.cache().get_value(f"idempotency_consent_req:{idempotency_key}")
+        if existing_req_name:
+            txn_id = frappe.db.get_value("A2C Consent Request", existing_req_name, "otp_transaction_id")
+            frappe.cache().delete_value(lock_key)
+            return success_response(
+                data={
+                    "consent_request": existing_req_name,
+                    "transaction_id": txn_id or "",
+                    "masked_phone": "XXXX",
+                },
+                message="OTP sent successfully. Proceed to verify OTP.",
+            )
 
-    partner_id_openg2p = client.get_partner_id(partner)
-    if not partner_id_openg2p:
-        frappe.throw(frappe._("Partner '{0}' not found in OpenG2P.").format(partner))
-
-    allowed_data_field_ids = client.get_partner_allowed_data_field_ids(partner_id_openg2p)
-    if not allowed_data_field_ids:
-        allowed_data_field_ids = []
-
-    consent_form_filename   = _getter("consent_form_filename")
-    consent_form_base64     = _getter("consent_form_base64")
-    requested_data_fields_payload = _getter("requested_data_fields")
-
-    if requested_data_fields_payload:
-        if isinstance(requested_data_fields_payload, list):
-            allowed_data_field_ids = requested_data_fields_payload
-        else:
-            try:
-                import json
-                allowed_data_field_ids = json.loads(requested_data_fields_payload)
-            except Exception:
-                allowed_data_field_ids = []
-
-    if not validity_from or not validity_to:
-        validity_from = now_datetime().strftime("%Y-%m-%d %H:%M:%S")
-        validity_to   = add_to_date(now_datetime(), years=1).strftime("%Y-%m-%d %H:%M:%S")
-
-    # 1. Save attachment locally in Frappe if base64 provided
-    if consent_form_filename and consent_form_base64:
-        import base64
-        from frappe.utils.file_manager import save_file
-        
-        b64_data = consent_form_base64
-        if "," in b64_data:
-            b64_data = b64_data.split(",", 1)[1]
-            
-        file_content = base64.b64decode(b64_data)
-        saved_file = save_file(
-            fname=consent_form_filename,
-            content=file_content,
-            dt="A2C Lead",
-            dn=lead_id if lead_id else None,
-            is_private=1
-        )
-        consent_form_attachment = saved_file.file_url
-    elif not consent_form_attachment:
-        frappe.throw(
-            frappe._("An attachment is strictly required. Please provide 'consent_form_base64' and 'consent_form_filename'."),
-            frappe.ValidationError
-        )
-
-    # 2. Trigger Odoo OTP (which hits Fayda)
     try:
-        otp_response = client.request_otp(farmer_id=farmer_db_id)
-        odoo_session_id = None
-        for cookie in client.session.cookies:
-            if cookie.name == "session_id":
-                odoo_session_id = cookie.value
-                break
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "OTP Request Failure")
-        frappe.throw(frappe._("Failed to request OTP from the identity provider."))
+        client = OpenG2PConsentClient()
 
-    otp_data = otp_response.get("data") or {}
-    transaction_id = otp_data.get("transaction_id")
-    masked_phone = otp_data.get("masked_mobile") or "XXXX"
+        # Resolve the farmer's OpenG2P id once
+        farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
+        farmer_db_id = farmer_dict.get("id")
 
-    if not transaction_id:
-        frappe.log_error(f"OTP sent but no transaction_id returned: {otp_response}", "OTP Request Error")
-        frappe.throw(frappe._("Identity provider did not return a transaction ID."))
-
-    import requests
-    cookie_dict = requests.utils.dict_from_cookiejar(client.session.cookies)
-    frappe.logger().debug(f"Storing Odoo session dict: {cookie_dict} for transaction_id: {transaction_id}")
-    if cookie_dict:
-        frappe.cache().set_value(f"odoo_session_dict_{transaction_id}", cookie_dict, expires_in_sec=1800)
-
-    # 3. Create Frappe Consent Request (Pending Odoo Creation)
-    try:
+        # Open the pending consent request
         doc = frappe.new_doc("A2C Consent Request")
-        doc.lead                    = lead_id
-        doc.farmer_fayda_id         = fayda_id
-        doc.partner                 = partner
-        doc.consent_type            = "specific"
-        doc.purpose                 = purpose
-        doc.validity_from           = validity_from
-        doc.validity_to             = validity_to
-        doc.consent_form_attachment = consent_form_attachment
-        doc.otp_transaction_id      = transaction_id
-        doc.status                  = "Pending OTP"
-        
-        for f_item in allowed_data_field_ids:
-            if isinstance(f_item, dict):
-                f_val = f_item.get("field_value") or f_item.get("id")
-                f_name = f_item.get("field_name") or "OpenG2P Data Field"
-            else:
-                f_val = f_item
-                f_name = "OpenG2P Data Field ID"
-                
-            if f_val:
-                doc.append("requested_data_fields", {
-                    "field_value": str(f_val),
-                    "field_name": str(f_name)
-                })
-            
+        doc.lead            = lead_id
+        doc.farmer          = farmer_db_id
+        doc.farmer_fayda_id = fayda_id
+        doc.status          = "Pending OTP"
         doc.insert(ignore_permissions=False)
+
+        # client call — request the OTP from Fayda via Odoo.
+        otp_data = client.request_otp(farmer_id=farmer_db_id)
+        transaction_id = otp_data["transaction_id"]
+
+        doc.otp_transaction_id = transaction_id
+        doc.save(ignore_permissions=False)
         frappe.db.commit()
-        consent_request_name = doc.name
-            
+
+        # Preserve the Odoo session so verify_otp / submit_consent reuse it.
+        import requests
+        cookie_dict = requests.utils.dict_from_cookiejar(client.session.cookies)
+        if cookie_dict:
+            frappe.cache().set_value(f"odoo_session_dict_{transaction_id}", cookie_dict, expires_in_sec=1800)
+
+        res_payload = success_response(
+            data={
+                "consent_request": doc.name,
+                "transaction_id": transaction_id,
+                "masked_phone": otp_data["masked_mobile"],
+            },
+            message="OTP sent successfully. Proceed to verify OTP.",
+        )
+
+        if idempotency_key:
+            frappe.cache().set_value(f"idempotency:request_otp:{idempotency_key}", res_payload, expires_in_sec=86400)
+            frappe.cache().set_value(f"idempotency_consent_req:{idempotency_key}", doc.name, expires_in_sec=86400)
+            frappe.cache().delete_value(lock_key)
+
+        return res_payload
+
     except Exception as e:
-        frappe.log_error(f"Consent Request Creation Failed: {str(e)}", "Consent Request Error")
-        consent_request_name = None
-
-    return success_response(
-        data={
-            "consent_request": consent_request_name,
-            "transaction_id": transaction_id,
-            "masked_phone": masked_phone
-        },
-        message="OTP sent successfully. Proceed to verify OTP."
-    )
+        if idempotency_key:
+            frappe.cache().delete_value(f"lock:request_otp:{idempotency_key}")
+        raise e
 
 
+# 4 ───────────────────────────────────────────────────────────────────────────
 @frappe.whitelist(allow_guest=False)
+@validate_request(VerifyOTPSchema)
 @handle_api_errors
-def verify_otp_for_lead(**kwargs):
-    """
-    NEW FLOW — Step 3: Verify OTP and save consent to the A2C Lead.
-    """
-    _getter = _parse_request(kwargs)
-
-    lead_id  = _getter("lead_id")
-    otp_code = _getter("otp_code")
-
-    if not lead_id:
-        frappe.throw(frappe._("lead_id is required"))
-    if not otp_code:
-        frappe.throw(frappe._("otp_code is required"))
+def verify_otp(**kwargs):
+    """Verify the Fayda OTP for a pending consent request. → client.verify_otp"""
+    lead_id         = kwargs.get("lead_id")
+    otp_code        = kwargs.get("otp_code")
+    consent_request = kwargs.get("consent_request")
 
     frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
-    lead_doc = frappe.get_doc("A2C Lead", lead_id)
-    
-    # Find the latest pending A2C Consent Request for this lead
-    consent_request = frappe.db.get_value(
-        "A2C Consent Request",
-        {"lead": lead_id, "status": "Pending OTP"},
-        "name",
-        order_by="creation desc"
-    )
-    
-    if not consent_request:
-        frappe.throw(frappe._("No pending A2C Consent Request found for Lead '{0}'. Did you call request_otp first?").format(lead_id))
-
     frappe.has_permission("A2C Consent Request", "write", doc=consent_request, throw=True)
-    cr_doc = frappe.get_doc("A2C Consent Request", consent_request)
-    fayda_id                = cr_doc.farmer_fayda_id
-    transaction_id          = cr_doc.otp_transaction_id
-    partner                 = cr_doc.partner
-    purpose                 = cr_doc.purpose
-    consent_form_attachment = cr_doc.consent_form_attachment
-    
-    validity_from = cr_doc.validity_from.strftime("%Y-%m-%d %H:%M:%S") if cr_doc.validity_from else None
-    validity_to   = cr_doc.validity_to.strftime("%Y-%m-%d %H:%M:%S") if cr_doc.validity_to else None
 
-    if not transaction_id:
-        frappe.throw(frappe._("OTP was not requested for this consent"))
-
-    # Restore Odoo session cookie to match request_otp context
-    cookie_dict = frappe.cache().get_value(f"odoo_session_dict_{transaction_id}")
-    if cookie_dict:
-        frappe.logger().debug(f"Retrieved Odoo cookie_dict: {cookie_dict} for transaction_id: {transaction_id}")
-        client = OpenG2PConsentClient(cookie_dict=cookie_dict)
-    else:
-        # Fallback for sessions created before the dict logic was deployed
-        odoo_session_id = frappe.cache().get_value(f"odoo_session_{transaction_id}")
-        frappe.logger().debug(f"Retrieved fallback Odoo session_id: {odoo_session_id} for transaction_id: {transaction_id}")
-        client = OpenG2PConsentClient(portal_session_id=odoo_session_id)
-
-    farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
-    if not farmer_dict:
-        frappe.throw(frappe._("Farmer with Fayda ID '{0}' not found in OpenG2P.").format(fayda_id))
-        
-    farmer_db_id = farmer_dict.get("id")
-
-    # 1. Verify OTP with Odoo (Fayda)
-    try:
-        client.verify_otp(
-            farmer_id=farmer_db_id,
-            transaction_id=transaction_id,
-            otp_code=otp_code
-        )
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "OTP Verification Failure")
-        frappe.throw(frappe._("OTP verification failed. Please check your code and try again."))
-
-    # 2. Upload Attachment
-    try:
-        attachment_id = client.upload_consent_attachment(consent_form_attachment)
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Attachment Upload Failure")
-        frappe.throw(frappe._("Failed to upload consent attachment."))
-
-    # 3. Create Consent Request in Odoo
-    partner_id_openg2p = client.get_partner_id(partner)
-    if not partner_id_openg2p:
-        frappe.throw(frappe._("Partner '{0}' not found in OpenG2P.").format(partner))
-        
-    allowed_data_field_ids = []
-    for row in cr_doc.get("requested_data_fields", []):
-        try:
-            allowed_data_field_ids.append(int(row.field_value))
-        except (ValueError, TypeError):
-            pass
-            
-    if not allowed_data_field_ids:
-        allowed_data_field_ids = client.get_partner_allowed_data_field_ids(partner_id_openg2p) or []
-    
-    try:
-        consent_response = client.create_consent_request(
-            partner_id=partner_id_openg2p,
-            farmer_db_id=farmer_db_id,
-            consent_type="specific",
-            purpose=purpose,
-            validity_from=validity_from,
-            validity_to=validity_to,
-            allowed_data_field_ids=allowed_data_field_ids,
-            attachment_ids=attachment_id
-        )
-    except Exception as e:
-        frappe.log_error(frappe.get_traceback(), "Consent Creation Failure")
-        frappe.throw(frappe._("Failed to create consent request in the identity system."))
-
-    consent_data_resp = consent_response.get("data") or {}
-    openg2p_consent_id = consent_data_resp.get("consent_creation_request_id") or consent_data_resp.get("id")
-
-    if not openg2p_consent_id:
-        frappe.log_error(f"Consent created but no ID returned: {consent_response}", "Consent Creation Error")
-        frappe.throw(frappe._("Consent request created but no identification ID was returned."))
-
-    # 4. Approve Consent in OpenG2P
-    try:
-        client.approve_consent_request(openg2p_consent_id)
-    except Exception as e:
-        frappe.logger().warning(f"consent approval failed: {e}")
-
-    # 5. Generate Receipt and Update Consent Request
-    frappe.db.set_value("A2C Consent Request", consent_request, {
-        "status":             "Approved",
-        "otp_verified_at":    now_datetime(),
-        "openg2p_consent_id": openg2p_consent_id,
-    })
-    frappe.db.commit()
-
-    receipt = generate_consent_receipt(consent_request)
-    enqueue_websub_delivery(receipt)
-
-    frappe.db.set_value("A2C Consent Request", consent_request, {
-        "consent_receipt": receipt.get("signature")
-    })
-    frappe.db.commit()
-
-    # 4. Fetch Farmer Data from OpenG2P into the Lead
-    farmer_preview, _unused = _fetch_and_save_farmer_data(
-        client, fayda_id, "A2C Lead", lead_id, openg2p_consent_id
+    cr_doc, client, transaction_id = _get_consent_request_and_client(consent_request, expected_status="Pending OTP")
+    farmer_db_id = cr_doc.farmer 
+    client.verify_otp(
+        farmer_id=farmer_db_id,
+        transaction_id=transaction_id,
+        otp_code=otp_code,
     )
 
-    given_name  = farmer_preview.get("given_name", "")
-    family_name = farmer_preview.get("family_name", "")
-    mobile      = (farmer_preview.get("phone_no") or [""])[0] if isinstance(
-        farmer_preview.get("phone_no"), list) else farmer_preview.get("phone_no", "")
-
-    if given_name or family_name or mobile:
-        try:
-            la = frappe.get_doc("A2C Lead", lead_id)
-            if given_name:
-                la.first_name = given_name
-            if family_name:
-                la.last_name = family_name
-            if mobile and not la.phone_number:
-                la.phone_number = mobile
-            la.save(ignore_permissions=False)
-            frappe.db.commit()
-        except Exception as e:
-            frappe.logger().warning(f"could not save farmer name fields: {e}")
+    # In the reverted schema, the only valid options are Draft, Pending OTP, and Approved.
+    # Keep status at "Pending OTP" and record the verification timestamp.
+    frappe.db.set_value("A2C Consent Request", consent_request, {
+        "status": "Pending OTP",
+        "otp_verified_at": now_datetime(),
+    })
+    frappe.db.commit()
 
     return success_response(
         data={
             "lead_id": lead_id,
             "consent_request": consent_request,
-            "openg2p_consent_id": openg2p_consent_id,
-            "consent_receipt": receipt.get("signature"),
-            "farmer_preview": farmer_preview
+            "transaction_id": transaction_id,
+            "status": "OTP Verified",
         },
-        message="OTP verified. Consent approved and saved to Lead."
+        message="OTP verified successfully. Proceed to submit consent.",
+    )
+
+
+# 5 ───────────────────────────────────────────────────────────────────────────
+@frappe.whitelist(allow_guest=False)
+@validate_request(SubmitConsentSchema)
+@handle_api_errors
+def submit_consent(**kwargs):
+    """Attach the consent details, submit to OpenG2P, and finalise the lead.
+    consent_type, purpose, allowed data fields and the attachment are supplied
+    here (not at request_otp). → client.submit_consent"""
+    lead_id                = kwargs.get("lead_id")
+    consent_request        = kwargs.get("consent_request")
+    consent_type           = kwargs.get("consent_type")
+    consent_reason_id      = kwargs.get("consent_reason_id", 1)
+    validity_months        = kwargs.get("validity_months")
+    consent_form_filename  = kwargs.get("consent_form_filename")
+    consent_form_base64    = kwargs.get("consent_form_base64")
+    allowed_data_field_ids = kwargs.get("allowed_data_field_ids") or []
+
+    frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
+    frappe.has_permission("A2C Consent Request", "write", doc=consent_request, throw=True)
+
+    # 1. Idempotency Check (Pessimistic lock row first to check status safely)
+    status = frappe.db.get_value("A2C Consent Request", consent_request, "status", for_update=True)
+    if not status:
+        frappe.throw(_("A2C Consent Request '{0}' not found.").format(consent_request), frappe.DoesNotExistError)
+        
+    if status == "Approved":
+        cr_doc = frappe.get_doc("A2C Consent Request", consent_request)
+        if cr_doc.lead != lead_id:
+            frappe.throw(_("Consent Request does not belong to the specified lead."), frappe.ValidationError)
+        return success_response(
+            data={
+                "lead_id": cr_doc.lead,
+                "consent_request": cr_doc.name,
+                "status": "Approved",
+                "openg2p_consent_id": cr_doc.openg2p_consent_id,
+                "consent_receipt": cr_doc.consent_receipt,
+                "farmer_preview": _get_farmer_preview_from_lead(cr_doc.lead),
+            },
+            message="Consent already submitted and approved.",
+        )
+
+    # 2. Retrieve locked request doc and client
+    cr_doc, client, transaction_id = _get_consent_request_and_client(
+        consent_request,
+        expected_status="Pending OTP",
+        check_verified=True
+    )
+
+    receipt = None
+    openg2p_consent_id = None
+    farmer_preview = {}
+
+    # Define savepoint for rollback of partial writes on failure
+    frappe.db.savepoint("before_submit")
+
+    try:
+        # Single farmer lookup, reused for both submission and the lead preview.
+        farmer_dict = client.get_farmer_by_fayda_id(cr_doc.farmer_fayda_id)
+        farmer_db_id = farmer_dict.get("id")
+
+        # Decode the consent form once: keep a copy on the doc and forward the
+        # base64 straight to OpenG2P.
+        import base64
+        from frappe.utils.file_manager import save_file
+
+        b64_data = consent_form_base64
+        if "," in b64_data:
+            b64_data = b64_data.split(",", 1)[1]
+        file_content = base64.b64decode(b64_data)
+        saved_file = save_file(
+            fname=consent_form_filename,
+            content=file_content,
+            dt="A2C Lead",
+            dn=lead_id,
+            is_private=1,
+        )
+        attachment_base64 = base64.b64encode(file_content).decode("utf-8")
+
+        # Map the requested field ids to names for the child table.
+        fields_res = client.get_consent_allowed_fields()
+        fields_data = fields_res.get("data") if isinstance(fields_res, dict) else []
+        field_map = {f["id"]: f["name"] for f in fields_data if isinstance(f, dict) and "id" in f}
+
+        # Persist the consent details onto the request now that they're known.
+        cr_doc.consent_type            = consent_type
+        cr_doc.purpose                 = consent_reason_id
+        cr_doc.consent_form_attachment = saved_file.file_url
+        cr_doc.set("requested_data_fields", [])
+        for f_id in allowed_data_field_ids:
+            cr_doc.append("requested_data_fields", {
+                "field_value": str(f_id),
+                "field_name": field_map.get(int(f_id), "OpenG2P Data Field ID"),
+            })
+        cr_doc.save(ignore_permissions=False)
+
+        # client call — submit the consent with the details provided in this request.
+        consent_response = client.submit_consent(
+            farmer_db_id=farmer_db_id,
+            consent_type=consent_type,
+            consent_reason_id=consent_reason_id,
+            allowed_data_field_ids=allowed_data_field_ids,
+            attachment_base64=attachment_base64,
+            attachment_filename=consent_form_filename,
+            fayda_otp_transaction_id=transaction_id,
+            validity_months=validity_months,
+        )
+        data_block = consent_response.get("data", {})
+        openg2p_consent_id = (
+            data_block.get("consent_id")
+
+        )
+
+        frappe.db.set_value("A2C Consent Request", consent_request, {
+            "status": "Approved",
+            "openg2p_consent_id": openg2p_consent_id,
+        })
+
+        # Generate the receipt and trigger the WebSub callback.
+        receipt = generate_consent_receipt(consent_request)
+        enqueue_websub_delivery(receipt)
+        frappe.db.set_value("A2C Consent Request", consent_request, "consent_receipt", receipt.get("signature"))
+
+        # Persist the farmer profile onto the lead and sync the headline fields.
+        farmer_preview = _save_farmer_data_to_lead(lead_id, farmer_dict, openg2p_consent_id)
+
+        given_name  = farmer_preview.get("given_name", "")
+        family_name = farmer_preview.get("family_name", "")
+        phone_list  = farmer_preview.get("phone_no") or []
+        mobile = phone_list[0] if isinstance(phone_list, list) and phone_list else ""
+
+        if given_name or family_name or mobile:
+            try:
+                lead = frappe.get_doc("A2C Lead", lead_id)
+                if given_name:
+                    lead.first_name = given_name
+                if family_name:
+                    lead.last_name = family_name
+                if mobile and not lead.phone_number:
+                    lead.phone_number = mobile
+                lead.save(ignore_permissions=False)
+            except Exception as e:
+                frappe.logger().warning(f"Could not save farmer name fields: {e}")
+
+        frappe.db.commit()
+
+    except Exception as e:
+        frappe.db.rollback(save_point="before_submit")
+        frappe.log_error(frappe.get_traceback(), f"Consent submission failed: {str(e)}")
+        raise e
+
+    return success_response(
+        data={
+            "lead_id": lead_id,
+            "consent_request": consent_request,
+            "status": "Approved",
+            "openg2p_consent_id": openg2p_consent_id,
+            "consent_receipt": receipt.get("signature") if receipt else None,
+            "farmer_preview": farmer_preview,
+        },
+        message="Consent submitted and approved successfully.",
+    )
+
+
+# 6 ───────────────────────────────────────────────────────────────────────────
+@frappe.whitelist(allow_guest=False)
+@handle_api_errors
+def get_consent_reasons():
+    """Fetch all active consent reasons from OpenG2P. → client.get_consent_reasons"""
+    client = OpenG2PConsentClient()
+    response = client.get_consent_reasons()
+    return success_response(
+        data=response.get("data") if response else [],
+        message="Consent reasons retrieved successfully.",
+    )
+
+
+# 7 ───────────────────────────────────────────────────────────────────────────
+@frappe.whitelist(allow_guest=False)
+@validate_request(GetConsentAllowedFieldsSchema)
+@handle_api_errors
+def get_consent_allowed_fields(**kwargs):
+    """Fetch the allowed data fields for the consent partner.
+    → client.get_consent_allowed_fields"""
+    client = OpenG2PConsentClient()
+    response = client.get_consent_allowed_fields()
+    return success_response(
+        data=response.get("data") if response else [],
+        message="Allowed data fields retrieved successfully.",
     )
