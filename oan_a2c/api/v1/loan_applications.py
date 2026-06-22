@@ -119,10 +119,11 @@ def get_basic_profile(lead_id=None, include_consent_data=None):
         consent_id = profile.consent_id or consent_id
 
     if consent_id:
-        consent_status = frappe.db.get_value("A2C Consent Request", consent_id, "status")
+        consent_doc_data = frappe.db.get_value("A2C Consent Request", consent_id, ["status", "otp_verified_at"], as_dict=True) or {}
         data["consent_request"] = {
             "name": consent_id,
-            "status": consent_status
+            "status": consent_doc_data.get("status"),
+            "otp_verified": bool(consent_doc_data.get("otp_verified_at"))
         }
         if include_consent_data:
             data.update(_get_consent_details(consent_id))

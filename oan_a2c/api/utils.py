@@ -65,7 +65,15 @@ def parse_multi_value(value, allowed=None):
     if isinstance(value, (list, tuple)):
         requested = [str(v).strip() for v in value]
     else:
-        requested = [v.strip() for v in str(value).split(",")]
+        v_str = str(value).strip()
+        if v_str.startswith('[') and v_str.endswith(']'):
+            try:
+                parsed = frappe.parse_json(v_str)
+                requested = [str(v).strip() for v in parsed] if isinstance(parsed, list) else [v_str]
+            except Exception:
+                requested = [v.strip() for v in v_str.split(",")]
+        else:
+            requested = [v.strip() for v in v_str.split(",")]
     seen = set()
     result = []
     for v in requested:
