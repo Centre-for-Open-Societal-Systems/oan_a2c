@@ -488,11 +488,16 @@ def update_lead_status(**kwargs):
 	lead_doc = frappe.get_doc("A2C Lead", lead_id)
 
 	# 2. Enforce Terminal State Locking
-	terminal_statuses = ("Processed", "Rejected", "Granted", "Dormant")
+	terminal_statuses = ("Granted", "Rejected", "Dormant")
 	if lead_doc.status in terminal_statuses:
 		frappe.throw(
 			_("Lead status is locked and cannot be updated because its current state is '{0}'.").format(lead_doc.status),
 			frappe.ValidationError
+		)
+
+	if lead_doc.status == "Processed" and status not in ("Granted", "Rejected"):
+		frappe.throw(
+			_("A 'Processed' lead can only be changed to 'Granted' or 'Rejected'."),			frappe.ValidationError
 		)
 
 	# 3. Validate target status

@@ -269,9 +269,9 @@ All endpoints use the standard envelope.
 | `start` | int | No | 0 | Offset (clamped to ≥ 0) |
 | `page_length` | int | No | 20 | Clamped to [1, 100] |
 | `search_query` | string | No | — | `LIKE` match on `name`, `phone_number`, `external_id` |
-| `status` | string | No | — | Single value or **comma-separated** list. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
-| `lead_source` | string | No | — | Single value or **comma-separated** list. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
-| `loan_type` | string | No | — | Single value or **comma-separated** list. Validated against `A2C Credit Information.loan_type` options. Filters via subquery on A2C Credit Information |
+| `status` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
+| `lead_source` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
+| `loan_type` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Validated against `A2C Credit Information.loan_type` options. Filters via subquery on A2C Credit Information |
 | `start_date` | string | No | — | ISO date. Used alone or with `end_date` |
 | `end_date` | string | No | — | ISO date. Used alone or with `start_date` |
 | `min_loan_amount` | float | No | — | Filters via subquery on A2C Credit Information |
@@ -281,7 +281,7 @@ All endpoints use the standard envelope.
 **Lead source allowlist:** `Missed Call`, `IVR`, `SMS`, `Agent Entry`
 **Loan type allowlist:** dynamic — pulled from `A2C Credit Information.loan_type` Select options at request time.
 
-> **Multi-value filters:** `status`, `lead_source`, and `loan_type` accept either a single value or a comma-separated list (e.g. `status=Active,Verified`). Values are split, de-duplicated, and matched against the allowlist; valid values are combined with an `in` filter.
+> **Multi-value filters:** `status`, `lead_source`, and `loan_type` accept either a single value, a comma-separated list, or a stringified JSON array (e.g. `status=["Active","Verified"]`). Using a JSON array is the strongly recommended format to avoid delimiter conflicts when values contain commas. Values are split, de-duplicated, and matched against the allowlist; valid values are combined with an `in` filter.
 
 > **Important:** Invalid `status`, `lead_source`, or `loan_type` values are **silently dropped** — the filter is not applied (or, for a multi-value list, only the invalid entries are removed) rather than returning an error. No 400 is thrown. If a list contains *only* invalid values, that filter is skipped entirely.
 
@@ -882,11 +882,17 @@ All endpoints use `@handle_api_errors` and standard envelope.
   "status": "success",
   "message": "Basic profile retrieved successfully",
   "data": {
+    "farmer_profile_created": false,
     "first_name": "Abebe",
     "last_name": "Kebede",
     "phone_number": "+251911000000",
     "email": "abebe@email.com or null",
-    "location": "Oromia, East Hararge or null"
+    "location": "Oromia, East Hararge or null",
+    "consent_request": {
+      "name": "CR-2026-00001",
+      "status": "Pending OTP",
+      "otp_verified": false
+    }
   }
 }
 ```
@@ -896,11 +902,17 @@ All endpoints use `@handle_api_errors` and standard envelope.
 {
   "status": "success",
   "data": {
+    "farmer_profile_created": true,
     "first_name": "Abebe",
     "last_name": "Kebede",
     "phone_number": "+251911000000",
     "email": null,
     "location": "Oromia",
+    "consent_request": {
+      "name": "CR-2026-00001",
+      "status": "Approved",
+      "otp_verified": true
+    },
     "websub_delivered_at": "2026-01-15 10:00:00 or null",
     "consent_type": "OTP or OAuth or null",
     "purpose": "Credit check or null",
@@ -1085,11 +1097,11 @@ No parameters.
 
 | Param | Type | Required | Default | Constraint |
 |-------|------|----------|---------|-----------|
-| `status` | string | No | — | Single value or comma-separated list. Each value validated against `{Draft, Processing, Approved, Rejected}`, de-duplicated. Invalid values silently dropped (`in` filter). |
+| `status` | string | No | — | Single value, comma-separated list, or stringified JSON array. Each value validated against `{Draft, Processing, Approved, Rejected}`, de-duplicated. Invalid values silently dropped (`in` filter). |
 | `loan_amount` | float | No | — | Exact match (overridden by min/max if both provided) |
 | `min_loan_amount` | float | No | — | |
 | `max_loan_amount` | float | No | — | |
-| `loan_type` | string | No | — | Single value or comma-separated list (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is. |
+| `loan_type` | string | No | — | Single value, comma-separated list, or stringified JSON array (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is. |
 | `location` | string | No | — | `LIKE` match |
 | `phone_number` | string | No | — | `LIKE` match |
 | `from_date` | string | No | — | ISO date. Filters `creation` |

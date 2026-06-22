@@ -180,8 +180,9 @@
                                 },
                                 {
                                     "key": "loan_type",
-                                    "value": "",
-                                    "description": "Single value or comma-separated list. Validated against A2C Credit Information.loan_type options; intersected with min/max loan amount."
+                                    "value": "[\"Input loan (seeds, agrochemicals)\"]",
+                                    "description": "Single value, comma-separated list, or stringified JSON array. Validated against A2C Credit Information.loan_type options; intersected with min/max loan amount.",
+                                    "disabled": true
                                 },
                                 {
                                     "key": "start_date",
@@ -2542,8 +2543,8 @@
                                 },
                                 {
                                     "key": "loan_type",
-                                    "value": "Input loan (seeds, agrochemicals),Land loan",
-                                    "description": "Single value or comma-separated list (in filter). Free-text field, not allowlist-validated.",
+                                    "value": "[\"Input loan (seeds, agrochemicals)\", \"Land loan\"]",
+                                    "description": "JSON array format is recommended to prevent comma-delimiter issues. Free-text field, not allowlist-validated.",
                                     "disabled": true
                                 },
                                 {
