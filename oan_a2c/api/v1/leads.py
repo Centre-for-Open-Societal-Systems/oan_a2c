@@ -224,6 +224,29 @@ def get_leads(**kwargs):
 			lead["loan_type"] = info.get("loan_type") if info else None
 			lead["loan_amount"] = info.get("loan_amount") if info else None
 
+		# Fold each lead's latest visit (date + status) into the list response in a single
+		# query scoped to this page's leads, instead of the frontend bulk-prefetching every
+		# Visit Schedule on each render. Visit Schedule remains the source of truth (read on
+		# demand here); no field is stored on the Lead and no write-back hook fires on visit
+		# changes, so there is nothing to keep in sync and no staleness.
+		all_visits = frappe.get_all(
+			"A2C Visit Schedule",
+			filters={"lead": ["in", lead_names]},
+			fields=["lead", "visit_date", "status"],
+			order_by="visit_date desc, visit_time desc"
+		)
+
+		latest_visit_map = {}
+		for visit in all_visits:
+			lead_name = visit["lead"]
+			if lead_name not in latest_visit_map:
+				latest_visit_map[lead_name] = visit
+
+		for lead in leads:
+			visit = latest_visit_map.get(lead["name"])
+			lead["visit_date"] = visit.get("visit_date") if visit else None
+			lead["schedule_status"] = visit.get("status") if visit else None
+
 	total_pages = -(-total_count // page_length)
 	has_next = start + page_length < total_count
 
@@ -356,6 +379,15 @@ def get_lead_metadata():
 	"""
 	frappe.has_permission("A2C Lead", "read", throw=True)
 
+	# This payload is derived purely from doctype Select options, which only change on
+	# migrate. Cache it for an hour instead of recomputing meta on every call (this endpoint
+	# fires on every New Lead form mount). The cache key is global (not user-scoped) because
+	# the options are identical for all users; RBAC is still enforced above on every request.
+	cache_key = "a2c_lead_metadata"
+	cached = frappe.cache().get_value(cache_key)
+	if cached:
+		return success_response(data=cached, message="Lead metadata retrieved successfully")
+
 	meta = frappe.get_meta("A2C Lead")
 	status_field = meta.get_field("status")
 	source_field = meta.get_field("lead_source")
@@ -367,14 +399,14 @@ def get_lead_metadata():
 	loan_type_field = credit_meta.get_field("loan_type")
 	loan_types = loan_type_field.options.split("\n") if loan_type_field else []
 
-	return success_response(
-		data={
-			"statuses": statuses,
-			"sources": sources,
-			"loan_types": loan_types
-		},
-		message="Lead metadata retrieved successfully"
-	)
+	data = {
+		"statuses": statuses,
+		"sources": sources,
+		"loan_types": loan_types
+	}
+	frappe.cache().set_value(cache_key, data, expires_in_sec=3600)
+
+	return success_response(data=data, message="Lead metadata retrieved successfully")
 
 
 @frappe.whitelist(allow_guest=False)
