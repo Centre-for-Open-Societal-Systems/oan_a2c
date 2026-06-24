@@ -78,14 +78,16 @@
             "default": "Active",
             "reqd": 1,
             "in_list_view": 1,
-            "in_standard_filter": 1
+            "in_standard_filter": 1,
+            "search_index": 1
         },
         {
             "fieldname": "assigned_to",
             "fieldtype": "Link",
             "label": "Assigned Agent",
             "options": "User",
-            "in_list_view": 1
+            "in_list_view": 1,
+            "search_index": 1
         },
         {
             "fieldname": "assigned_date",

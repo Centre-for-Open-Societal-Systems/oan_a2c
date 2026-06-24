@@ -636,11 +636,33 @@ def create_loan_application(**kwargs):
     loan_app.status = "Draft"
     
     loan_app.insert(ignore_permissions=False)
+
+    # Advance the lead to "Processed" in the same request, so the frontend no longer needs a
+    # separate update_lead_status round trip after creation (Group D / Chain 2). Only move
+    # leads that are still in the early funnel; never override a terminal/Processed state.
+    lead_status_updated = False
+    if lead_doc.status in ("Active", "Verified"):
+        frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
+        lead_doc.status = "Processed"
+        lead_doc.save(ignore_permissions=False)
+
+        audit_event = frappe.new_doc("A2C Lead Audit Event")
+        audit_event.lead = lead_id
+        audit_event.event_type = "Status Changed"
+        audit_event.event_title = "Status Updated"
+        audit_event.event_description = _("Changed to Processed\nLoan application {0} created\nUpdated by: {1}").format(
+            loan_app.name, frappe.session.user
+        )
+        audit_event.insert()
+        lead_status_updated = True
+
     frappe.db.commit()
-    
+
     return success_response(
         data={
             "application_id": loan_app.name,
+            "lead_status": lead_doc.status,
+            "lead_status_updated": lead_status_updated,
             "application": {
                 "name": loan_app.name,
                 "status": loan_app.status,

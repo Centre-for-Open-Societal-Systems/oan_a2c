@@ -407,10 +407,19 @@ class TestLoansV1API(unittest.TestCase):
         credit_info.insert(ignore_permissions=True)
         frappe.db.commit()
         
+        # Ensure the lead is in an early-funnel state so the atomic advance can fire
+        frappe.db.set_value("A2C Lead", "TEST_LEAD_999", "status", "Active")
+        frappe.db.commit()
+
         # 4. Call create_loan_application API
         res = create_loan_application(lead_id="TEST_LEAD_999")
         self.assertEqual(res["status"], "success")
         app_id = res["data"]["application_id"]
+
+        # Loan creation atomically advances the lead to "Processed" (no separate round trip)
+        self.assertTrue(res["data"]["lead_status_updated"])
+        self.assertEqual(res["data"]["lead_status"], "Processed")
+        self.assertEqual(frappe.db.get_value("A2C Lead", "TEST_LEAD_999", "status"), "Processed")
         
         # 5. Fetch the newly created loan application and assert fields were copied
         loan_app = frappe.get_doc("A2C Loan Application", app_id)
