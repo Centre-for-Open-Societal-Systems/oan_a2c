@@ -288,6 +288,27 @@ class TestLeadListAPI(unittest.TestCase):
 		for lead in res_source["data"]:
 			self.assertEqual(lead["lead_source"], "Missed Call")
 
+	def test_get_leads_assigned_to_filter(self):
+		"""Verifies filtering by assignee, multi-agent, and the 'unassigned' sentinel."""
+		from oan_a2c.api.v1.leads import get_leads
+
+		# Assign two of the five list leads to Administrator, leave the rest unassigned.
+		frappe.db.set_value("A2C Lead", self.leads[0], "assigned_to", "Administrator")
+		frappe.db.set_value("A2C Lead", self.leads[1], "assigned_to", "Administrator")
+		frappe.db.commit()
+
+		# Filter by a single agent
+		res = get_leads(assigned_to="Administrator", search_query="+251922000")
+		self.assertEqual(res["pagination"]["total"], 2)
+		for lead in res["data"]:
+			self.assertEqual(lead["assigned_to"], "Administrator")
+
+		# Filter for unassigned leads (the other three)
+		res_unassigned = get_leads(assigned_to="unassigned", search_query="+251922000")
+		self.assertEqual(res_unassigned["pagination"]["total"], 3)
+		for lead in res_unassigned["data"]:
+			self.assertFalse(lead["assigned_to"])
+
 	def test_get_leads_invalid_filters_throw(self):
 		"""Verifies that passing invalid status or lead_source values returns a validation error."""
 		from oan_a2c.api.v1.leads import get_leads

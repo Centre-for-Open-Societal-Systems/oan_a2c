@@ -272,6 +272,7 @@ All endpoints use the standard envelope.
 | `status` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
 | `lead_source` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
 | `loan_type` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Validated against `A2C Credit Information.loan_type` options. Filters via subquery on A2C Credit Information |
+| `assigned_to` | string | No | — | Filter by assigned agent (User). Single value or **comma-separated** list of users (`in` filter on `assigned_to`). The literal `unassigned` matches leads with no agent; it can be combined with named users (e.g. `unassigned,agent@bank.com`). Not allowlist-validated — an unknown user simply yields no matches |
 | `start_date` | string | No | — | ISO date. Used alone or with `end_date` |
 | `end_date` | string | No | — | ISO date. Used alone or with `start_date` |
 | `min_loan_amount` | float | No | — | Filters via subquery on A2C Credit Information |
@@ -286,6 +287,8 @@ All endpoints use the standard envelope.
 > **Important:** Invalid `status`, `lead_source`, or `loan_type` values are **silently dropped** — the filter is not applied (or, for a multi-value list, only the invalid entries are removed) rather than returning an error. No 400 is thrown. If a list contains *only* invalid values, that filter is skipped entirely.
 
 > **Credit criteria intersection:** `loan_type`, `min_loan_amount`, and `max_loan_amount` share a single subquery against A2C Credit Information — a lead must satisfy all supplied credit criteria together to match.
+
+> **Assignee filter:** `assigned_to` accepts a single user, a comma-separated list of users, or the literal `unassigned` (leads with empty `assigned_to`). Unlike the allowlist filters, unknown users are **not** dropped or errored — they just match nothing. Combine with other filters for an agent's scoped queue, e.g. `assigned_to=agent@bank.com&status=Active`.
 
 **Success response** (HTTP 200):
 ```json
@@ -395,12 +398,19 @@ No parameters.
       "Granted": 40,
       "Rejected": 30,
       "Dormant": 22
+    },
+    "tab_counts": {
+      "all": 342,
+      "assigned": 300,
+      "unassigned": 42
     }
   }
 }
 ```
 
-> **Performance note:** Executes 6 separate count queries (one per status) respecting RBAC. These are not cached.
+> **`tab_counts`:** `all` = total. `assigned` = leads where `assigned_to` is set. `unassigned` = `all − assigned` (leads with no agent). All respect RBAC.
+
+> **Performance note:** Executes 7 count queries (one per status, plus one for assigned). These are not cached.
 
 **Error cases:**
 
@@ -1104,6 +1114,7 @@ No parameters.
 | `loan_type` | string | No | — | Single value, comma-separated list, or stringified JSON array (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is. |
 | `location` | string | No | — | `LIKE` match |
 | `phone_number` | string | No | — | `LIKE` match |
+| `loan_officer` | string | No | — | Filter by assigned Loan Officer (User). Single value or **comma-separated** list (`in` filter). The literal `unassigned` matches loans with no officer (same notion as the `unassigned` tab in `get_loan_summary`) and can be combined with named users. Not allowlist-validated — an unknown user yields no matches. |
 | `from_date` | string | No | — | ISO date. Filters `creation` |
 | `to_date` | string | No | — | ISO date. End time is padded to `23:59:59` |
 | `page` | int | No | 1 | |

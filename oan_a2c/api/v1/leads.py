@@ -8,7 +8,7 @@ import frappe
 import zlib
 from frappe import _
 from frappe.utils import sanitize_html, strip_html
-from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value, validate_request, SafeDate, SafeEmail
+from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value, validate_request, SafeDate, SafeEmail, apply_status_transition
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Literal
 
@@ -19,6 +19,7 @@ class GetLeadsSchema(BaseModel):
 	status: Optional[str] = None
 	lead_source: Optional[str] = None
 	loan_type: Optional[str] = None
+	assigned_to: Optional[str] = None
 	start_date: SafeDate = None
 	end_date: SafeDate = None
 	min_loan_amount: Optional[float] = None
@@ -103,6 +104,7 @@ def get_leads(**kwargs):
 	status = kwargs.get("status")
 	lead_source = kwargs.get("lead_source")
 	loan_type = kwargs.get("loan_type")
+	assigned_to = kwargs.get("assigned_to")
 	start_date = kwargs.get("start_date")
 	end_date = kwargs.get("end_date")
 	min_loan_amount = kwargs.get("min_loan_amount")
@@ -128,6 +130,21 @@ def get_leads(**kwargs):
 		valid_sources = parse_multi_value(lead_source, allowed_sources)
 		if valid_sources:
 			filters.append(["lead_source", "in", valid_sources])
+
+	# Apply Assigned Agent Filter (single user, comma-separated users, or the literal
+	# "unassigned" to return leads with no agent). User values are not constrained to an
+	# allowlist here; an unknown user simply yields no matches.
+	if assigned_to:
+		agents = [a.strip() for a in str(assigned_to).split(",") if a.strip()]
+		if any(a.lower() == "unassigned" for a in agents):
+			named = [a for a in agents if a.lower() != "unassigned"]
+			if named:
+				# "unassigned" OR one of the named agents
+				filters.append(["assigned_to", "in", named + [""]])
+			else:
+				filters.append(["assigned_to", "in", ["", None]])
+		elif agents:
+			filters.append(["assigned_to", "in", agents])
 
 	# Apply Creation Date Range Filter
 	if start_date and end_date:
@@ -360,11 +377,25 @@ def get_lead_summary():
 		count = cnt_res[0].get("COUNT(*)") if cnt_res else 0
 		counts_by_status[status] = count
 		total_count += count
-		
+
+	# Assignment split: a lead is "assigned" when assigned_to is set, else "unassigned".
+	assigned_res = frappe.get_list(
+		"A2C Lead",
+		filters={"assigned_to": ["is", "set"]},
+		fields=[{"COUNT": "*"}]
+	)
+	assigned_count = assigned_res[0].get("COUNT(*)") if assigned_res else 0
+	unassigned_count = total_count - assigned_count
+
 	return success_response(
 		data={
 			"total": total_count,
-			"by_status": counts_by_status
+			"by_status": counts_by_status,
+			"tab_counts": {
+				"all": total_count,
+				"assigned": assigned_count,
+				"unassigned": unassigned_count
+			}
 		},
 		message="Lead summary retrieved successfully"
 	)
@@ -519,27 +550,10 @@ def update_lead_status(**kwargs):
 
 	lead_doc = frappe.get_doc("A2C Lead", lead_id)
 
-	# 2. Enforce Terminal State Locking
-	terminal_statuses = ("Granted", "Rejected", "Dormant")
-	if lead_doc.status in terminal_statuses:
-		frappe.throw(
-			_("Lead status is locked and cannot be updated because its current state is '{0}'.").format(lead_doc.status),
-			frappe.ValidationError
-		)
-
-	if lead_doc.status == "Processed" and status not in ("Granted", "Rejected"):
-		frappe.throw(
-			_("A 'Processed' lead can only be changed to 'Granted' or 'Rejected'."),			frappe.ValidationError
-		)
-
-	# 3. Validate target status
-	allowed_statuses = ("Active", "Verified", "Processed", "Granted", "Rejected", "Dormant")
-	if status not in allowed_statuses:
-		frappe.throw(_("Invalid status: {0}").format(status), frappe.ValidationError)
-
-	old_status = lead_doc.status
-	lead_doc.status = status
-	lead_doc.save(ignore_permissions=False)
+	# 2. Apply the status change through the A2C Lead Workflow. The workflow enforces legal
+	# transitions, terminal-state locking, and per-role gating declaratively (replacing the
+	# previous imperative checks). Illegal/unauthorised targets raise ValidationError.
+	apply_status_transition(lead_doc, status)
 
 	# 4. Insert Timeline Audit Event
 	description = _("Changed to {0}").format(status)

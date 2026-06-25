@@ -146,7 +146,7 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&loan_type=&start_date=&end_date=&min_loan_amount=&max_loan_amount=",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&loan_type=&assigned_to=&start_date=&end_date=&min_loan_amount=&max_loan_amount=",
                             "host": [
                                 "{{base_url}}"
                             ],
@@ -185,6 +185,12 @@
                                     "disabled": true
                                 },
                                 {
+                                    "key": "assigned_to",
+                                    "value": "",
+                                    "description": "Filter by assigned agent (User). Single value or comma-separated list. Use the literal 'unassigned' for leads with no agent (combinable, e.g. unassigned,agent@bank.com). Not allowlist-validated; unknown users match nothing.",
+                                    "disabled": true
+                                },
+                                {
                                     "key": "start_date",
                                     "value": ""
                                 },
@@ -204,7 +210,7 @@
                                 }
                             ]
                         },
-                        "description": "Fetches a paginated, filtered, and searchable list of A2C leads. Automatically applies multi-tenant RBAC and User Permissions at the query layer.\n\nMulti-value filters: 'status', 'lead_source', and 'loan_type' accept a single value OR a comma-separated list (e.g. status=Active,Verified). Invalid values are silently dropped. loan_type / min_loan_amount / max_loan_amount are intersected in one A2C Credit Information subquery."
+                        "description": "Fetches a paginated, filtered, and searchable list of A2C leads. Automatically applies multi-tenant RBAC and User Permissions at the query layer.\n\nMulti-value filters: 'status', 'lead_source', and 'loan_type' accept a single value OR a comma-separated list (e.g. status=Active,Verified). Invalid values are silently dropped. loan_type / min_loan_amount / max_loan_amount are intersected in one A2C Credit Information subquery.\n\nAssignee filter: 'assigned_to' filters by assigned agent (single user or comma-separated list). The literal 'unassigned' matches leads with no agent and can be combined with named users. Unknown users are not validated and simply match nothing."
                     },
                     "response": [],
                     "event": [
@@ -2550,6 +2556,12 @@
                                 {
                                     "key": "phone_number",
                                     "value": "{{search_phone_number}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "loan_officer",
+                                    "value": "",
+                                    "description": "Filter by assigned Loan Officer (User). Single value or comma-separated list. Use the literal 'unassigned' for loans with no officer (combinable, e.g. unassigned,officer@bank.com). Not allowlist-validated; unknown users match nothing.",
                                     "disabled": true
                                 },
                                 {

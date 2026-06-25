@@ -144,7 +144,7 @@
             "report": 0,
             "role": "Bank Agent",
             "share": 0,
-            "write": 0
+            "write": 1
         },
         {
             "create": 1,

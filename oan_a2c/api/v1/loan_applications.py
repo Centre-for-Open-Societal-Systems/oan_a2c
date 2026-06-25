@@ -4,7 +4,7 @@ from frappe.utils import cint, flt
 from functools import wraps
 import json
 
-from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value, validate_request, SafeDate, SafeEmail
+from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value, validate_request, SafeDate, SafeEmail, apply_status_transition
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional, Literal
 
@@ -31,6 +31,7 @@ class GetAllLoansSchema(BaseModel):
     loan_type: Optional[str] = None
     location: Optional[str] = None
     phone_number: Optional[str] = None
+    loan_officer: Optional[str] = None
     from_date: SafeDate = None
     to_date: SafeDate = None
     page: Optional[int] = Field(None, ge=1)
@@ -310,6 +311,7 @@ def get_all_loans(**kwargs):
     phone_number = kwargs.get("phone_number")
     from_date = kwargs.get("from_date")
     to_date = kwargs.get("to_date")
+    loan_officer = kwargs.get("loan_officer")
     page = kwargs.get("page") or 1
     page_size = kwargs.get("page_size") or 20
     lead_id = kwargs.get("lead_id")
@@ -349,6 +351,17 @@ def get_all_loans(**kwargs):
 
     if phone_number:
         filters['phone_number'] = ("like", f"%{phone_number}%")
+
+    # Filter by assigned Loan Officer (User). Single user, comma-separated users, or the literal
+    # "unassigned" for loans with no officer (matching the unassigned tab in get_loan_summary).
+    # Not allowlist-validated; an unknown user simply yields no matches.
+    if loan_officer:
+        officers = [o.strip() for o in str(loan_officer).split(",") if o.strip()]
+        if any(o.lower() == "unassigned" for o in officers):
+            named = [o for o in officers if o.lower() != "unassigned"]
+            filters['loan_officer'] = ["in", (named + [""]) if named else ["", None]]
+        elif officers:
+            filters['loan_officer'] = ["in", officers]
 
     if from_date and to_date:
         filters['creation'] = ("between", [from_date, f"{to_date} 23:59:59"])
@@ -636,33 +649,17 @@ def create_loan_application(**kwargs):
     loan_app.status = "Draft"
     
     loan_app.insert(ignore_permissions=False)
-
-    # Advance the lead to "Processed" in the same request, so the frontend no longer needs a
-    # separate update_lead_status round trip after creation (Group D / Chain 2). Only move
-    # leads that are still in the early funnel; never override a terminal/Processed state.
-    lead_status_updated = False
-    if lead_doc.status in ("Active", "Verified"):
-        frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
-        lead_doc.status = "Processed"
-        lead_doc.save(ignore_permissions=False)
-
-        audit_event = frappe.new_doc("A2C Lead Audit Event")
-        audit_event.lead = lead_id
-        audit_event.event_type = "Status Changed"
-        audit_event.event_title = "Status Updated"
-        audit_event.event_description = _("Changed to Processed\nLoan application {0} created\nUpdated by: {1}").format(
-            loan_app.name, frappe.session.user
-        )
-        audit_event.insert()
-        lead_status_updated = True
-
     frappe.db.commit()
+
+    # NOTE: the lead is intentionally NOT advanced here. Lead status transitions go through the
+    # A2C Lead Workflow (Active -> Verified -> Processed), driven by the frontend via
+    # update_lead_status. There is no Active -> Processed shortcut, so loan creation does not
+    # move the lead; the client applies the workflow actions explicitly.
 
     return success_response(
         data={
             "application_id": loan_app.name,
             "lead_status": lead_doc.status,
-            "lead_status_updated": lead_status_updated,
             "application": {
                 "name": loan_app.name,
                 "status": loan_app.status,
@@ -690,12 +687,10 @@ def update_loan_status(**kwargs):
     frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
     doc = _get_app(application_id)
 
-    allowed_statuses = ("Draft", "Processing", "Approved", "Rejected")
-    if status not in allowed_statuses:
-        frappe.throw(_("Invalid status: {0}").format(status), frappe.ValidationError)
-
-    doc.status = status
-    doc.save(ignore_permissions=False)
+    # Apply the status change through the A2C Loan Application Workflow. The workflow enforces
+    # legal transitions and per-role gating, and submits the doc (docstatus 1) on
+    # Approve/Reject. Illegal/unauthorised targets raise ValidationError.
+    apply_status_transition(doc, status)
     frappe.db.commit()
 
     return success_response(message=f"Loan application status updated to {status}")

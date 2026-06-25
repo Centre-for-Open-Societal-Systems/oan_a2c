@@ -97,6 +97,9 @@ class TestLoansV1API(unittest.TestCase):
 
     def tearDown(self):
         if hasattr(self, "app_id") and frappe.db.exists("A2C Loan Application", self.app_id):
+            # Loan is submittable; clear docstatus so a submitted (Approved/Rejected) test record
+            # can be force-deleted without the cancel-first guard.
+            frappe.db.sql("UPDATE `tabA2C Loan Application` SET docstatus=0 WHERE name=%s", self.app_id)
             frappe.delete_doc("A2C Loan Application", self.app_id, ignore_permissions=True, force=True)
         frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead='TEST_LEAD_999'")
         
@@ -150,6 +153,18 @@ class TestLoansV1API(unittest.TestCase):
         res_name = get_all_loans(search_query="API_TEST_FARMER")
         self.assertEqual(res_name["status"], "success")
         self.assertTrue(any(r["application_id"] == self.app_id for r in res_name["data"]))
+
+        # Test filtering by loan_officer (assignee)
+        frappe.db.set_value("A2C Loan Application", self.app_id, "loan_officer", "Administrator")
+        frappe.db.commit()
+        res_officer = get_all_loans(loan_officer="Administrator")
+        self.assertEqual(res_officer["status"], "success")
+        self.assertTrue(any(r["application_id"] == self.app_id for r in res_officer["data"]))
+
+        # The same loan must NOT appear when filtering for unassigned loans
+        res_unassigned = get_all_loans(loan_officer="unassigned")
+        self.assertEqual(res_unassigned["status"], "success")
+        self.assertFalse(any(r["application_id"] == self.app_id for r in res_unassigned["data"]))
 
     def test_3_get_basic_profile(self):
         res = get_basic_profile(lead_id="TEST_LEAD_999")
@@ -369,12 +384,22 @@ class TestLoansV1API(unittest.TestCase):
         self.assertEqual(res.get("code"), "VALIDATION_ERROR")
 
     def test_7_rejected_loan_status_locked(self):
-        # 1. Reject the loan application
+        # Reject follows the legal workflow path Draft -> Processing -> Rejected. Rejection is a
+        # submit action, so the record ends at docstatus 1 (frozen).
+        res = update_loan_status(application_id=self.app_id, status="Processing")
+        self.assertEqual(res["status"], "success")
         res = update_loan_status(application_id=self.app_id, status="Rejected")
         self.assertEqual(res["status"], "success")
 
-        # 2. Try to change it to Approved, should fail or throw ValidationError
         doc = frappe.get_doc("A2C Loan Application", self.app_id)
+        self.assertEqual(doc.status, "Rejected")
+        self.assertEqual(doc.docstatus, 1)
+
+        # A further transition (e.g. to Approved) is illegal from a terminal state and rejected.
+        res = update_loan_status(application_id=self.app_id, status="Approved")
+        self.assertEqual(res["status"], "error")
+
+        # The submitted record is frozen: a direct edit + save is blocked by docstatus.
         doc.status = "Approved"
         self.assertRaises(frappe.ValidationError, doc.save)
 
@@ -382,6 +407,7 @@ class TestLoansV1API(unittest.TestCase):
         # 1. Clean up any existing loan application for TEST_LEAD_999 first (since setUp creates one)
         app_name = frappe.db.exists("A2C Loan Application", {"lead_id": "TEST_LEAD_999"})
         if app_name:
+            frappe.db.sql("UPDATE `tabA2C Loan Application` SET docstatus=0 WHERE name=%s", app_name)
             frappe.delete_doc("A2C Loan Application", app_name, ignore_permissions=True, force=True)
             
         # Clean up existing credit info
@@ -407,19 +433,15 @@ class TestLoansV1API(unittest.TestCase):
         credit_info.insert(ignore_permissions=True)
         frappe.db.commit()
         
-        # Ensure the lead is in an early-funnel state so the atomic advance can fire
-        frappe.db.set_value("A2C Lead", "TEST_LEAD_999", "status", "Active")
-        frappe.db.commit()
-
         # 4. Call create_loan_application API
         res = create_loan_application(lead_id="TEST_LEAD_999")
         self.assertEqual(res["status"], "success")
         app_id = res["data"]["application_id"]
 
-        # Loan creation atomically advances the lead to "Processed" (no separate round trip)
-        self.assertTrue(res["data"]["lead_status_updated"])
-        self.assertEqual(res["data"]["lead_status"], "Processed")
-        self.assertEqual(frappe.db.get_value("A2C Lead", "TEST_LEAD_999", "status"), "Processed")
+        # Loan creation does NOT change the lead status (that is driven via the Lead Workflow
+        # by the frontend through update_lead_status). The new loan starts in Draft.
+        loan_status = frappe.db.get_value("A2C Loan Application", app_id, "status")
+        self.assertEqual(loan_status, "Draft")
         
         # 5. Fetch the newly created loan application and assert fields were copied
         loan_app = frappe.get_doc("A2C Loan Application", app_id)

@@ -292,3 +292,70 @@ def handle_api_errors(func):
     return wrapper
 
 
+# --- Workflow helpers ------------------------------------------------------
+#
+# The A2C Lead / A2C Loan Application status fields are governed by Frappe
+# Workflows (see development/workflow_design_lead_loan.md). Status can only
+# change via apply_workflow(doc, action), which validates the transition is
+# legal from the current state and allowed for the user's role.
+#
+# To keep the existing API contract unchanged, the status-update endpoints still
+# accept a *target status*; we map (current_state -> target_status) to the
+# workflow *action* and apply it. The map below is derived directly from the
+# transition tables in the design doc.
+
+# (current_workflow_state, target_status) -> action name
+_WORKFLOW_TRANSITION_ACTIONS = {
+    "A2C Lead": {
+        ("Active", "Verified"): "Verify",
+        ("Verified", "Processed"): "Mark Processed",
+        ("Processed", "Granted"): "Grant",
+        ("Processed", "Rejected"): "Reject",
+        ("Active", "Rejected"): "Reject",
+        ("Verified", "Rejected"): "Reject",
+        ("Active", "Dormant"): "Mark Dormant",
+        ("Verified", "Dormant"): "Mark Dormant",
+        ("Dormant", "Active"): "Reactivate",
+    },
+    "A2C Loan Application": {
+        ("Draft", "Processing"): "Send for Review",
+        ("Processing", "Approved"): "Approve",
+        ("Processing", "Rejected"): "Reject",
+    },
+}
+
+
+def apply_status_transition(doc, target_status):
+    """
+    Move `doc` to `target_status` through its workflow.
+
+    Resolves the workflow action for (current_state -> target_status) and calls
+    apply_workflow, which enforces legality + role permissions. Raises
+    frappe.ValidationError with a clear message if the transition is not allowed
+    from the current state (mirroring the old imperative "status is locked" /
+    "invalid status" errors). No-op if already in the target state.
+    """
+    from frappe.model.workflow import apply_workflow
+
+    current = doc.get("workflow_state") or doc.get("status")
+    if current == target_status:
+        return doc
+
+    action = _WORKFLOW_TRANSITION_ACTIONS.get(doc.doctype, {}).get((current, target_status))
+    if not action:
+        frappe.throw(
+            _("Cannot change status from '{0}' to '{1}'.").format(current, target_status),
+            frappe.ValidationError,
+        )
+
+    doc = apply_workflow(doc, action)
+
+    # apply_workflow moves `workflow_state` but not the separate `status` Select field that the
+    # rest of the app (lists, summaries, filters) reads. Mirror the new state onto `status` so
+    # the two stay in lockstep. update_modified is left default so the change is timestamped.
+    if doc.get("status") != doc.workflow_state:
+        doc.db_set("status", doc.workflow_state)
+
+    return doc
+
+
