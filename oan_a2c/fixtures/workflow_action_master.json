@@ -1,0 +1,65 @@
+[
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-06-29 12:43:23.681578",
+  "name": "Approve",
+  "workflow_action_name": "Approve"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-06-29 12:43:23.682571",
+  "name": "Reject",
+  "workflow_action_name": "Reject"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-06-29 12:43:23.683082",
+  "name": "Review",
+  "workflow_action_name": "Review"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-06-29 13:03:16.167500",
+  "name": "Verify",
+  "workflow_action_name": "Verify"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-06-29 13:03:16.171519",
+  "name": "Mark Processed",
+  "workflow_action_name": "Mark Processed"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-06-29 13:03:16.172406",
+  "name": "Grant",
+  "workflow_action_name": "Grant"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-06-29 13:03:16.173571",
+  "name": "Mark Dormant",
+  "workflow_action_name": "Mark Dormant"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-06-29 13:03:16.174423",
+  "name": "Reactivate",
+  "workflow_action_name": "Reactivate"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-06-29 13:03:16.413313",
+  "name": "Send for Review",
+  "workflow_action_name": "Send for Review"
+ }
+]

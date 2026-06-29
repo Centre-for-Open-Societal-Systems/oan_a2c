@@ -37,7 +37,7 @@ class CreateLeadSchema(BaseModel):
 class AddLeadCreditInfoSchema(BaseModel):
 	lead_id: str = Field(..., min_length=1)
 	loan_type: str = Field(..., min_length=1)
-	loan_amount: float = Field(..., gt=0)
+	loan_amount: float = Field(..., gt=0, le=999999999999.0)
 	purpose_message: str = Field(..., min_length=1)
 
 class LeadIDSchema(BaseModel):

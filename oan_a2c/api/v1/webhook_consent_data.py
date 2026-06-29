@@ -66,6 +66,9 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
             mapped_status = new_status.capitalize() if new_status.islower() else new_status
             frappe.db.set_value("A2C Consent Request", consent_doc_name, "status", mapped_status)
 
+        if validated.published_at:
+            frappe.db.set_value("A2C Consent Request", consent_doc_name, "websub_delivered_at", validated.published_at)
+
         # Parse Farmer Data
         farmer_data = validated.farmer or FarmerInfoSchema()
         selected_data = (validated.selected_data.farmer if validated.selected_data else None) or FarmerSelectedDataSchema()
