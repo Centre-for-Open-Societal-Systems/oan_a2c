@@ -161,6 +161,7 @@ class TestConsentAPI(unittest.TestCase):
         mock_instance.submit_consent.return_value = {
             "success": True,
             "data": {
+                "consent_id": "MOCK-G2P-CONS-001",
                 "consent_creation_request_id": "MOCK-G2P-CONS-001"
             }
         }

@@ -219,8 +219,9 @@ class TestAuthAPI(unittest.TestCase):
 
 		# 1. Guest request should fail
 		frappe.set_user("Guest")
-		with self.assertRaises(frappe.AuthenticationError):
-			get_me()
+		response = get_me()
+		self.assertEqual(response.get("status"), "error")
+		self.assertEqual(response.get("code"), "AUTHENTICATION_ERROR")
 
 		# 2. Authenticated request should succeed
 		frappe.set_user(self.test_email)
