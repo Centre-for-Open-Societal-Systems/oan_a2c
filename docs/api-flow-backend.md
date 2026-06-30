@@ -1029,7 +1029,6 @@ Method restricted to `POST`.
 | `region` | string | No | |
 | `woreda` | string | No | |
 | `kebele` | string | No | |
-| `language` | string | No | |
 
 At least one field should be provided (no error if omitted — returns current values).
 
@@ -1042,8 +1041,7 @@ At least one field should be provided (no error if omitted — returns current v
     "email": "new@email.com",
     "region": "Oromia",
     "woreda": "East Hararge",
-    "kebele": "Gudina",
-    "language": "en_US"
+    "kebele": "Gudina"
   }
 }
 ```
