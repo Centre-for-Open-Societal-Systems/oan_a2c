@@ -99,11 +99,14 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         
         # Parse Certification ID
         land_ids = farmer_info_dict.get("Land ID", [])
-        certification_id = land_ids[0] if isinstance(land_ids, list) and land_ids else land_ids
+        if isinstance(land_ids, list):
+            certification_id = ", ".join([str(x) for x in land_ids])
+        else:
+            certification_id = land_ids
 
         # Parse Certification Photo
-        land_names = farmer_info_dict.get("Land Name", [])
-        certification_photo_url = land_names[0] if isinstance(land_names, list) and len(land_names) > 0 else (land_names if isinstance(land_names, str) else None)
+        cert_photos = farmer_info_dict.get("Certificate Provided", [])
+        certification_photo_url = cert_photos[0] if isinstance(cert_photos, list) and len(cert_photos) > 0 else (cert_photos if isinstance(cert_photos, str) else None)
 
         raw_edu = farmer_info_dict.get("Education Level", "").lower()
         if "basic" in raw_edu or "primary" in raw_edu:
@@ -121,13 +124,22 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         else:
             education_level = ""
 
-        location_data = farmer_info_dict.get("Region")
-        location = location_data.get("name") if isinstance(location_data, dict) else location_data
+        region_data = farmer_info_dict.get("Region")
+        region = region_data.get("name") if isinstance(region_data, dict) else (region_data or "")
+
+        woreda_data = farmer_info_dict.get("Woreda")
+        woreda = woreda_data.get("name") if isinstance(woreda_data, dict) else (woreda_data or "")
+
+        kebele_data = farmer_info_dict.get("Kebele")
+        kebele = kebele_data.get("name") if isinstance(kebele_data, dict) else (kebele_data or "")
 
         updates = {
             "first_name": first_name,
             "last_name": last_name,
-            "location": location,
+            "region": region,
+            "woreda": woreda,
+            "kebele": kebele,
+            "language": farmer_info_dict.get("Language"),
             "farmer_id": farmer_data.id,
             "consent_id": consent_doc_name,
             "phone_number": phone_number,
