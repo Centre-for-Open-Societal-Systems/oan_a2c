@@ -184,6 +184,13 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         frappe.db.rollback()
         # Log to Frappe Desk visible Error Log (Option 1)
         frappe.log_error(frappe.get_traceback(), f"Background Webhook Error for Consent {consent_doc_name}")
+        
+        try:
+            frappe.db.set_value("A2C Consent Request", consent_doc_name, "status", "Failed")
+            frappe.db.commit()
+        except Exception:
+            pass
+
         raise e
 
 
