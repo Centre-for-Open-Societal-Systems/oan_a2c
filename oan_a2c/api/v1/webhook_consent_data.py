@@ -89,8 +89,6 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         lead_id = consent_doc.get("lead")
         
         phone_number = selected_data.Phone_Number or ""
-        if not phone_number and lead_id:
-            phone_number = frappe.db.get_value("A2C Lead", lead_id, "phone_number")
 
         updates = {
             "first_name": first_name,
