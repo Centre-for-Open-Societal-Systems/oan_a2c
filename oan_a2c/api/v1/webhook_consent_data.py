@@ -4,25 +4,9 @@ from oan_a2c.api.utils import success_response, handle_api_errors, validate_requ
 from pydantic import BaseModel, Field, ValidationError
 from typing import Optional, Dict, Any, Any as DummyAny
 
-class RegionZoneWoredaSchema(BaseModel):
-    id: Optional[int] = None
-    name: Optional[str] = None
-    code: Optional[str] = None
-
-class FarmerSelectedDataSchema(BaseModel):
-    First_Name_English: Optional[str] = Field(None, alias="First Name(English)")
-    Father_Name: Optional[str] = Field(None, alias="Father Name")
-    Email: Optional[str] = None
-    Phone_Number: Optional[str] = Field(None, alias="Phone Number")
-    Region: Optional[RegionZoneWoredaSchema] = None
-    Zone: Optional[RegionZoneWoredaSchema] = None
-    Woreda: Optional[RegionZoneWoredaSchema] = None
-
-    class Config:
-        populate_by_name = True
-
 class SelectedDataSchema(BaseModel):
-    farmer: Optional[FarmerSelectedDataSchema] = None
+    pass
+
 
 class FarmerInfoSchema(BaseModel):
     id: Optional[int] = None
@@ -44,7 +28,7 @@ class ReceiveConsentDataSchema(BaseModel):
     published_at: Optional[str] = None
     consent: ConsentInfoSchema
     farmer: Optional[FarmerInfoSchema] = None
-    selected_data: Optional[SelectedDataSchema] = None
+    selected_data: Optional[Dict[str, Any]] = None
 
 def process_consent_data(data, consent_doc_name, consent_request_id):
     """
@@ -71,33 +55,97 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 
         # Parse Farmer Data
         farmer_data = validated.farmer or FarmerInfoSchema()
-        selected_data = (validated.selected_data.farmer if validated.selected_data else None) or FarmerSelectedDataSchema()
+        
+        raw_selected_data = validated.selected_data or {}
+        farmer_info_dict = {}
+        # Find the first dictionary inside selected_data that contains farmer info
+        if isinstance(raw_selected_data, dict):
+            for key, val in raw_selected_data.items():
+                if isinstance(val, dict):
+                    farmer_info_dict = val
+                    break
 
-        name_parts = (farmer_data.name or "").split(" ")
+        full_name = farmer_info_dict.get("Full Name", "")
+        if full_name:
+            name_parts = full_name.split(" ")
+        else:
+            name_parts = (farmer_data.name or "").split(" ")
+            
         first_name = name_parts[0] if len(name_parts) > 0 else ""
         last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
 
-        region = selected_data.Region.name if selected_data.Region else ""
-        zone = selected_data.Zone.name if selected_data.Zone else ""
-        woreda = selected_data.Woreda.name if selected_data.Woreda else ""
-        
-        location_parts = [p for p in [region, zone, woreda] if p]
-        location = ", ".join(location_parts)
+        # Mobile could be list or string
+        mobile_data = farmer_info_dict.get("Mobile Number", farmer_info_dict.get("Phone Number", []))
+        if isinstance(mobile_data, list) and mobile_data:
+            phone_number = str(mobile_data[0])
+        elif isinstance(mobile_data, str):
+            phone_number = mobile_data
+        else:
+            phone_number = ""
+            
+        email = farmer_info_dict.get("Email", "")
 
         # Fetch Consent Request to check links
         consent_doc = frappe.get_doc("A2C Consent Request", consent_doc_name)
         lead_id = consent_doc.get("lead")
         
-        phone_number = selected_data.Phone_Number or ""
+        # Parse Source of income
+        source_of_income_list = farmer_info_dict.get("Source of Income", [])
+        source_of_income = ", ".join([s.get("name") for s in source_of_income_list if isinstance(s, dict)]) if isinstance(source_of_income_list, list) else source_of_income_list
+        
+        # Parse farmland size
+        farmland_size_data = farmer_info_dict.get("Farmland size (Hectares)", [])
+        farmland_size_hectares = farmland_size_data[0] if isinstance(farmland_size_data, list) and farmland_size_data else farmland_size_data
+        
+        # Parse Certification ID
+        land_ids = farmer_info_dict.get("Land ID", [])
+        certification_id = land_ids[0] if isinstance(land_ids, list) and land_ids else land_ids
+
+        # Parse Certification Photo
+        land_names = farmer_info_dict.get("Land Name", [])
+        certification_photo_url = land_names[0] if isinstance(land_names, list) and land_names else land_names
+
+        raw_edu = farmer_info_dict.get("Education Level", "").lower()
+        if "basic" in raw_edu or "primary" in raw_edu:
+            education_level = "Primary (Grade 1-8)"
+        elif "secondary" in raw_edu or "high" in raw_edu:
+            education_level = "Secondary (Grade 9-12)"
+        elif "none" in raw_edu:
+            education_level = "None / No formal education"
+        elif "tvet" in raw_edu or "certificate" in raw_edu:
+            education_level = "TVET / Certificate"
+        elif "diploma" in raw_edu:
+            education_level = "Diploma"
+        elif "degree" in raw_edu or "university" in raw_edu:
+            education_level = "Degree and above"
+        else:
+            education_level = ""
 
         updates = {
             "first_name": first_name,
             "last_name": last_name,
-            "location": location,
+            "location": farmer_info_dict.get("Region", ""),
             "farmer_id": farmer_data.id,
             "consent_id": consent_doc_name,
             "phone_number": phone_number,
-            "lead_id": lead_id
+            "email": email,
+            "lead_id": lead_id,
+            "date_of_birth": farmer_info_dict.get("Date of Birth"),
+            "gender": (farmer_info_dict.get("Gender") or "").capitalize(),
+            "marital_status": (farmer_info_dict.get("Marital Status") or "").capitalize(),
+            "size_of_family": frappe.utils.cint(farmer_info_dict.get("Size of Family")),
+            "number_of_children": frappe.utils.cint(farmer_info_dict.get("Number of Children")),
+            "no_of_females_family": frappe.utils.cint(farmer_info_dict.get("Number of Females ( Family )")),
+            "source_of_income": source_of_income,
+            "education_level": education_level,
+            "family_member_owns_land_independently": frappe.utils.cint(farmer_info_dict.get("Other family Member Own Land")),
+            "total_farmland_size_as_landowner": frappe.utils.flt(farmer_info_dict.get("Total Owned Land")),
+            "total_farmland_size_as_crop_sharing": frappe.utils.flt(farmer_info_dict.get("Total Crop sharing")),
+            "total_farmland_size_as_rented": frappe.utils.flt(farmer_info_dict.get("Total Rented Land")),
+            "farmland_size_hectares": frappe.utils.flt(farmland_size_hectares),
+            "land_ownership_status": farmer_info_dict.get("Land Ownership Status"),
+            "certification_id": certification_id,
+            "certification_photo_url": certification_photo_url
         }
 
         if lead_id:
