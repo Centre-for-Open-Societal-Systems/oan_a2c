@@ -276,7 +276,8 @@ def handle_api_errors(func):
             frappe.log_error(title=log_title, message=log_message)
             frappe.local.message_log = []
             frappe.response["http_status_code"] = 400
-            return error_response("Database constraint or data validation error occurred", "VALIDATION_ERROR")
+            error_msg = get_error_message(e, "Database constraint or data validation error occurred")
+            return error_response(error_msg, "VALIDATION_ERROR")
         except Exception as e:
             import json
             log_title = f"API Error | {func.__name__}"
