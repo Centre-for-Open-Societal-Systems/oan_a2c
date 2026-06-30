@@ -18,7 +18,6 @@ class UpdateBasicProfileSchema(BaseModel):
     region: Optional[str] = None
     woreda: Optional[str] = None
     kebele: Optional[str] = None
-    language: Optional[str] = None
 
 class LoanApplicationIDSchema(BaseModel):
     application_id: str = Field(..., min_length=1)
@@ -140,7 +139,7 @@ def get_basic_profile(lead_id=None, include_consent_data=None):
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(UpdateBasicProfileSchema)
 @handle_api_errors
-def update_basic_profile(lead_id=None, email=None, region=None, woreda=None, kebele=None, language=None):
+def update_basic_profile(lead_id=None, email=None, region=None, woreda=None, kebele=None):
     """
     Updates the email and location details for a lead's farmer profile.
     """
@@ -157,8 +156,7 @@ def update_basic_profile(lead_id=None, email=None, region=None, woreda=None, keb
         "email": email,
         "region": region,
         "woreda": woreda,
-        "kebele": kebele,
-        "language": language
+        "kebele": kebele
     }
     
     for field, value in updates.items():
