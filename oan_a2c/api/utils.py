@@ -203,7 +203,9 @@ def handle_api_errors(func):
         if not getattr(frappe.local, "request_id", None):
             req_id = None
             if frappe.request:
-                req_id = frappe.request.headers.get("X-Request-Id") or frappe.request.environ.get("REQUEST_ID")
+                headers = getattr(frappe.request, "headers", None)
+                environ = getattr(frappe.request, "environ", None)
+                req_id = (headers.get("X-Request-Id") if headers else None) or (environ.get("REQUEST_ID") if environ else None)
             if not req_id:
                 import uuid
                 req_id = str(uuid.uuid4())

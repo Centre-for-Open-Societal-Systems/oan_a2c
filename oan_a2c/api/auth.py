@@ -2,6 +2,7 @@ import frappe
 from frappe import _
 import jwt
 import datetime
+import hashlib
 from frappe.auth import LoginManager
 from frappe.core.doctype.user.user import reset_password as reset_password_core
 from frappe.core.doctype.user.user import update_password
@@ -12,6 +13,7 @@ from typing import Optional
 class LoginSchema(BaseModel):
 	usr: str = Field(..., min_length=1)
 	pwd: str = Field(..., min_length=1)
+	remember_me: bool = Field(default=False)
 
 class ForgotPasswordSchema(BaseModel):
 	email: SafeEmail = None
@@ -21,13 +23,54 @@ class ResetPasswordSchema(BaseModel):
 	key: str = Field(..., min_length=1)
 	new_password: str = Field(..., min_length=1)
 
+class RefreshTokenSchema(BaseModel):
+	refresh_token: str = Field(..., min_length=1)
+
+class LogoutSchema(BaseModel):
+	refresh_token: str = Field(..., min_length=1)
+
+
+def generate_access_token(usr: str, roles: list) -> str:
+	secret = frappe.conf.get("encryption_key")
+	if not secret:
+		frappe.throw(_("System configuration error: missing encryption_key"))
+
+	now = datetime.datetime.now(datetime.timezone.utc)
+	payload = {
+		"sub": usr,
+		"iss": "oan_a2c_identity_gateway",
+		"iat": now,
+		"exp": now + datetime.timedelta(minutes=15),
+		"roles": roles
+	}
+	return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": "v1"})
+
+
+def generate_refresh_token(usr: str, remember_me: bool = False) -> str:
+	raw_token = frappe.generate_hash(length=40)
+	token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+	from frappe.utils import now_datetime
+	expiry = now_datetime() + datetime.timedelta(days=30 if remember_me else 1)
+
+	token_doc = frappe.get_doc({
+		"doctype": "A2C User Refresh Token",
+		"user": usr,
+		"token_hash": token_hash,
+		"expiry": expiry,
+		"remember_me": 1 if remember_me else 0
+	})
+	token_doc.insert(ignore_permissions=True)
+	frappe.db.commit()
+	return raw_token
+
 
 @frappe.whitelist(allow_guest=True)
 @validate_request(LoginSchema)
 @handle_api_errors
-def login(usr=None, pwd=None):
+def login(usr=None, pwd=None, remember_me=False):
 	"""
-	Authenticates a user and returns a stateless JWT.
+	Authenticates a user and returns a short-lived access JWT and a database-backed refresh token.
 	Wraps Frappe's core LoginManager to ensure standard validations apply
 	(account lock, disabled user, etc.) without creating a server-side session.
 	"""
@@ -44,22 +87,9 @@ def login(usr=None, pwd=None):
 	user = frappe.get_doc("User", usr)
 	roles = [d.role for d in user.roles]
 
-	secret = frappe.conf.get("encryption_key")
-	if not secret:
-		frappe.throw(_("System configuration error: missing encryption_key"))
-
-	# Use timezone-aware UTC — datetime.utcnow() is deprecated in Python 3.12+
-	now = datetime.datetime.now(datetime.timezone.utc)
-
-	payload = {
-		"sub": usr,
-		"iss": "oan_a2c_identity_gateway",
-		"iat": now,
-		"exp": now + datetime.timedelta(hours=1),
-		"roles": roles
-	}
-
-	token = jwt.encode(payload, secret, algorithm="HS256", headers={"kid": "v1"})
+	# Generate new access token and database-backed refresh token
+	token = generate_access_token(usr, roles)
+	refresh_token = generate_refresh_token(usr, remember_me)
 
 	# Fetch the user's linked bank via User Permissions (populated once
 	# the Participating Bank DocType and permission fixtures are active).
@@ -74,6 +104,7 @@ def login(usr=None, pwd=None):
 	return success_response(
 		data={
 			"token": token,
+			"refresh_token": refresh_token,
 			"user": {
 				"email": usr,
 				"full_name": user.full_name,
@@ -121,6 +152,83 @@ def reset_password(email, key, new_password):
 	update_password(new_password=new_password, logout_all_sessions=True, key=key, user=user)
 	return success_response(
 		message=_("Your password has been successfully updated. You may now login.")
+	)
+
+
+@frappe.whitelist(allow_guest=True)
+@validate_request(RefreshTokenSchema)
+@handle_api_errors
+def refresh(refresh_token):
+	"""
+	Validates the refresh token, performs rotation, and returns a new access & refresh token.
+	"""
+	token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
+
+	token_records = frappe.get_all(
+		"A2C User Refresh Token",
+		filters={"token_hash": token_hash},
+		fields=["name", "user", "expiry", "remember_me"]
+	)
+
+	if not token_records:
+		raise frappe.AuthenticationError(_("Invalid or expired refresh token."))
+
+	record = token_records[0]
+
+	from frappe.utils import get_datetime, now_datetime
+	expiry_dt = get_datetime(record["expiry"])
+	if expiry_dt < now_datetime():
+		frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)
+		frappe.db.commit()
+		raise frappe.AuthenticationError(_("Refresh token has expired."))
+
+	user_enabled = frappe.db.get_value("User", record["user"], "enabled")
+	if not user_enabled:
+		frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)
+		frappe.db.commit()
+		raise frappe.AuthenticationError(_("User is disabled or does not exist."))
+
+	# Token Rotation: Delete the used token
+	frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)
+
+	user_name = record["user"]
+	user = frappe.get_doc("User", user_name)
+	roles = [d.role for d in user.roles]
+
+	new_access_token = generate_access_token(user_name, roles)
+	new_refresh_token = generate_refresh_token(user_name, bool(record["remember_me"]))
+
+	frappe.db.commit()
+
+	return success_response(
+		data={
+			"token": new_access_token,
+			"refresh_token": new_refresh_token
+		}
+	)
+
+
+@frappe.whitelist(allow_guest=True)
+@validate_request(LogoutSchema)
+@handle_api_errors
+def logout(refresh_token):
+	"""
+	Revokes the provided refresh token by deleting it from the database.
+	"""
+	token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
+
+	token_records = frappe.get_all(
+		"A2C User Refresh Token",
+		filters={"token_hash": token_hash},
+		fields=["name"]
+	)
+
+	if token_records:
+		frappe.delete_doc("A2C User Refresh Token", token_records[0]["name"], ignore_permissions=True)
+		frappe.db.commit()
+
+	return success_response(
+		message=_("Logged out successfully.")
 	)
 
 

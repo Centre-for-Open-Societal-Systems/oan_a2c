@@ -194,6 +194,7 @@ def search_farmer(**kwargs):
                 "name": farmer_dict.get("name"),
                 "mobile": farmer_dict.get("mobile"),
                 "phone": farmer_dict.get("phone"),
+                "profile_image_url": farmer_dict.get("profile_image_url"),
             }
         },
         message="Farmer found successfully.",

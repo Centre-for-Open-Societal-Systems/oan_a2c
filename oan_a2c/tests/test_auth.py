@@ -2,7 +2,7 @@ import frappe
 import unittest
 import jwt
 import datetime
-from oan_a2c.api.auth import login, forgot_password, reset_password
+from oan_a2c.api.auth import login, forgot_password, reset_password, refresh, logout
 from oan_a2c.api.middleware import validate_jwt_request
 
 
@@ -232,4 +232,84 @@ class TestAuthAPI(unittest.TestCase):
 		self.assertEqual(user_data.get("full_name"), "Test Agent")
 		self.assertIn("roles", user_data)
 		self.assertIn("bank", user_data)
+
+	def test_11_refresh_token_rotation_success(self):
+		response = login(self.test_email, self.test_password, remember_me=True)
+		self.assertEqual(response.get("status"), "success")
+		data = response.get("data", {})
+		self.assertIn("token", data)
+		self.assertIn("refresh_token", data)
+
+		old_refresh_token = data["refresh_token"]
+		import hashlib
+		old_hash = hashlib.sha256(old_refresh_token.encode("utf-8")).hexdigest()
+
+		# Verify token document was created
+		self.assertTrue(frappe.db.exists("A2C User Refresh Token", {"token_hash": old_hash}))
+
+		# Refresh
+		refresh_response = refresh(old_refresh_token)
+		self.assertEqual(refresh_response.get("status"), "success")
+		refresh_data = refresh_response.get("data", {})
+		self.assertIn("token", refresh_data)
+		self.assertIn("refresh_token", refresh_data)
+
+		new_refresh_token = refresh_data["refresh_token"]
+		new_hash = hashlib.sha256(new_refresh_token.encode("utf-8")).hexdigest()
+
+		# Old token should be deleted (RTR), new token should exist
+		self.assertFalse(frappe.db.exists("A2C User Refresh Token", {"token_hash": old_hash}))
+		self.assertTrue(frappe.db.exists("A2C User Refresh Token", {"token_hash": new_hash}))
+
+	def test_12_refresh_token_expired_or_invalid(self):
+		# Invalid token
+		response = refresh("some_invalid_token_random")
+		self.assertEqual(response.get("status"), "error")
+		self.assertEqual(response.get("code"), "AUTHENTICATION_ERROR")
+		self.assertIn("Invalid or expired", response.get("message"))
+
+		# Expired token
+		import hashlib
+		from frappe.utils import add_days, now_datetime
+		raw_token = frappe.generate_hash(length=40)
+		token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+		# Create an expired token record in db
+		token_doc = frappe.get_doc({
+			"doctype": "A2C User Refresh Token",
+			"user": self.test_email,
+			"token_hash": token_hash,
+			"expiry": add_days(now_datetime(), -2),  # 2 days in the past
+			"remember_me": 1
+		})
+		token_doc.insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		self.assertTrue(frappe.db.exists("A2C User Refresh Token", {"token_hash": token_hash}))
+
+		# Try to refresh using it
+		response = refresh(raw_token)
+		self.assertEqual(response.get("status"), "error")
+		self.assertEqual(response.get("code"), "AUTHENTICATION_ERROR")
+		self.assertIn("expired", response.get("message"))
+
+		# Verify it got deleted upon detection
+		self.assertFalse(frappe.db.exists("A2C User Refresh Token", {"token_hash": token_hash}))
+
+	def test_13_logout_success(self):
+		response = login(self.test_email, self.test_password)
+		data = response.get("data", {})
+		refresh_token = data["refresh_token"]
+
+		import hashlib
+		token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
+		self.assertTrue(frappe.db.exists("A2C User Refresh Token", {"token_hash": token_hash}))
+
+		# Call logout
+		logout_response = logout(refresh_token)
+		self.assertEqual(logout_response.get("status"), "success")
+
+		# Verify token is deleted
+		self.assertFalse(frappe.db.exists("A2C User Refresh Token", {"token_hash": token_hash}))
+
 

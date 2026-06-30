@@ -212,7 +212,7 @@ def get_leads(**kwargs):
 	# 6. Fetch Paginated Records
 	leads = frappe.get_list(
 		"A2C Lead",
-		fields=["name", "phone_number", "external_id", "lead_source", "status", "assigned_to", "assigned_date", "creation"],
+		fields=["name", "phone_number", "first_name", "last_name", "external_id", "lead_source", "status", "assigned_to", "assigned_date", "creation"],
 		filters=filters,
 		or_filters=or_filters or None,
 		limit_start=start,
