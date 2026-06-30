@@ -121,10 +121,13 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         else:
             education_level = ""
 
+        location_data = farmer_info_dict.get("Region")
+        location = location_data.get("name") if isinstance(location_data, dict) else location_data
+
         updates = {
             "first_name": first_name,
             "last_name": last_name,
-            "location": farmer_info_dict.get("Region", ""),
+            "location": location,
             "farmer_id": farmer_data.id,
             "consent_id": consent_doc_name,
             "phone_number": phone_number,
