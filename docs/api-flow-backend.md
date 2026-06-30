@@ -961,7 +961,10 @@ All endpoints use `@handle_api_errors` and standard envelope.
     "last_name": "Kebede",
     "phone_number": "+251911000000",
     "email": "abebe@email.com or null",
-    "location": "Oromia, East Hararge or null",
+    "region": "Oromia",
+    "woreda": "East Hararge",
+    "kebele": "Gudina or null",
+    "language": "en_US or null",
     "consent_request": {
       "name": "CR-2026-00001",
       "status": "Pending OTP",
@@ -981,7 +984,10 @@ All endpoints use `@handle_api_errors` and standard envelope.
     "last_name": "Kebede",
     "phone_number": "+251911000000",
     "email": null,
-    "location": "Oromia",
+    "region": "Oromia",
+    "woreda": "East Hararge",
+    "kebele": "Gudina",
+    "language": "en_US",
     "consent_request": {
       "name": "CR-2026-00001",
       "status": "Approved",
@@ -1020,9 +1026,12 @@ Method restricted to `POST`.
 |-------|------|----------|-------|
 | **`lead_id`** | string | Yes | See validate_lead quirk |
 | `email` | string | No | Validated format if provided |
-| `location` | string | No | |
+| `region` | string | No | |
+| `woreda` | string | No | |
+| `kebele` | string | No | |
+| `language` | string | No | |
 
-At least one of `email` or `location` should be provided (no error if both omitted — returns current values).
+At least one field should be provided (no error if omitted — returns current values).
 
 **Success response** (HTTP 200):
 ```json
@@ -1031,7 +1040,10 @@ At least one of `email` or `location` should be provided (no error if both omitt
   "message": "Basic profile updated successfully",
   "data": {
     "email": "new@email.com",
-    "location": "Oromia, East Hararge"
+    "region": "Oromia",
+    "woreda": "East Hararge",
+    "kebele": "Gudina",
+    "language": "en_US"
   }
 }
 ```
@@ -1066,7 +1078,10 @@ At least one of `email` or `location` should be provided (no error if both omitt
     "farmer_profile": "FARMPROF-2026-0001",
     "first_name": "Abebe",
     "last_name": "Kebede",
-    "location": "Oromia",
+    "region": "Oromia",
+    "woreda": "East Hararge",
+    "kebele": "Gudina",
+    "language": "en_US",
     "phone_number": "+251911000000",
     "farmer_id": "FAYDA-123",
     "consent_id": "CONSENT-2026-0001",
@@ -1090,11 +1105,11 @@ At least one of `email` or `location` should be provided (no error if both omitt
     "total_farmland_size_as_landowner": 2.5,
     "total_farmland_size_as_crop_sharing": 0.0,
     "total_farmland_size_as_rented": 1.0,
-    "farmland_size_hectares": 3.5,
+    "farmland_size_hectares": "1.2, 0.2, 0.1",
     "land_ownership_status": "Owner or null",
     "soil_fertility_minerals": "High or null",
     "moisture_levels": "Medium or null",
-    "certification_id": "CERT-001 or null",
+    "certification_id": "CERT-001, CERT-002 or null",
     "certification_photo_url": "url or null"
   }
 }
@@ -1537,8 +1552,7 @@ JWT-exempt. Called by OpenG2P system.
   "selected_data": { 
     "10010": { 
       "Full Name": "Abebe Kebede",
-      "Mobile Number": ["+251911000000"],
-      "Date of Birth": "1981-05-15"
+      "Mobile Number": ["+251911000000"]
     } 
   }
 }
