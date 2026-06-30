@@ -17,11 +17,14 @@
   "last_name",
   "phone_number",
   "email",
-  "location",
   "date_of_birth",
   "gender",
   "marital_status",
   "col_break_1",
+  "region",
+  "woreda",
+  "kebele",
+  "language",
   "size_of_family",
   "number_of_children",
   "no_of_females_family",
@@ -111,10 +114,28 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "location",
+   "fieldname": "region",
    "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Location"
+   "label": "Region",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "woreda",
+   "fieldtype": "Data",
+   "label": "Woreda",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "kebele",
+   "fieldtype": "Data",
+   "label": "Kebele",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language",
+   "in_list_view": 1
   },
   {
    "fieldname": "education_level",
@@ -165,7 +186,7 @@
   },
   {
    "fieldname": "farmland_size_hectares",
-   "fieldtype": "Float",
+   "fieldtype": "Data",
    "label": "Farmland Size (Hectares)"
   },
   {

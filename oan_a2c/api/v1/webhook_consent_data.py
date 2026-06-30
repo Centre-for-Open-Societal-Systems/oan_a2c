@@ -95,7 +95,10 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         
         # Parse farmland size
         farmland_size_data = farmer_info_dict.get("Farmland size (Hectares)", [])
-        farmland_size_hectares = farmland_size_data[0] if isinstance(farmland_size_data, list) and farmland_size_data else farmland_size_data
+        if isinstance(farmland_size_data, list):
+            farmland_size_hectares = ", ".join([str(x) for x in farmland_size_data])
+        else:
+            farmland_size_hectares = farmland_size_data
         
         # Parse Certification ID
         land_ids = farmer_info_dict.get("Land ID", [])
@@ -157,7 +160,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
             "total_farmland_size_as_landowner": frappe.utils.flt(farmer_info_dict.get("Total Owned Land")),
             "total_farmland_size_as_crop_sharing": frappe.utils.flt(farmer_info_dict.get("Total Crop sharing")),
             "total_farmland_size_as_rented": frappe.utils.flt(farmer_info_dict.get("Total Rented Land")),
-            "farmland_size_hectares": frappe.utils.flt(farmland_size_hectares),
+            "farmland_size_hectares": farmland_size_hectares,
             "land_ownership_status": farmer_info_dict.get("Land Ownership Status"),
             "certification_id": certification_id,
             "certification_photo_url": certification_photo_url

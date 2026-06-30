@@ -115,7 +115,10 @@ def get_basic_profile(lead_id=None, include_consent_data=None):
             "last_name": profile.last_name,
             "phone_number": profile.phone_number,
             "email": profile.email,
-            "location": profile.location
+            "email": profile.email,
+            "region": profile.region,
+            "woreda": profile.woreda,
+            "kebele": profile.kebele
         })
         consent_id = profile.consent_id or consent_id
 
@@ -192,7 +195,9 @@ def get_full_profile(**kwargs):
         "farmer_profile": farmer_profile,
         "first_name": doc.first_name,
         "last_name": doc.last_name,
-        "location": doc.location,
+        "region": doc.region,
+        "woreda": doc.woreda,
+        "kebele": doc.kebele,
         "phone_number": doc.phone_number,
         "farmer_id": doc.farmer_id,
         "consent_id": doc.consent_id,
@@ -216,7 +221,7 @@ def get_full_profile(**kwargs):
         "total_farmland_size_as_landowner": float(doc.total_farmland_size_as_landowner) if doc.total_farmland_size_as_landowner else 0.0,
         "total_farmland_size_as_crop_sharing": float(doc.total_farmland_size_as_crop_sharing) if doc.total_farmland_size_as_crop_sharing else 0.0,
         "total_farmland_size_as_rented": float(doc.total_farmland_size_as_rented) if doc.total_farmland_size_as_rented else 0.0,
-        "farmland_size_hectares": float(doc.farmland_size_hectares) if doc.farmland_size_hectares else 0.0,
+        "farmland_size_hectares": doc.farmland_size_hectares,
         "land_ownership_status": doc.land_ownership_status,
         "soil_fertility_minerals": doc.soil_fertility_minerals,
         "moisture_levels": doc.moisture_levels,
