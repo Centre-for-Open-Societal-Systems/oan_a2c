@@ -134,12 +134,19 @@ def _save_farmer_data_to_lead(lead_id, farmer_dict, openg2p_consent_id):
 
             farmer_record = {"id": farmer_dict.get("id"), "name": full_name}
             selected_data = {
-                "farmer": {
-                    "given_name": given_name,
-                    "family_name": family_name,
-                    "email": farmer_dict.get("email") or "",
-                    "phone_no": [mobile] if mobile else [],
+                "synthetic_direct_fetch": {
+                    "Full Name": full_name,
+                    "Email": farmer_dict.get("email") or "",
+                    "Mobile Number": [mobile] if mobile else [],
                 }
+            }
+            # Still need to return the old farmer_preview dict shape 
+            # for the `submit_consent` method caller
+            farmer_preview_dict = {
+                "given_name": given_name,
+                "family_name": family_name,
+                "email": farmer_dict.get("email") or "",
+                "phone_no": [mobile] if mobile else [],
             }
 
         synthetic_payload = {
@@ -160,7 +167,7 @@ def _save_farmer_data_to_lead(lead_id, farmer_dict, openg2p_consent_id):
         # Using ignore_permissions=False is required here for secure row-level permission enforcement.
         lead_doc.save(ignore_permissions=False)
         frappe.logger().info(f"Farmer data saved to A2C Lead {lead_id}")
-        return selected_data.get("farmer", {})
+        return farmer_preview_dict
 
     except Exception as e:
         frappe.logger().warning(f"Direct farmer data save failed: {e}")
@@ -195,6 +202,8 @@ def search_farmer(**kwargs):
                 "mobile": farmer_dict.get("mobile"),
                 "phone": farmer_dict.get("phone"),
                 "profile_image_url": farmer_dict.get("profile_image_url"),
+                "id": farmer_dict.get("id"),
+                "type": farmer_dict.get("otp_identifier_type"),
             }
         },
         message="Farmer found successfully.",

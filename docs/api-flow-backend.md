@@ -1534,7 +1534,13 @@ JWT-exempt. Called by OpenG2P system.
     "approved_at": "2026-01-15T10:00:00Z"
   },
   "farmer": { "id": 42, "name": "Abebe Kebede" },
-  "selected_data": { "farmer": { "given_name": "Abebe", ... } }
+  "selected_data": { 
+    "10010": { 
+      "Full Name": "Abebe Kebede",
+      "Mobile Number": ["+251911000000"],
+      "Date of Birth": "1981-05-15"
+    } 
+  }
 }
 ```
 
@@ -1586,13 +1592,13 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
   "status": "success",
   "message": "Farmer found successfully.",
   "data": {
-    "farmer_db_id": 42,
     "farmer": {
       "id": 42,
       "name": "Abebe Kebede",
       "mobile": "+251911000000",
       "phone": "+251911000000",
-      "profile_image_url": "https://example.com/image.jpg"
+      "profile_image_url": "https://example.com/image.jpg",
+      "type": "FIN"
     }
   }
 }
