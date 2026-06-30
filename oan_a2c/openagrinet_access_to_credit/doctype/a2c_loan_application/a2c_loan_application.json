@@ -20,12 +20,17 @@
   "links_section",
   "lead_id",
   "farmer_id",
+  "id_type",
+  "id_number",
   "personal_info_section",
   "first_name",
   "last_name",
   "phone_number",
   "email",
-  "location",
+  "region",
+  "woreda",
+  "kebele",
+  "language",
   "date_of_birth",
   "gender",
   "marital_status",
@@ -125,6 +130,16 @@
    "label": "Farmer ID"
   },
   {
+   "fieldname": "id_type",
+   "fieldtype": "Data",
+   "label": "ID Type"
+  },
+  {
+   "fieldname": "id_number",
+   "fieldtype": "Data",
+   "label": "ID Number"
+  },
+  {
    "fieldname": "personal_info_section",
    "fieldtype": "Section Break",
    "label": "Personal Information"
@@ -158,11 +173,28 @@
    "options": "Email"
   },
   {
-   "fieldname": "location",
+   "fieldname": "region",
    "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Location",
-   "search_index": 1
+   "label": "Region",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "woreda",
+   "fieldtype": "Data",
+   "label": "Woreda",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "kebele",
+   "fieldtype": "Data",
+   "label": "Kebele",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "language",
+   "fieldtype": "Data",
+   "label": "Language",
+   "in_list_view": 1
   },
   {
    "fieldname": "date_of_birth",
@@ -248,7 +280,7 @@
   },
   {
    "fieldname": "farmland_size_hectares",
-   "fieldtype": "Float",
+   "fieldtype": "Data",
    "label": "Farmland Size (Hectares)"
   },
   {

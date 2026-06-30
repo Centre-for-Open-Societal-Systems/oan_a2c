@@ -964,7 +964,6 @@ All endpoints use `@handle_api_errors` and standard envelope.
     "region": "Oromia",
     "woreda": "East Hararge",
     "kebele": "Gudina or null",
-    "language": "en_US or null",
     "consent_request": {
       "name": "CR-2026-00001",
       "status": "Pending OTP",
@@ -987,7 +986,6 @@ All endpoints use `@handle_api_errors` and standard envelope.
     "region": "Oromia",
     "woreda": "East Hararge",
     "kebele": "Gudina",
-    "language": "en_US",
     "consent_request": {
       "name": "CR-2026-00001",
       "status": "Approved",
@@ -1081,6 +1079,8 @@ At least one field should be provided (no error if omitted — returns current v
     "kebele": "Gudina",
     "language": "en_US",
     "phone_number": "+251911000000",
+    "id_type": "uid",
+    "id_number": "567890",
     "farmer_id": "FAYDA-123",
     "consent_id": "CONSENT-2026-0001",
     "loan_type": "Crop Loan",

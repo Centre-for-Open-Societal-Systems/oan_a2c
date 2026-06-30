@@ -107,25 +107,23 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         else:
             certification_id = land_ids
 
-        # Parse Certification Photo
         cert_photos = farmer_info_dict.get("Certificate Provided", [])
         certification_photo_url = cert_photos[0] if isinstance(cert_photos, list) and len(cert_photos) > 0 else (cert_photos if isinstance(cert_photos, str) else None)
 
-        raw_edu = farmer_info_dict.get("Education Level", "").lower()
-        if "basic" in raw_edu or "primary" in raw_edu:
-            education_level = "Primary (Grade 1-8)"
-        elif "secondary" in raw_edu or "high" in raw_edu:
-            education_level = "Secondary (Grade 9-12)"
-        elif "none" in raw_edu:
-            education_level = "None / No formal education"
-        elif "tvet" in raw_edu or "certificate" in raw_edu:
-            education_level = "TVET / Certificate"
-        elif "diploma" in raw_edu:
-            education_level = "Diploma"
-        elif "degree" in raw_edu or "university" in raw_edu:
-            education_level = "Degree and above"
-        else:
-            education_level = ""
+        fayda_id_list = farmer_info_dict.get("Fayda ID", [])
+        national_id_list = farmer_info_dict.get("National ID", [])
+        
+        id_type = ""
+        id_number = ""
+        
+        if fayda_id_list:
+            id_type = "uid"
+            id_number = fayda_id_list[0] if isinstance(fayda_id_list, list) and fayda_id_list else str(fayda_id_list)
+        elif national_id_list:
+            id_type = "national_id"
+            id_number = national_id_list[0] if isinstance(national_id_list, list) and national_id_list else str(national_id_list)
+
+        education_level = farmer_info_dict.get("Education Level", "")
 
         region_data = farmer_info_dict.get("Region")
         region = region_data.get("name") if isinstance(region_data, dict) else (region_data or "")
@@ -143,6 +141,8 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
             "woreda": woreda,
             "kebele": kebele,
             "language": farmer_info_dict.get("Language"),
+            "id_type": id_type,
+            "id_number": id_number,
             "farmer_id": farmer_data.id,
             "consent_id": consent_doc_name,
             "phone_number": phone_number,

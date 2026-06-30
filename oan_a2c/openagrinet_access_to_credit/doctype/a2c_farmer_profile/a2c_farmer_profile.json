@@ -10,6 +10,8 @@
  "field_order": [
   "lead_id",
   "farmer_id",
+  "id_type",
+  "id_number",
   "application_status",
   "consent_id",
   "personal_info_section",
@@ -139,9 +141,8 @@
   },
   {
    "fieldname": "education_level",
-   "fieldtype": "Select",
-   "label": "Education Level",
-   "options": "\nNone / No formal education\nPrimary (Grade 1-8)\nSecondary (Grade 9-12)\nTVET / Certificate\nDiploma\nDegree and above"
+   "fieldtype": "Data",
+   "label": "Education Level"
   },
   {
    "fieldname": "source_of_income",
@@ -237,6 +238,16 @@
    "fieldname": "farmer_id",
    "fieldtype": "Data",
    "label": "Farmer ID"
+  },
+  {
+   "fieldname": "id_type",
+   "fieldtype": "Data",
+   "label": "ID Type"
+  },
+  {
+   "fieldname": "id_number",
+   "fieldtype": "Data",
+   "label": "ID Number"
   },
   {
    "fieldname": "application_status",

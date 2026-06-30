@@ -626,38 +626,11 @@ def create_loan_application(**kwargs):
     loan_app.lead_id = lead_id
     loan_app.farmer_profile = farmer_profile.name
     
-    loan_app.first_name = farmer_profile.first_name
-    loan_app.last_name = farmer_profile.last_name
-    loan_app.region = farmer_profile.region
-    loan_app.woreda = farmer_profile.woreda
-    loan_app.kebele = farmer_profile.kebele
-    loan_app.language = farmer_profile.language
-    loan_app.phone_number = farmer_profile.phone_number 
-    loan_app.id_type = farmer_profile.id_type
-    loan_app.id_number = farmer_profile.id_number
-    loan_app.farmer_id = farmer_profile.farmer_id
-    loan_app.consent_id = farmer_profile.consent_id
-
-    # Populate farmer profile details into loan application
-    loan_app.date_of_birth = farmer_profile.date_of_birth
-    loan_app.gender = farmer_profile.gender
-    loan_app.marital_status = farmer_profile.marital_status
-    loan_app.size_of_family = farmer_profile.size_of_family
-    loan_app.number_of_children = farmer_profile.number_of_children
-    loan_app.no_of_females_family = farmer_profile.no_of_females_family
-    loan_app.no_of_males_family = farmer_profile.no_of_males_family
-    loan_app.source_of_income = farmer_profile.source_of_income
-    loan_app.education_level = farmer_profile.education_level
-    loan_app.family_member_owns_land_independently = farmer_profile.family_member_owns_land_independently
-    loan_app.total_farmland_size_as_landowner = farmer_profile.total_farmland_size_as_landowner
-    loan_app.total_farmland_size_as_crop_sharing = farmer_profile.total_farmland_size_as_crop_sharing
-    loan_app.total_farmland_size_as_rented = farmer_profile.total_farmland_size_as_rented
-    loan_app.farmland_size_hectares = farmer_profile.farmland_size_hectares
-    loan_app.land_ownership_status = farmer_profile.land_ownership_status
-    loan_app.soil_fertility_minerals = farmer_profile.soil_fertility_minerals
-    loan_app.moisture_levels = farmer_profile.moisture_levels
-    loan_app.certification_id = farmer_profile.certification_id
-    loan_app.certification_photo_url = farmer_profile.certification_photo_url
+    # Dynamically copy all matching fields from Farmer Profile to Loan Application
+    fields_to_ignore = {"name", "owner", "creation", "modified", "modified_by", "idx", "docstatus"}
+    for field in farmer_profile.meta.fields:
+        if field.fieldname not in fields_to_ignore and loan_app.meta.has_field(field.fieldname):
+            loan_app.set(field.fieldname, farmer_profile.get(field.fieldname))
     
     loan_app.loan_type = credit_infos[0].loan_type
     loan_app.loan_amount = flt(credit_infos[0].loan_amount)
