@@ -26,6 +26,9 @@
                                     "if (data.token) {",
                                     "    pm.collectionVariables.set('jwt_token', data.token);",
                                     "}",
+                                    "if (data.refresh_token) {",
+                                    "    pm.collectionVariables.set('refresh_token', data.refresh_token);",
+                                    "}",
                                     "if (data.user) {",
                                     "    if (data.user.email) {",
                                     "        pm.collectionVariables.set('assigned_to', data.user.email);",
@@ -51,7 +54,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"usr\": \"{{usr}}\",\n    \"pwd\": \"{{pwd}}\"\n}"
+                            "raw": "{\n    \"usr\": \"{{usr}}\",\n    \"pwd\": \"{{pwd}}\",\n    \"remember_me\": false\n}"
                         },
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.auth.login",
@@ -64,7 +67,7 @@
                                 "oan_a2c.api.auth.login"
                             ]
                         },
-                        "description": "Authenticates the user using standard Frappe credentials and returns a short-lived JSON Web Token (JWT) intended for frontend stateless session management."
+                        "description": "Authenticates the user using standard Frappe credentials and returns a short-lived access JWT and a database-backed refresh token."
                     },
                     "response": []
                 },
@@ -125,6 +128,102 @@
                             ]
                         },
                         "description": "Sets a new password using the temporary key. Expected to be called by the Headless Frontend after a user clicks the reset link in their email."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "4. Refresh Token",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Refresh HTTP 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "const responseJson = pm.response.json();",
+                                    "const data = responseJson.message && responseJson.message.data ? responseJson.message.data : (responseJson.data || {});",
+                                    "",
+                                    "if (data.token) {",
+                                    "    pm.collectionVariables.set('jwt_token', data.token);",
+                                    "}",
+                                    "if (data.refresh_token) {",
+                                    "    pm.collectionVariables.set('refresh_token', data.refresh_token);",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"refresh_token\": \"{{refresh_token}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.refresh",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.refresh"
+                            ]
+                        },
+                        "description": "Exchanges an active refresh token for a new access token and rotated refresh token."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "5. Logout",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Logout HTTP 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"refresh_token\": \"{{refresh_token}}\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.logout",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.logout"
+                            ]
+                        },
+                        "description": "Revokes the active refresh token by deleting it from the database."
                     },
                     "response": []
                 }
