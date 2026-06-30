@@ -103,7 +103,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 
         # Parse Certification Photo
         land_names = farmer_info_dict.get("Land Name", [])
-        certification_photo_url = land_names[0] if isinstance(land_names, list) and land_names else land_names
+        certification_photo_url = land_names[0] if isinstance(land_names, list) and len(land_names) > 0 else (land_names if isinstance(land_names, str) else None)
 
         raw_edu = farmer_info_dict.get("Education Level", "").lower()
         if "basic" in raw_edu or "primary" in raw_edu:
