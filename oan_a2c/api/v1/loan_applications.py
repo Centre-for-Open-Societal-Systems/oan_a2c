@@ -117,7 +117,6 @@ def get_basic_profile(lead_id=None, include_consent_data=None):
             "last_name": profile.last_name,
             "phone_number": profile.phone_number,
             "email": profile.email,
-            "email": profile.email,
             "region": profile.region,
             "woreda": profile.woreda,
             "kebele": profile.kebele
@@ -202,7 +201,10 @@ def get_full_profile(**kwargs):
         "region": doc.region,
         "woreda": doc.woreda,
         "kebele": doc.kebele,
+        "language": doc.language,
         "phone_number": doc.phone_number,
+        "id_type": doc.id_type,
+        "id_number": doc.id_number,
         "farmer_id": doc.farmer_id,
         "consent_id": doc.consent_id,
         "loan_type": doc.loan_type,
@@ -626,8 +628,13 @@ def create_loan_application(**kwargs):
     
     loan_app.first_name = farmer_profile.first_name
     loan_app.last_name = farmer_profile.last_name
-    loan_app.location = farmer_profile.location
+    loan_app.region = farmer_profile.region
+    loan_app.woreda = farmer_profile.woreda
+    loan_app.kebele = farmer_profile.kebele
+    loan_app.language = farmer_profile.language
     loan_app.phone_number = farmer_profile.phone_number 
+    loan_app.id_type = farmer_profile.id_type
+    loan_app.id_number = farmer_profile.id_number
     loan_app.farmer_id = farmer_profile.farmer_id
     loan_app.consent_id = farmer_profile.consent_id
 
