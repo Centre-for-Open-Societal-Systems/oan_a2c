@@ -11,9 +11,15 @@ class A2CLoanApplication(Document):
 		if self.phone_number and not self.phone_number.isdigit() and not self.phone_number.startswith('+'):
 			frappe.throw("Phone Number must contain only digits or start with +")
 
+		# Status ordering, terminal-state locking, and per-role gating are enforced by the
+		# A2C Loan Application Workflow (see development/workflow_design_lead_loan.md) and by
+		# submit (docstatus). The previous imperative status-lock here was buggy (it locked the
+		# non-existent status "Processed", leaving "Approved" unlocked) and is now removed.
+
 		if not self.is_new():
-			db_status = self.get_db_value("status")
-			if db_status == "Rejected" and self.status != "Rejected":
-				frappe.throw("Status is locked because the loan application is Rejected", frappe.ValidationError)
+			db_step = self.get_db_value("current_step") or 1
+			if self.current_step and self.current_step != db_step:
+				if self.current_step > db_step + 1:
+					frappe.throw("Invalid step transition. You cannot skip steps.", frappe.ValidationError)
 
 

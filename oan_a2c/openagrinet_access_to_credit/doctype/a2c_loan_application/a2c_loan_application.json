@@ -1,344 +1,349 @@
 {
- "actions": [],
- "allow_rename": 1,
- "autoname": "format:APP-{YYYY}-{#####}",
- "creation": "2026-05-18 17:01:03.620331",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "application_id",
-  "status",
-  "current_step",
-  "loan_officer",
-  "credit_info_section",
-  "loan_amount",
-  "loan_type",
-  "col_break_loan",
-  "loan_reason",
-  "links_section",
-  "lead_id",
-  "farmer_id",
-  "personal_info_section",
-  "first_name",
-  "last_name",
-  "phone_number",
-  "email",
-  "location",
-  "date_of_birth",
-  "gender",
-  "marital_status",
-  "col_break_1",
-  "size_of_family",
-  "number_of_children",
-  "no_of_females_family",
-  "no_of_males_family",
-  "source_of_income",
-  "education_level",
-  "land_details_section",
-  "family_member_owns_land_independently",
-  "total_farmland_size_as_landowner",
-  "total_farmland_size_as_crop_sharing",
-  "total_farmland_size_as_rented",
-  "col_break_2",
-  "farmland_size_hectares",
-  "land_ownership_status",
-  "soil_fertility_minerals",
-  "moisture_levels",
-  "certification_geo_section",
-  "certification_id",
-  "certification_photo_url"
- ],
- "fields": [
-  {
-   "fieldname": "application_id",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Application ID",
-   "read_only": 1
-  },
-  {
-   "fieldname": "loan_officer",
-   "fieldtype": "Link",
-   "label": "Loan Officer",
-   "options": "User"
-  },
-  {
-   "fieldname": "status",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Status",
-   "options": "\nDraft\nProcessing\nApproved\nRejected",
-   "search_index": 1
-  },
-  {
-   "default": "1",
-   "fieldname": "current_step",
-   "fieldtype": "Int",
-   "label": "Current Step"
-  },
-  {
-   "fieldname": "lead_id",
-   "fieldtype": "Link",
-   "label": "Lead ID",
-   "options": "A2C Lead",
-   "search_index": 1
-  },
-  {
-   "fieldname": "credit_info_section",
-   "fieldtype": "Section Break",
-   "label": "Credit Information"
-  },
-  {
-   "fieldname": "loan_amount",
-   "fieldtype": "Currency",
-   "in_list_view": 1,
-   "label": "Loan Amount",
-   "reqd": 1,
-   "search_index": 1
-  },
-  {
-   "fieldname": "loan_type",
-   "fieldtype": "Data",
-   "label": "Loan Type",
-   "read_only": 1,
-   "search_index": 1
-  },
-  {
-   "fieldname": "col_break_loan",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "loan_reason",
-   "fieldtype": "Small Text",
-   "label": "Loan Reason"
-  },
-  {
-   "fieldname": "links_section",
-   "fieldtype": "Section Break",
-   "label": "Links"
-  },
-  {
-   "fieldname": "farmer_id",
-   "fieldtype": "Data",
-   "label": "Farmer ID"
-  },
-  {
-   "fieldname": "personal_info_section",
-   "fieldtype": "Section Break",
-   "label": "Personal Information"
-  },
-  {
-   "fieldname": "first_name",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "First Name",
-   "reqd": 1
-  },
-  {
-   "fieldname": "last_name",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Last Name",
-   "reqd": 1
-  },
-  {
-   "fieldname": "phone_number",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Phone Number",
-   "options": "Phone",
-   "reqd": 1
-  },
-  {
-   "fieldname": "email",
-   "fieldtype": "Data",
-   "label": "Email",
-   "options": "Email"
-  },
-  {
-   "fieldname": "location",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Location",
-   "search_index": 1
-  },
-  {
-   "fieldname": "date_of_birth",
-   "fieldtype": "Date",
-   "label": "Date of Birth"
-  },
-  {
-   "fieldname": "gender",
-   "fieldtype": "Data",
-   "label": "Gender",
-   "read_only": 1
-  },
-  {
-   "fieldname": "marital_status",
-   "fieldtype": "Data",
-   "label": "Marital Status",
-   "read_only": 1
-  },
-  {
-   "fieldname": "col_break_1",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "size_of_family",
-   "fieldtype": "Int",
-   "label": "Size of Family"
-  },
-  {
-   "fieldname": "number_of_children",
-   "fieldtype": "Int",
-   "label": "Number of Children"
-  },
-  {
-   "fieldname": "no_of_females_family",
-   "fieldtype": "Int",
-   "label": "No. of Females in Family"
-  },
-  {
-   "fieldname": "no_of_males_family",
-   "fieldtype": "Int",
-   "label": "No. of Males in Family"
-  },
-  {
-   "fieldname": "source_of_income",
-   "fieldtype": "Data",
-   "label": "Source of Income"
-  },
-  {
-   "fieldname": "education_level",
-   "fieldtype": "Data",
-   "label": "Education Level",
-   "read_only": 1
-  },
-  {
-   "fieldname": "land_details_section",
-   "fieldtype": "Section Break",
-   "label": "Land Ownership & Farm Details"
-  },
-  {
-   "default": "0",
-   "fieldname": "family_member_owns_land_independently",
-   "fieldtype": "Check",
-   "label": "Family Member Owns Land Independently"
-  },
-  {
-   "fieldname": "total_farmland_size_as_landowner",
-   "fieldtype": "Float",
-   "label": "Total Farmland Size as Landowner"
-  },
-  {
-   "fieldname": "total_farmland_size_as_crop_sharing",
-   "fieldtype": "Float",
-   "label": "Total Farmland Size as Crop Sharing"
-  },
-  {
-   "fieldname": "total_farmland_size_as_rented",
-   "fieldtype": "Float",
-   "label": "Total Farmland Size as Rented"
-  },
-  {
-   "fieldname": "col_break_2",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "farmland_size_hectares",
-   "fieldtype": "Float",
-   "label": "Farmland Size (Hectares)"
-  },
-  {
-   "fieldname": "land_ownership_status",
-   "fieldtype": "Data",
-   "label": "Land Ownership Status"
-  },
-  {
-   "fieldname": "soil_fertility_minerals",
-   "fieldtype": "Data",
-   "label": "Soil Fertility Minerals"
-  },
-  {
-   "fieldname": "moisture_levels",
-   "fieldtype": "Data",
-   "label": "Moisture Levels"
-  },
-  {
-   "fieldname": "certification_geo_section",
-   "fieldtype": "Section Break",
-   "label": "Certification"
-  },
-  {
-   "fieldname": "certification_id",
-   "fieldtype": "Data",
-   "label": "Certification ID"
-  },
-  {
-   "fieldname": "certification_photo_url",
-   "fieldtype": "Attach Image",
-   "label": "Certification Photo"
-  },
-  {
-   "fieldname": "consent_id",
-   "fieldtype": "Link",
-   "label": "Consent ID",
-   "options": "A2C Consent Request"
-  }
- ],
- "grid_page_length": 50,
- "index_web_pages_for_search": 1,
- "links": [
-  {
-   "link_doctype": "File",
-   "link_fieldname": "attached_to_name",
-   "group": "Attachments"
-  }
- ],
- "modified": "2026-06-07 17:16:04.757867",
- "modified_by": "Administrator",
- "module": "OpenAgriNet Access to Credit",
- "name": "A2C Loan Application",
- "naming_rule": "Expression (old style)",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Bank Agent",
-   "write": 1
-  },
-  {
-   "create": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Development Agent",
-   "write": 1
-  },
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  }
- ],
- "row_format": "Dynamic",
- "rows_threshold_for_grid_search": 20,
- "sort_field": "creation",
- "sort_order": "DESC",
- "states": []
+    "actions": [],
+    "allow_rename": 1,
+    "autoname": "format:APP-{YYYY}-{#####}",
+    "creation": "2026-05-18 17:01:03.620331",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "is_submittable": 1,
+    "field_order": [
+        "application_id",
+        "status",
+        "current_step",
+        "loan_officer",
+        "credit_info_section",
+        "loan_amount",
+        "loan_type",
+        "col_break_loan",
+        "loan_reason",
+        "links_section",
+        "lead_id",
+        "farmer_id",
+        "personal_info_section",
+        "first_name",
+        "last_name",
+        "phone_number",
+        "email",
+        "location",
+        "date_of_birth",
+        "gender",
+        "marital_status",
+        "col_break_1",
+        "size_of_family",
+        "number_of_children",
+        "no_of_females_family",
+        "no_of_males_family",
+        "source_of_income",
+        "education_level",
+        "land_details_section",
+        "family_member_owns_land_independently",
+        "total_farmland_size_as_landowner",
+        "total_farmland_size_as_crop_sharing",
+        "total_farmland_size_as_rented",
+        "col_break_2",
+        "farmland_size_hectares",
+        "land_ownership_status",
+        "soil_fertility_minerals",
+        "moisture_levels",
+        "certification_geo_section",
+        "certification_id",
+        "certification_photo_url"
+    ],
+    "fields": [
+        {
+            "fieldname": "application_id",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Application ID",
+            "read_only": 1
+        },
+        {
+            "fieldname": "loan_officer",
+            "fieldtype": "Link",
+            "label": "Loan Officer",
+            "options": "User"
+        },
+        {
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "label": "Status",
+            "options": "\nDraft\nProcessing\nApproved\nRejected",
+            "search_index": 1
+        },
+        {
+            "default": "1",
+            "fieldname": "current_step",
+            "fieldtype": "Int",
+            "label": "Current Step"
+        },
+        {
+            "fieldname": "lead_id",
+            "fieldtype": "Link",
+            "label": "Lead ID",
+            "options": "A2C Lead",
+            "search_index": 1
+        },
+        {
+            "fieldname": "credit_info_section",
+            "fieldtype": "Section Break",
+            "label": "Credit Information"
+        },
+        {
+            "fieldname": "loan_amount",
+            "fieldtype": "Currency",
+            "in_list_view": 1,
+            "label": "Loan Amount",
+            "reqd": 1,
+            "search_index": 1
+        },
+        {
+            "fieldname": "loan_type",
+            "fieldtype": "Data",
+            "label": "Loan Type",
+            "read_only": 1,
+            "search_index": 1
+        },
+        {
+            "fieldname": "col_break_loan",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "loan_reason",
+            "fieldtype": "Small Text",
+            "label": "Loan Reason"
+        },
+        {
+            "fieldname": "links_section",
+            "fieldtype": "Section Break",
+            "label": "Links"
+        },
+        {
+            "fieldname": "farmer_id",
+            "fieldtype": "Data",
+            "label": "Farmer ID"
+        },
+        {
+            "fieldname": "personal_info_section",
+            "fieldtype": "Section Break",
+            "label": "Personal Information"
+        },
+        {
+            "fieldname": "first_name",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "First Name",
+            "reqd": 1
+        },
+        {
+            "fieldname": "last_name",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Last Name",
+            "reqd": 1
+        },
+        {
+            "fieldname": "phone_number",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Phone Number",
+            "options": "Phone",
+            "reqd": 1
+        },
+        {
+            "fieldname": "email",
+            "fieldtype": "Data",
+            "label": "Email",
+            "options": "Email"
+        },
+        {
+            "fieldname": "location",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Location",
+            "search_index": 1
+        },
+        {
+            "fieldname": "date_of_birth",
+            "fieldtype": "Date",
+            "label": "Date of Birth"
+        },
+        {
+            "fieldname": "gender",
+            "fieldtype": "Data",
+            "label": "Gender",
+            "read_only": 1
+        },
+        {
+            "fieldname": "marital_status",
+            "fieldtype": "Data",
+            "label": "Marital Status",
+            "read_only": 1
+        },
+        {
+            "fieldname": "col_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "size_of_family",
+            "fieldtype": "Int",
+            "label": "Size of Family"
+        },
+        {
+            "fieldname": "number_of_children",
+            "fieldtype": "Int",
+            "label": "Number of Children"
+        },
+        {
+            "fieldname": "no_of_females_family",
+            "fieldtype": "Int",
+            "label": "No. of Females in Family"
+        },
+        {
+            "fieldname": "no_of_males_family",
+            "fieldtype": "Int",
+            "label": "No. of Males in Family"
+        },
+        {
+            "fieldname": "source_of_income",
+            "fieldtype": "Data",
+            "label": "Source of Income"
+        },
+        {
+            "fieldname": "education_level",
+            "fieldtype": "Data",
+            "label": "Education Level",
+            "read_only": 1
+        },
+        {
+            "fieldname": "land_details_section",
+            "fieldtype": "Section Break",
+            "label": "Land Ownership & Farm Details"
+        },
+        {
+            "default": "0",
+            "fieldname": "family_member_owns_land_independently",
+            "fieldtype": "Check",
+            "label": "Family Member Owns Land Independently"
+        },
+        {
+            "fieldname": "total_farmland_size_as_landowner",
+            "fieldtype": "Float",
+            "label": "Total Farmland Size as Landowner"
+        },
+        {
+            "fieldname": "total_farmland_size_as_crop_sharing",
+            "fieldtype": "Float",
+            "label": "Total Farmland Size as Crop Sharing"
+        },
+        {
+            "fieldname": "total_farmland_size_as_rented",
+            "fieldtype": "Float",
+            "label": "Total Farmland Size as Rented"
+        },
+        {
+            "fieldname": "col_break_2",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "farmland_size_hectares",
+            "fieldtype": "Float",
+            "label": "Farmland Size (Hectares)"
+        },
+        {
+            "fieldname": "land_ownership_status",
+            "fieldtype": "Data",
+            "label": "Land Ownership Status"
+        },
+        {
+            "fieldname": "soil_fertility_minerals",
+            "fieldtype": "Data",
+            "label": "Soil Fertility Minerals"
+        },
+        {
+            "fieldname": "moisture_levels",
+            "fieldtype": "Data",
+            "label": "Moisture Levels"
+        },
+        {
+            "fieldname": "certification_geo_section",
+            "fieldtype": "Section Break",
+            "label": "Certification"
+        },
+        {
+            "fieldname": "certification_id",
+            "fieldtype": "Data",
+            "label": "Certification ID"
+        },
+        {
+            "fieldname": "certification_photo_url",
+            "fieldtype": "Attach Image",
+            "label": "Certification Photo"
+        },
+        {
+            "fieldname": "consent_id",
+            "fieldtype": "Link",
+            "label": "Consent ID",
+            "options": "A2C Consent Request"
+        }
+    ],
+    "grid_page_length": 50,
+    "index_web_pages_for_search": 1,
+    "links": [
+        {
+            "link_doctype": "File",
+            "link_fieldname": "attached_to_name",
+            "group": "Attachments"
+        }
+    ],
+    "modified": "2026-06-07 17:16:04.757867",
+    "modified_by": "Administrator",
+    "module": "OpenAgriNet Access to Credit",
+    "name": "A2C Loan Application",
+    "naming_rule": "Expression (old style)",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "Bank Agent",
+            "submit": 1,
+            "write": 1
+        },
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "Development Agent",
+            "write": 1
+        },
+        {
+            "amend": 1,
+            "cancel": 1,
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "submit": 1,
+            "write": 1
+        }
+    ],
+    "row_format": "Dynamic",
+    "rows_threshold_for_grid_search": 20,
+    "sort_field": "creation",
+    "sort_order": "DESC",
+    "states": []
 }

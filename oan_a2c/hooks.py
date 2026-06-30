@@ -5,6 +5,8 @@ app_description = "Access to Credit platform as a DPG for the Open Agro Stack in
 app_email = "admin@openagrinet.org"
 app_license = "mit"
 
+fixtures = ["Workflow", "Workflow State", "Workflow Action Master"]
+
 # Apps
 # ------------------
 

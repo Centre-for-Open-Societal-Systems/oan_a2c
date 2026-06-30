@@ -4,98 +4,142 @@ from frappe.utils import cint, flt
 from functools import wraps
 import json
 
-from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value
+from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value, validate_request, SafeDate, SafeEmail, apply_status_transition
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, Literal
+
+class GetBasicProfileSchema(BaseModel):
+    lead_id: str = Field(..., min_length=1)
+    include_consent_data: Optional[int] = None
+
+class UpdateBasicProfileSchema(BaseModel):
+    lead_id: str = Field(..., min_length=1)
+    email: SafeEmail = None
+    location: Optional[str] = None
+
+class LoanApplicationIDSchema(BaseModel):
+    application_id: str = Field(..., min_length=1)
+
+class LeadIDSchema(BaseModel):
+    lead_id: str = Field(..., min_length=1)
+
+class GetAllLoansSchema(BaseModel):
+    status: Optional[str] = None
+    loan_amount: Optional[float] = None
+    min_loan_amount: Optional[float] = None
+    max_loan_amount: Optional[float] = None
+    loan_type: Optional[str] = None
+    location: Optional[str] = None
+    phone_number: Optional[str] = None
+    loan_officer: Optional[str] = None
+    from_date: SafeDate = None
+    to_date: SafeDate = None
+    page: Optional[int] = Field(None, ge=1)
+    page_size: Optional[int] = Field(None, ge=1, le=100)
+    lead_id: Optional[str] = None
+    search_query: Optional[str] = None
+
+class DownloadSupportingDocumentSchema(BaseModel):
+    file_id: str = Field(..., min_length=1)
+    view: Optional[int] = None
+
+class DeleteSupportingDocumentSchema(BaseModel):
+    application_id: str = Field(..., min_length=1)
+    file_id: str = Field(..., min_length=1)
+
+class UpdateLoanStatusSchema(BaseModel):
+    application_id: str = Field(..., min_length=1)
+    status: Literal["Draft", "Processing", "Approved", "Rejected"]
+
+class UpdateLoanStepSchema(BaseModel):
+    application_id: str = Field(..., min_length=1)
+    step: int = Field(..., ge=1, le=4)
+
 
 def _get_app(application_id):
     if not frappe.db.exists("A2C Loan Application", application_id):
         frappe.throw(_("Loan Application {0} not found").format(application_id), frappe.DoesNotExistError)
     return frappe.get_doc("A2C Loan Application", application_id)
 
-def validate_lead(lead_id):
-    if not lead_id:
-        frappe.local.response["http_status_code"] = 400
-        return {
-            "error": {
-                "code": "LEAD_ID_REQUIRED",
-                "message": "lead_id is required"
-            }
-        }
+def _get_lead(lead_id):
     if not frappe.db.exists("A2C Lead", lead_id):
-        frappe.local.response["http_status_code"] = 404
-        return {
-            "error": {
-                "code": "LEAD_NOT_FOUND",
-                "message": f"A2C Lead {lead_id} not found"
-            }
-        }
-    return None
+        frappe.throw(_("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
+    return frappe.get_doc("A2C Lead", lead_id)
+
+def _get_consent_details(consent_id: str) -> dict:
+    """Helper to retrieve and format consent request details and fields."""
+    frappe.has_permission("A2C Consent Request", "read", doc=consent_id, throw=True)
+    res_fields = frappe.db.get_value(
+        "A2C Consent Request",
+        consent_id,
+        ["websub_delivered_at", "consent_type", "purpose", "validity_from", "validity_to"],
+        as_dict=True
+    ) or {}
+    for key in ["websub_delivered_at", "validity_from", "validity_to"]:
+        if res_fields.get(key):
+            res_fields[key] = str(res_fields[key])
+
+    requested_data_fields = frappe.get_all(
+        "A2C Consent Data",
+        filters={"parent": consent_id},
+        fields=["field_name", "field_value"]
+    )
+    res_fields["requested_data_fields"] = requested_data_fields
+    return res_fields
 
 @frappe.whitelist(allow_guest=False)
+@validate_request(GetBasicProfileSchema)
 @handle_api_errors
 def get_basic_profile(lead_id=None, include_consent_data=None):
     """
     Retrieves the basic profile information of a farmer associated with a lead.
     """
-    err = validate_lead(lead_id)
-    if err:
-        return err
-
     frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
+    lead_doc = _get_lead(lead_id)
 
-    lead_doc = frappe.get_doc("A2C Lead", lead_id)
-    if not lead_doc.farmer_profile:
+    profile_name = lead_doc.farmer_profile
+    consent_id = frappe.db.get_value("A2C Consent Request", {"lead": lead_id}, "name", order_by="creation desc")
+
+    if not profile_name and not consent_id:
         frappe.throw(_("Farmer Profile not found for this lead"), frappe.ValidationError)
-    
-    frappe.has_permission("A2C Farmer Profile", "read", doc=lead_doc.farmer_profile, throw=True)
-    doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
-    
+
     data = {
-        "first_name": doc.first_name,
-        "last_name": doc.last_name,
-        "phone_number": doc.phone_number,
-        "email": doc.email,
-        "location": doc.location
+        "farmer_profile_created": bool(profile_name)
     }
 
-    if cint(include_consent_data):
-        res_fields = {}
-        requested_data_fields = []
-        if doc.consent_id:
-            frappe.has_permission("A2C Consent Request", "read", doc=doc.consent_id, throw=True)
-            res_fields = frappe.db.get_value(
-                "A2C Consent Request", 
-                doc.consent_id, 
-                ["websub_delivered_at", "consent_type", "validity_from", "validity_to"], 
-                as_dict=True
-            ) or {}
-            for key in ["websub_delivered_at", "validity_from", "validity_to"]:
-                if res_fields.get(key):
-                    res_fields[key] = str(res_fields[key])
+    if profile_name:
+        frappe.has_permission("A2C Farmer Profile", "read", doc=profile_name, throw=True)
+        profile = frappe.get_doc("A2C Farmer Profile", profile_name)
+        data.update({
+            "first_name": profile.first_name,
+            "last_name": profile.last_name,
+            "phone_number": profile.phone_number,
+            "email": profile.email,
+            "location": profile.location
+        })
+        consent_id = profile.consent_id or consent_id
 
-            requested_data_fields = frappe.get_all(
-                "A2C Consent Data",
-                filters={"parent": doc.consent_id},
-                fields=["field_name", "field_value"]
-            )
-
-        data.update(res_fields)
-        data["requested_data_fields"] = requested_data_fields
+    if consent_id:
+        consent_doc_data = frappe.db.get_value("A2C Consent Request", consent_id, ["status", "otp_verified_at"], as_dict=True) or {}
+        data["consent_request"] = {
+            "name": consent_id,
+            "status": consent_doc_data.get("status"),
+            "otp_verified": bool(consent_doc_data.get("otp_verified_at"))
+        }
+        if include_consent_data:
+            data.update(_get_consent_details(consent_id))
 
     return success_response(data=data, message="Basic profile retrieved successfully")
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
+@validate_request(UpdateBasicProfileSchema)
 @handle_api_errors
 def update_basic_profile(lead_id=None, email=None, location=None):
     """
     Updates the email and location details for a lead's farmer profile.
     """
-    err = validate_lead(lead_id)
-    if err:
-        return err
-    
     frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
-    
-    lead_doc = frappe.get_doc("A2C Lead", lead_id)
+    lead_doc = _get_lead(lead_id)
     if not lead_doc.farmer_profile:
         frappe.throw(_("Farmer Profile not found for this lead"), frappe.ValidationError)
         
@@ -108,11 +152,6 @@ def update_basic_profile(lead_id=None, email=None, location=None):
         "location": location
     }
     
-    if email:
-        from frappe.utils import validate_email_address
-        if not validate_email_address(email):
-            frappe.throw(_("Invalid email address format"), frappe.ValidationError)
-
     for field, value in updates.items():
         if value is not None:
             if farmer_doc.meta.has_field(field) and farmer_doc.get(field) != value:
@@ -136,14 +175,13 @@ def update_basic_profile(lead_id=None, email=None, location=None):
     )
 
 @frappe.whitelist(allow_guest=False)
+@validate_request(LoanApplicationIDSchema)
 @handle_api_errors
-def get_full_profile(application_id=None):
+def get_full_profile(**kwargs):
     """
     Retrieves the full profile details of a loan application.
     """
-    if not application_id:
-        frappe.throw(_("application_id is required"), frappe.MandatoryError)
-
+    application_id = kwargs.get("application_id")
     frappe.has_permission("A2C Loan Application", "read", doc=application_id, throw=True)
     doc = _get_app(application_id)
     farmer_profile = frappe.db.get_value("A2C Lead", doc.lead_id, "farmer_profile")
@@ -256,16 +294,29 @@ def get_loan_metadata():
     return success_response(data={"statuses": statuses}, message="Loan metadata retrieved successfully")
 
 @frappe.whitelist(allow_guest=False)
+@validate_request(GetAllLoansSchema)
 @handle_api_errors
-def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_amount=None, loan_type=None, location=None, phone_number=None, from_date=None, to_date=None, page=1, page_size=20, lead_id=None, search_query=None):
+def get_all_loans(**kwargs):
     """
     Retrieves a paginated list of all loan applications matching given filter parameters.
     """
     frappe.has_permission("A2C Loan Application", "read", throw=True)
 
-    page = cint(page) or 1
-    page_size = cint(page_size) or 20
-    page_size = max(1, min(page_size, 100))
+    status = kwargs.get("status")
+    loan_amount = kwargs.get("loan_amount")
+    min_loan_amount = kwargs.get("min_loan_amount")
+    max_loan_amount = kwargs.get("max_loan_amount")
+    loan_type = kwargs.get("loan_type")
+    location = kwargs.get("location")
+    phone_number = kwargs.get("phone_number")
+    from_date = kwargs.get("from_date")
+    to_date = kwargs.get("to_date")
+    loan_officer = kwargs.get("loan_officer")
+    page = kwargs.get("page") or 1
+    page_size = kwargs.get("page_size") or 20
+    lead_id = kwargs.get("lead_id")
+    search_query = kwargs.get("search_query")
+
     offset = (page - 1) * page_size
 
     filters = {}
@@ -300,6 +351,17 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
 
     if phone_number:
         filters['phone_number'] = ("like", f"%{phone_number}%")
+
+    # Filter by assigned Loan Officer (User). Single user, comma-separated users, or the literal
+    # "unassigned" for loans with no officer (matching the unassigned tab in get_loan_summary).
+    # Not allowlist-validated; an unknown user simply yields no matches.
+    if loan_officer:
+        officers = [o.strip() for o in str(loan_officer).split(",") if o.strip()]
+        if any(o.lower() == "unassigned" for o in officers):
+            named = [o for o in officers if o.lower() != "unassigned"]
+            filters['loan_officer'] = ["in", (named + [""]) if named else ["", None]]
+        elif officers:
+            filters['loan_officer'] = ["in", officers]
 
     if from_date and to_date:
         filters['creation'] = ("between", [from_date, f"{to_date} 23:59:59"])
@@ -363,13 +425,13 @@ def get_all_loans(status=None, loan_amount=None, min_loan_amount=None, max_loan_
     )
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
+@validate_request(LoanApplicationIDSchema)
 @handle_api_errors
-def upload_supporting_documents(application_id=None):
+def upload_supporting_documents(**kwargs):
     """
     Uploads private supporting document files for a specific loan application.
     """
-    if not application_id:
-        frappe.throw(_("application_id is required"), frappe.MandatoryError)
+    application_id = kwargs.get("application_id")
 
     frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
     doc = _get_app(application_id)
@@ -377,6 +439,10 @@ def upload_supporting_documents(application_id=None):
     if not frappe.request.files:
         frappe.throw(_("No files found in request"), frappe.ValidationError)
         
+    MAX_FILE_COUNT = 5
+    if len(frappe.request.files) > MAX_FILE_COUNT:
+        frappe.throw(_("Maximum {0} files can be uploaded at a time.").format(MAX_FILE_COUNT), frappe.ValidationError)
+
     uploaded_files = []
     ALLOWED_EXTENSIONS = ('.pdf', '.png', '.jpg', '.jpeg')
     MAX_FILE_SIZE = 5 * 1024 * 1024
@@ -386,10 +452,26 @@ def upload_supporting_documents(application_id=None):
         if not filename.endswith(ALLOWED_EXTENSIONS):
             frappe.throw(_("Invalid file type for {0}. Only PDF, PNG, and JPG are allowed.").format(filename), frappe.ValidationError)
             
-        content = file_storage.read()
-        if len(content) > MAX_FILE_SIZE:
+        file_storage.seek(0, 2)
+        file_size = file_storage.tell()
+        file_storage.seek(0)
+        if file_size > MAX_FILE_SIZE:
             frappe.throw(_("File {0} exceeds the 5MB size limit.").format(filename), frappe.ValidationError)
             
+        content = file_storage.read()
+        
+        # Content sniffing (magic bytes validation) to prevent extension spoofing
+        content_prefix = content[:8]
+        is_pdf = content_prefix.startswith(b'%PDF')
+        is_png = content_prefix.startswith(b'\x89PNG\r\n\x1a\n')
+        is_jpeg = content_prefix.startswith(b'\xff\xd8\xff')
+        
+        if filename.endswith('.pdf') and not is_pdf:
+            frappe.throw(_("File {0} is not a valid PDF file.").format(file_storage.filename), frappe.ValidationError)
+        elif filename.endswith(('.jpg', '.jpeg')) and not is_jpeg:
+            frappe.throw(_("File {0} is not a valid JPEG/JPG image.").format(file_storage.filename), frappe.ValidationError)
+        elif filename.endswith('.png') and not is_png:
+            frappe.throw(_("File {0} is not a valid PNG image.").format(file_storage.filename), frappe.ValidationError)
         file_doc = frappe.get_doc({
             "doctype": "File",
             "file_name": file_storage.filename,
@@ -409,13 +491,13 @@ def upload_supporting_documents(application_id=None):
     return success_response(data=uploaded_files, message="Supporting documents uploaded successfully")
 
 @frappe.whitelist(allow_guest=False)
+@validate_request(LoanApplicationIDSchema)
 @handle_api_errors
-def get_supporting_documents(application_id=None):
+def get_supporting_documents(**kwargs):
     """
     Retrieves list information for all files uploaded under a loan application.
     """
-    if not application_id:
-        frappe.throw(_("application_id is required"), frappe.MandatoryError)
+    application_id = kwargs.get("application_id")
 
     frappe.has_permission("A2C Loan Application", "read", doc=application_id, throw=True)
     _get_app(application_id)
@@ -436,38 +518,43 @@ def get_supporting_documents(application_id=None):
     return success_response(data=files, message="Supporting documents retrieved successfully")
 
 @frappe.whitelist(allow_guest=False)
+@validate_request(DownloadSupportingDocumentSchema)
 @handle_api_errors
-def download_supporting_document(file_id=None, view=None):
+def download_supporting_document(**kwargs):
     """
     Downloads or streams the content of an uploaded private supporting document.
     """
-    if not file_id:
-        frappe.throw(_("file_id is required"), frappe.MandatoryError)
+    file_id = kwargs.get("file_id")
+    view = kwargs.get("view")
 
-    if not frappe.db.exists("File", file_id):
-        frappe.throw(_("File not found"), frappe.DoesNotExistError)
+    file_doc = None
+    if frappe.db.exists("File", file_id):
+        file_doc = frappe.get_doc("File", file_id)
 
-    file_doc = frappe.get_doc("File", file_id)
-
-    if file_doc.attached_to_doctype and file_doc.attached_to_name:
-        frappe.has_permission(file_doc.attached_to_doctype, "read", doc=file_doc.attached_to_name, throw=True)
+    if file_doc:
+        if file_doc.attached_to_doctype and file_doc.attached_to_name:
+            frappe.has_permission(file_doc.attached_to_doctype, "read", doc=file_doc.attached_to_name, throw=True)
+        else:
+            frappe.has_permission("File", "read", doc=file_doc, throw=True)
     else:
-        frappe.has_permission("File", "read", doc=file_doc, throw=True)
+        frappe.has_permission("File", "read", throw=True)
+        frappe.throw(_("File not found"), frappe.DoesNotExistError)
 
     frappe.local.response.filename = file_doc.file_name
     frappe.local.response.filecontent = file_doc.get_content()
     frappe.local.response.type = "download"
-    if cint(view):
+    if view:
         frappe.local.response.display_content_as = "inline"
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
+@validate_request(DeleteSupportingDocumentSchema)
 @handle_api_errors
-def delete_supporting_document(application_id=None, file_id=None):
+def delete_supporting_document(**kwargs):
     """
     Deletes an attached supporting document from a loan application.
     """
-    if not application_id or not file_id:
-        frappe.throw(_("application_id and file_id are required"), frappe.MandatoryError)
+    application_id = kwargs.get("application_id")
+    file_id = kwargs.get("file_id")
         
     frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
     _get_app(application_id)
@@ -485,23 +572,25 @@ def delete_supporting_document(application_id=None, file_id=None):
     return success_response(message="File deleted successfully")
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
+@validate_request(LeadIDSchema)
 @handle_api_errors
-def create_loan_application(lead_id=None):
+def create_loan_application(**kwargs):
     """
     Creates an A2C Loan Application by copying data from the Lead's linked Farmer Profile and Credit Information.
     """
-    err = validate_lead(lead_id)
-    if err:
-        return err
-
-    frappe.has_permission("A2C Loan Application", "create", throw=True)
+    lead_id = kwargs.get("lead_id")
     frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
+    frappe.has_permission("A2C Loan Application", "create", throw=True)
+    lead_doc = _get_lead(lead_id)
 
+    # Acquire a database-level transaction row/gap lock via raw SQL FOR UPDATE to prevent TOCTOU
+    # race conditions during concurrent API requests.
+    # Alternative unique constraints cannot be enforced on the database layer because some values
+    # (such as lead_id) are not guaranteed to be unique under database schemas without custom migration scripts.
+    frappe.db.sql("SELECT name FROM `tabA2C Loan Application` WHERE lead_id = %s FOR UPDATE", (lead_id,))
     existing = frappe.get_list("A2C Loan Application", filters={"lead_id": lead_id}, fields=["name"], limit=1, ignore_permissions=False)
     if existing:
         frappe.throw(_("Loan application already exists for this lead"), frappe.ValidationError)
-
-    lead_doc = frappe.get_doc("A2C Lead", lead_id)
     
     farmer_profile_name = lead_doc.get("farmer_profile")
     if not farmer_profile_name:
@@ -561,10 +650,16 @@ def create_loan_application(lead_id=None):
     
     loan_app.insert(ignore_permissions=False)
     frappe.db.commit()
-    
+
+    # NOTE: the lead is intentionally NOT advanced here. Lead status transitions go through the
+    # A2C Lead Workflow (Active -> Verified -> Processed), driven by the frontend via
+    # update_lead_status. There is no Active -> Processed shortcut, so loan creation does not
+    # move the lead; the client applies the workflow actions explicitly.
+
     return success_response(
         data={
             "application_id": loan_app.name,
+            "lead_status": lead_doc.status,
             "application": {
                 "name": loan_app.name,
                 "status": loan_app.status,
@@ -580,48 +675,47 @@ def create_loan_application(lead_id=None):
     )
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
+@validate_request(UpdateLoanStatusSchema)
 @handle_api_errors
-def update_loan_status(application_id=None, status=None):
+def update_loan_status(**kwargs):
     """
     Updates the status of a loan application. Cannot update if current status is Rejected or Approved.
     """
-    if not application_id or not status:
-        frappe.throw(_("application_id and status are required"), frappe.MandatoryError)
+    application_id = kwargs.get("application_id")
+    status = kwargs.get("status")
 
     frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
     doc = _get_app(application_id)
-    
-    if doc.status in ["Rejected", "Approved"]:
-        frappe.throw(_("Cannot change status. Loan application is already {0}").format(doc.status), frappe.ValidationError)
 
-    doc.status = status
-    doc.save(ignore_permissions=False)
+    # Apply the status change through the A2C Loan Application Workflow. The workflow enforces
+    # legal transitions and per-role gating, and submits the doc (docstatus 1) on
+    # Approve/Reject. Illegal/unauthorised targets raise ValidationError.
+    apply_status_transition(doc, status)
     frappe.db.commit()
 
     return success_response(message=f"Loan application status updated to {status}")
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
+@validate_request(UpdateLoanStepSchema)
 @handle_api_errors
-def update_loan_step(application_id=None, step=None):
+def update_loan_step(**kwargs):
     """
     Updates the current step of a loan application.
     """
-    if not application_id or step is None:
-        frappe.throw(_("application_id and step are required"), frappe.MandatoryError)
+    application_id = kwargs.get("application_id")
+    step = kwargs.get("step")
 
     frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
     doc = _get_app(application_id)
     
-    step_val = cint(step)
-    if step_val not in (1, 2, 3, 4):
-        frappe.throw(_("Step must be between 1 and 4"), frappe.ValidationError)
-
-    current_step = doc.current_step or 1
-    if step_val > current_step + 1:
-        frappe.throw(_("Invalid step transition. You cannot skip steps."), frappe.ValidationError)
-
-    doc.current_step = step_val
+    doc.current_step = step
     doc.save(ignore_permissions=False)
     frappe.db.commit()
 
-    return success_response(message=f"Loan application step updated to {step_val}")
+    return success_response(
+        data={
+            "application_id": doc.name,
+            "current_step": doc.current_step
+        },
+        message=f"Loan application step updated to {doc.current_step}"
+    )

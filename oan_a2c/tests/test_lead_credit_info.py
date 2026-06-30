@@ -57,10 +57,10 @@ class TestLeadCreditInfo(unittest.TestCase):
 		)
 
 		self.assertEqual(res["status"], "success")
-		self.assertTrue(res["credit_info_id"].startswith("LCR-"))
+		self.assertTrue(res["data"]["credit_info_id"].startswith("LCR-"))
 
 		# Verify DB values
-		doc = frappe.get_doc("A2C Credit Information", res["credit_info_id"])
+		doc = frappe.get_doc("A2C Credit Information", res["data"]["credit_info_id"])
 		self.assertEqual(doc.lead, self.lead_id)
 		self.assertEqual(doc.loan_type, "Input loan (seeds, agrochemicals)")
 		self.assertEqual(float(doc.loan_amount), 90000.00)
@@ -122,9 +122,9 @@ class TestLeadCreditInfo(unittest.TestCase):
 
 		res = get_lead_credit_infos(lead_id=self.lead_id)
 		self.assertEqual(res["status"], "success")
-		self.assertEqual(len(res["results"]), 2)
+		self.assertEqual(len(res["data"]), 2)
 
-		first = res["results"][0]
+		first = res["data"][0]
 		self.assertEqual(first["loan_type"], "Land loan")
 		self.assertEqual(float(first["loan_amount"]), 150000.00)
 
@@ -132,7 +132,7 @@ class TestLeadCreditInfo(unittest.TestCase):
 		"""Verifies get_lead_metadata endpoint exposes the options configured for loan_type Select field."""
 		res = get_lead_metadata()
 		self.assertEqual(res["status"], "success")
-		self.assertTrue("loan_types" in res)
-		self.assertIn("Input loan (seeds, agrochemicals)", res["loan_types"])
-		self.assertIn("Agricultural term loan", res["loan_types"])
-		self.assertIn("Smallholder farmer direct loan", res["loan_types"])
+		self.assertTrue("loan_types" in res["data"])
+		self.assertIn("Input loan (seeds, agrochemicals)", res["data"]["loan_types"])
+		self.assertIn("Agricultural term loan", res["data"]["loan_types"])
+		self.assertIn("Smallholder farmer direct loan", res["data"]["loan_types"])

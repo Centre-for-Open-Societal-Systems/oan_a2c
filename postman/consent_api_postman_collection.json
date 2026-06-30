@@ -1,7 +1,7 @@
 {
 	"info": {
 		"name": "OAN A2C Consent API",
-		"description": "API Contracts specifically for the OpenG2P Consent Management lifecycle in A2C.",
+		"description": "API Contracts specifically for the OpenG2P Consent Management lifecycle in A2C. Endpoints mirror OpenG2PConsentClient one-to-one. Flow: Search Farmer → Request OTP → Verify OTP → Submit Consent.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -39,7 +39,31 @@
 			}
 		},
 		{
-			"name": "2. Request OTP",
+			"name": "2. Get Partner Allowed Data Field IDs",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.get_partner_allowed_data_field_ids",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.consent.consent.get_partner_allowed_data_field_ids"
+					]
+				}
+			}
+		},
+		{
+			"name": "3. Request OTP",
 			"request": {
 				"method": "POST",
 				"header": [
@@ -56,7 +80,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"fayda_id\": \"FAYDA-123\",\n    \"partner\": \"Test Partner\",\n    \"lead_id\": \"{{lead_id}}\",\n    \"purpose\": \"Testing Consent API\",\n    \"validity_from\": \"2026-06-01 00:00:00\",\n    \"validity_to\": \"2027-06-01 00:00:00\",\n    \"consent_form_attachment\": \"/files/consent.pdf\"\n}"
+					"raw": "{\n    \"fayda_id\": \"FAYDA-123\",\n    \"lead_id\": \"{{lead_id}}\"\n}"
 				},
 				"url": {
 					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.request_otp",
@@ -72,7 +96,7 @@
 			}
 		},
 		{
-			"name": "3. Verify OTP and Approve Consent",
+			"name": "4. Verify OTP",
 			"request": {
 				"method": "POST",
 				"header": [
@@ -89,17 +113,98 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"otp_code\": \"123456\"\n}"
+					"raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"consent_request\": \"{{consent_request}}\",\n    \"transaction_id\": \"{{transaction_id}}\",\n    \"otp_code\": \"123456\"\n}"
 				},
 				"url": {
-					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp_for_lead",
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.verify_otp",
 					"host": [
 						"{{base_url}}"
 					],
 					"path": [
 						"api",
 						"method",
-						"oan_a2c.api.v1.consent.consent.verify_otp_for_lead"
+						"oan_a2c.api.v1.consent.consent.verify_otp"
+					]
+				}
+			}
+		},
+		{
+			"name": "5. Submit Consent",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"consent_request\": \"{{consent_request}}\",\n    \"consent_type\": \"specific\",\n    \"consent_reason_id\": 1,\n    \"validity_from\": \"2026-06-01\",\n    \"validity_to\": \"2027-06-01\",\n    \"consent_form_filename\": \"signed_consent.png\",\n    \"consent_form_base64\": \"dGVzdCBjb250ZW50\",\n    \"allowed_data_field_ids\": [1, 2]\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.submit_consent",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.consent.consent.submit_consent"
+					]
+				}
+			}
+		},
+		{
+			"name": "6. Get Consent Reasons",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.get_consent_reasons",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.consent.consent.get_consent_reasons"
+					]
+				}
+			}
+		},
+		{
+			"name": "7. Get Consent Allowed Fields",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "Bearer {{jwt_token}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.get_consent_allowed_fields",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"oan_a2c.api.v1.consent.consent.get_consent_allowed_fields"
 					]
 				}
 			}
@@ -117,6 +222,14 @@
 		{
 			"key": "lead_id",
 			"value": "LEAD-YYYY-XXXXX"
+		},
+		{
+			"key": "consent_request",
+			"value": "CONREQ-YYYY-XXXXX"
+		},
+		{
+			"key": "transaction_id",
+			"value": "PASTE_TXN_FROM_REQUEST_OTP"
 		}
 	]
 }

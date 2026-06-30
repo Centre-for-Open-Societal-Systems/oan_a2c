@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.utils import sanitize_html
 from oan_a2c.api.utils import success_response, handle_api_errors
 
 
@@ -89,6 +90,11 @@ def _update_existing_lead(lead_name, lead_source, external_ref_id, timestamp):
 
 def _build_event_note(lead_source, external_ref_id, timestamp):
 	"""Formats a single inbound event into a human-readable audit line."""
+	if external_ref_id:
+		external_ref_id = sanitize_html(external_ref_id)
+	if timestamp:
+		timestamp = sanitize_html(timestamp)
+
 	parts = [f"Source: {lead_source}"]
 	if external_ref_id:
 		parts.append(f"Ref ID: {external_ref_id}")

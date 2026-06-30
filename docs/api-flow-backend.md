@@ -269,9 +269,10 @@ All endpoints use the standard envelope.
 | `start` | int | No | 0 | Offset (clamped to ≥ 0) |
 | `page_length` | int | No | 20 | Clamped to [1, 100] |
 | `search_query` | string | No | — | `LIKE` match on `name`, `phone_number`, `external_id` |
-| `status` | string | No | — | Single value or **comma-separated** list. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
-| `lead_source` | string | No | — | Single value or **comma-separated** list. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
-| `loan_type` | string | No | — | Single value or **comma-separated** list. Validated against `A2C Credit Information.loan_type` options. Filters via subquery on A2C Credit Information |
+| `status` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
+| `lead_source` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
+| `loan_type` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Validated against `A2C Credit Information.loan_type` options. Filters via subquery on A2C Credit Information |
+| `assigned_to` | string | No | — | Filter by assigned agent (User). Single value or **comma-separated** list of users (`in` filter on `assigned_to`). The literal `unassigned` matches leads with no agent; it can be combined with named users (e.g. `unassigned,agent@bank.com`). Not allowlist-validated — an unknown user simply yields no matches |
 | `start_date` | string | No | — | ISO date. Used alone or with `end_date` |
 | `end_date` | string | No | — | ISO date. Used alone or with `start_date` |
 | `min_loan_amount` | float | No | — | Filters via subquery on A2C Credit Information |
@@ -281,11 +282,13 @@ All endpoints use the standard envelope.
 **Lead source allowlist:** `Missed Call`, `IVR`, `SMS`, `Agent Entry`
 **Loan type allowlist:** dynamic — pulled from `A2C Credit Information.loan_type` Select options at request time.
 
-> **Multi-value filters:** `status`, `lead_source`, and `loan_type` accept either a single value or a comma-separated list (e.g. `status=Active,Verified`). Values are split, de-duplicated, and matched against the allowlist; valid values are combined with an `in` filter.
+> **Multi-value filters:** `status`, `lead_source`, and `loan_type` accept either a single value, a comma-separated list, or a stringified JSON array (e.g. `status=["Active","Verified"]`). Using a JSON array is the strongly recommended format to avoid delimiter conflicts when values contain commas. Values are split, de-duplicated, and matched against the allowlist; valid values are combined with an `in` filter.
 
 > **Important:** Invalid `status`, `lead_source`, or `loan_type` values are **silently dropped** — the filter is not applied (or, for a multi-value list, only the invalid entries are removed) rather than returning an error. No 400 is thrown. If a list contains *only* invalid values, that filter is skipped entirely.
 
 > **Credit criteria intersection:** `loan_type`, `min_loan_amount`, and `max_loan_amount` share a single subquery against A2C Credit Information — a lead must satisfy all supplied credit criteria together to match.
+
+> **Assignee filter:** `assigned_to` accepts a single user, a comma-separated list of users, or the literal `unassigned` (leads with empty `assigned_to`). Unlike the allowlist filters, unknown users are **not** dropped or errored — they just match nothing. Combine with other filters for an agent's scoped queue, e.g. `assigned_to=agent@bank.com&status=Active`.
 
 **Success response** (HTTP 200):
 ```json
@@ -395,12 +398,19 @@ No parameters.
       "Granted": 40,
       "Rejected": 30,
       "Dormant": 22
+    },
+    "tab_counts": {
+      "all": 342,
+      "assigned": 300,
+      "unassigned": 42
     }
   }
 }
 ```
 
-> **Performance note:** Executes 6 separate count queries (one per status) respecting RBAC. These are not cached.
+> **`tab_counts`:** `all` = total. `assigned` = leads where `assigned_to` is set. `unassigned` = `all − assigned` (leads with no agent). All respect RBAC.
+
+> **Performance note:** Executes 7 count queries (one per status, plus one for assigned). These are not cached.
 
 **Error cases:**
 
@@ -882,26 +892,40 @@ All endpoints use `@handle_api_errors` and standard envelope.
   "status": "success",
   "message": "Basic profile retrieved successfully",
   "data": {
+    "farmer_profile_created": false,
     "first_name": "Abebe",
     "last_name": "Kebede",
     "phone_number": "+251911000000",
     "email": "abebe@email.com or null",
-    "location": "Oromia, East Hararge or null"
+    "location": "Oromia, East Hararge or null",
+    "consent_request": {
+      "name": "CR-2026-00001",
+      "status": "Pending OTP",
+      "otp_verified": false
+    }
   }
 }
 ```
 
-**Success response — with `include_consent_data=1`** (HTTP 200):
+**Success response — with `include_consent_data=1`** (HTTP 200)
 ```json
 {
   "status": "success",
   "data": {
+    "farmer_profile_created": true,
     "first_name": "Abebe",
     "last_name": "Kebede",
     "phone_number": "+251911000000",
     "email": null,
     "location": "Oromia",
+    "consent_request": {
+      "name": "CR-2026-00001",
+      "status": "Approved",
+      "otp_verified": true
+    },
     "websub_delivered_at": "2026-01-15 10:00:00 or null",
+    "consent_type": "OTP or OAuth or null",
+    "purpose": "Credit check or null",
     "validity_from": "2026-01-01 00:00:00",
     "validity_to": "2027-01-01 00:00:00",
     "requested_data_fields": [
@@ -1083,13 +1107,14 @@ No parameters.
 
 | Param | Type | Required | Default | Constraint |
 |-------|------|----------|---------|-----------|
-| `status` | string | No | — | Single value or comma-separated list. Each value validated against `{Draft, Processing, Approved, Rejected}`, de-duplicated. Invalid values silently dropped (`in` filter). |
+| `status` | string | No | — | Single value, comma-separated list, or stringified JSON array. Each value validated against `{Draft, Processing, Approved, Rejected}`, de-duplicated. Invalid values silently dropped (`in` filter). |
 | `loan_amount` | float | No | — | Exact match (overridden by min/max if both provided) |
 | `min_loan_amount` | float | No | — | |
 | `max_loan_amount` | float | No | — | |
-| `loan_type` | string | No | — | Single value or comma-separated list (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is. |
+| `loan_type` | string | No | — | Single value, comma-separated list, or stringified JSON array (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is. |
 | `location` | string | No | — | `LIKE` match |
 | `phone_number` | string | No | — | `LIKE` match |
+| `loan_officer` | string | No | — | Filter by assigned Loan Officer (User). Single value or **comma-separated** list (`in` filter). The literal `unassigned` matches loans with no officer (same notion as the `unassigned` tab in `get_loan_summary`) and can be combined with named users. Not allowlist-validated — an unknown user yields no matches. |
 | `from_date` | string | No | — | ISO date. Filters `creation` |
 | `to_date` | string | No | — | ISO date. End time is padded to `23:59:59` |
 | `page` | int | No | 1 | |
@@ -1483,7 +1508,7 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 ---
 
-#### `GET/POST /api/method/oan_a2c.api.v1.consent.api.search_farmer`
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.search_farmer`
 
 **Parameters:**
 
@@ -1513,28 +1538,20 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 | Condition | HTTP | code | message |
 |-----------|------|------|---------|
 | `fayda_id` missing | 400 | `VALIDATION_ERROR` | `"fayda_id is required"` |
-| Farmer not found in OpenG2P | 404 | `NOT_FOUND` | `"Farmer with Fayda ID '{id}' not found in OpenG2P."` |
+| Farmer not found  | 404 | `NOT_FOUND` | `"Farmer with Fayda ID '{id}' not found ."` |
 | OpenG2P unreachable | 500 | `INTERNAL_ERROR` | |
 
 ---
 
-#### `GET/POST /api/method/oan_a2c.api.v1.consent.api.request_otp`
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.request_otp`
 
 **Parameters:**
 
 | Param | Type | Required | Notes |
 |-------|------|----------|-------|
 | **`fayda_id`** | string | Yes | |
-| **`partner`** | string | Yes | Partner name in OpenG2P |
 | **`lead_id`** | string | Yes | |
-| `purpose` | string | No | Default: `"Loan for seeds and fertilizer"` |
-| `validity_from` | string | No | ISO datetime. Defaults to now if omitted |
-| `validity_to` | string | No | ISO datetime. Defaults to now + 1 year if omitted |
-| **`consent_form_attachment`** | string | Conditional | Pre-uploaded file URL. Required if base64 not provided. |
-| **`consent_form_base64`** | string | Conditional | Base64 encoded file. Required if URL not provided. |
-| **`consent_form_filename`** | string | Conditional | Required when `consent_form_base64` provided. |
-
-> One of `consent_form_attachment` OR (`consent_form_base64` + `consent_form_filename`) is **mandatory**.
+| `idempotency_key` | string | No | Optional key to prevent duplicate OTP requests |
 
 **Success response** (HTTP 200):
 ```json
@@ -1553,41 +1570,69 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 | Condition | HTTP | code | message |
 |-----------|------|------|---------|
-| `lead_id` missing | 400 | `VALIDATION_ERROR` | `"lead_id is required"` |
-| `lead_id` not found | 404 | `NOT_FOUND` | `"A2C Lead {id} not found"` |
-| `fayda_id` missing | 400 | `VALIDATION_ERROR` | `"fayda_id is required"` |
-| `partner` missing | 400 | `VALIDATION_ERROR` | `"partner is required"` |
-| No attachment provided | 400 | `VALIDATION_ERROR` | `"An attachment is strictly required..."` |
-| Farmer not found in OpenG2P | 400 | `VALIDATION_ERROR` | `"Farmer with Fayda ID '{id}' not found in OpenG2P."` |
-| Partner not found in OpenG2P | 400 | `VALIDATION_ERROR` | `"Partner '{partner}' not found in OpenG2P."` |
-| OTP request to Fayda fails | 500 | `INTERNAL_ERROR` | `"Failed to request OTP from the identity provider."` |
-| OTP response has no transaction_id | 500 | `INTERNAL_ERROR` | `"Identity provider did not return a transaction ID."` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` | |
+| `lead_id` missing | 400 | `VALIDATION_ERROR` | |
+| `fayda_id` missing | 400 | `VALIDATION_ERROR` | |
+| Rate limit exceeded | 429 | `VALIDATION_ERROR` | `"Rate limit exceeded. Try again later."` |
 
 **Side effects:**
-- Stores Odoo session cookies in Redis: key `odoo_session_dict_{transaction_id}`, TTL 1800s
-- Creates `A2C Consent Request` with status `"Pending OTP"`
-- If `consent_form_base64` provided: saves as private file attached to the lead
+- Stores Odoo session cookie/dict in Redis.
+- Creates `A2C Consent Request` with status `"Pending OTP"`.
 
 ---
 
-#### `GET/POST /api/method/oan_a2c.api.v1.consent.api.verify_otp_for_lead`
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.verify_otp`
 
 **Parameters:**
 
 | Param | Type | Required | Notes |
 |-------|------|----------|-------|
 | **`lead_id`** | string | Yes | |
+| **`consent_request`** | string | Yes | |
 | **`otp_code`** | string | Yes | |
 
 **Success response** (HTTP 200):
 ```json
 {
   "status": "success",
-  "message": "OTP verified. Consent approved and saved to Lead.",
+  "message": "OTP verified successfully. Proceed to submit consent.",
   "data": {
     "lead_id": "LEAD-2026-0001",
     "consent_request": "CONREQ-2026-0001",
+    "transaction_id": "TXN-ABC-123",
+    "status": "OTP Verified"
+  }
+}
+```
+
+**Side effects:**
+- Sets `otp_verified_at` on the `A2C Consent Request`.
+
+---
+
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.submit_consent`
+
+**Parameters:**
+
+| Param | Type | Required | Notes |
+|-------|------|----------|-------|
+| **`lead_id`** | string | Yes | |
+| **`consent_request`** | string | Yes | |
+| `consent_type` | string | No | Default: `"specific"` |
+| `consent_reason_id` | integer | No | Default: `1` |
+| `validity_months` | integer | No | Default: `12` |
+| **`consent_form_filename`** | string | Yes | |
+| **`consent_form_base64`** | string | Yes | Base64-encoded PDF/Image file |
+| `allowed_data_field_ids` | array | No | List of permitted OpenG2P field IDs |
+
+**Success response** (HTTP 200):
+```json
+{
+  "status": "success",
+  "message": "Consent submitted and approved successfully.",
+  "data": {
+    "lead_id": "LEAD-2026-0001",
+    "consent_request": "CONREQ-2026-0001",
+    "status": "Approved",
     "openg2p_consent_id": "OG2P-CONSENT-001",
     "consent_receipt": "HMAC_SIGNATURE_STRING",
     "farmer_preview": {
@@ -1600,26 +1645,70 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 }
 ```
 
-> **`farmer_preview`** is the raw farmer data from OpenG2P — keys are `given_name`, `family_name`, `email`, `phone_no` (list). Not the same shape as the Lead object.
-> **After this call:** The lead's `first_name`, `last_name`, and `phone_number` are updated from `farmer_preview` if the values are non-empty.
+**Side effects:**
+- Uploads consent document attachment to OpenG2P.
+- Submits and approves the consent request .
+- Marks `A2C Consent Request` as `"Approved"` and updates the lead with the farmer profile data.
+- Queues WebSub delivery payload.
 
-**Error cases:**
+---
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `lead_id` or `otp_code` missing | 400 | `VALIDATION_ERROR` | `"X is required"` |
-| No `Pending OTP` consent request for lead | 400 | `VALIDATION_ERROR` | `"No pending A2C Consent Request found for Lead '{id}'. Did you call request_otp first?"` |
-| Consent request has no `otp_transaction_id` | 400 | `VALIDATION_ERROR` | `"OTP was not requested for this consent"` |
-| Farmer not found in OpenG2P | 400 | `VALIDATION_ERROR` | |
-| OTP verification rejected by Fayda | 500 | `INTERNAL_ERROR` | `"OTP verification failed. Please check your code and try again."` |
-| Attachment upload to OpenG2P fails | 500 | `INTERNAL_ERROR` | `"Failed to upload consent attachment."` |
-| Consent creation in OpenG2P fails | 500 | `INTERNAL_ERROR` | `"Failed to create consent request in the identity system."` |
-| No consent ID returned from OpenG2P | 500 | `INTERNAL_ERROR` | `"Consent request created but no identification ID was returned."` |
-| Partner not found in OpenG2P | 400 | `VALIDATION_ERROR` | `"Partner '{partner}' not found in OpenG2P."` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` | |
-| No write permission on consent request | 403 | `PERMISSION_DENIED` | |
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.get_partner_allowed_data_field_ids`
 
-> **Atomicity warning:** This endpoint makes 5 sequential external calls. Failure at step 2–5 leaves the OTP verified in Fayda but consent incomplete in OpenG2P and Frappe — partial state with no rollback or retry mechanism.
+No parameters.
+
+**Success response** (HTTP 200):
+```json
+{
+  "status": "success",
+  "message": "Allowed data field IDs retrieved successfully.",
+  "data": {
+    "allowed_data_field_ids": [1, 2]
+  }
+}
+```
+
+---
+
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.get_consent_reasons`
+
+No parameters.
+
+**Success response** (HTTP 200):
+```json
+{
+  "status": "success",
+  "message": "Consent reasons retrieved successfully.",
+  "data": [
+    {
+      "id": 1,
+      "name": "Loan credit analysis"
+    }
+  ]
+}
+```
+
+---
+
+#### `GET/POST /api/method/oan_a2c.api.v1.consent.consent.get_consent_allowed_fields`
+
+No parameters.
+
+**Success response** (HTTP 200):
+```json
+{
+  "status": "success",
+  "message": "Allowed data fields retrieved successfully.",
+  "data": [
+    {
+      "id": 1,
+      "name": "Phone Number"
+    }
+  ]
+}
+```
+
+---
 
 ---
 
