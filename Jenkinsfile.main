@@ -1,13 +1,12 @@
-//Build, migrate data and deploy to staging environment on AWS EC2 instance
 pipeline {
     agent any
 
     environment {
-        AWS_REGION     = 'ap-south-1'
-        ECR_REPO       = 'oan-a2c'
-        FRAPPE_BRANCH  = 'version-16'
-        FRAPPE_PATH    = 'https://github.com/frappe/frappe'
-        BACKEND_IP     = '10.0.2.100'
+        AWS_REGION    = 'ap-south-1'
+        ECR_REPO      = 'oan-a2c'
+        FRAPPE_BRANCH = 'version-16'
+        FRAPPE_PATH   = 'https://github.com/frappe/frappe'
+        BACKEND_IP    = '10.0.2.100'
     }
 
     stages {
@@ -19,24 +18,29 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
                     sh '''
+                        IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+
+                        # Clone frappe_docker which has the Containerfile
                         rm -rf frappe_docker
                         git clone https://github.com/frappe/frappe_docker.git frappe_docker
 
-                        echo '[{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_a2c.git","branch":"develop"}]' > /tmp/apps.json
+                        # Prepare apps.json pointing to main branch of COSS repo
+                        echo '[{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_a2c.git","branch":"main"}]' > /tmp/apps.json
 
-                        IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
-
+                        # Build from frappe_docker directory
                         cd frappe_docker
                         DOCKER_BUILDKIT=1 docker buildx build \
                             --build-arg FRAPPE_PATH=${FRAPPE_PATH} \
                             --build-arg FRAPPE_BRANCH=${FRAPPE_BRANCH} \
                             --secret id=apps_json,src=/tmp/apps.json \
-                            --tag ${IMAGE_URI}:1.0.${BUILD_NUMBER} \
-                            --tag ${IMAGE_URI}:latest \
+                            --tag ${IMAGE_URI}:main-${BUILD_NUMBER} \
+                            --tag ${IMAGE_URI}:main \
                             --file images/layered/Containerfile \
                             --network=host \
                             --load \
                             --no-cache .
+
+                        echo "Built ${IMAGE_URI}:main-${BUILD_NUMBER}"
                     '''
                 }
             }
@@ -52,70 +56,66 @@ pipeline {
                             docker login --username AWS --password-stdin \
                             ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
-                        docker push ${IMAGE_URI}:1.0.${BUILD_NUMBER}
-                        docker push ${IMAGE_URI}:latest
+                        docker push ${IMAGE_URI}:main-${BUILD_NUMBER}
+                        docker push ${IMAGE_URI}:main
 
-                        echo "Pushed ${IMAGE_URI}:1.0.${BUILD_NUMBER}"
+                        echo "Pushed ${IMAGE_URI}:main-${BUILD_NUMBER}"
                     '''
                 }
             }
         }
 
-        stage('Deploy to AWS Staging') {
+        stage('Deploy to Backend') {
             steps {
                 withCredentials([
                     string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
-                    sshUserPrivateKey(credentialsId: 'backend-ssh-key', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+                    sshUserPrivateKey(
+                        credentialsId: 'backend-ssh-key',
+                        keyFileVariable: 'SSH_KEY',
+                        usernameVariable: 'SSH_USER'
+                    )
                 ]) {
                     sh '''
-                        ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@${BACKEND_IP} bash << SSHEOF
+                        ssh -i ${SSH_KEY} \
+                            -o StrictHostKeyChecking=no \
+                            ${SSH_USER}@${BACKEND_IP} << SSHEOF
+
                             set -e
                             cd /opt/oan_a2c
 
-                            echo "=== Pulling new image ==="
+                            echo "=== Logging in to ECR ==="
                             aws ecr get-login-password --region ap-south-1 | \
                                 docker login --username AWS --password-stdin \
                                 ${AWS_ACCOUNT_ID}.dkr.ecr.ap-south-1.amazonaws.com
 
+                            echo "=== Updating image tag in .env ==="
+                            sed -i "s|oan-a2c:.*|oan-a2c:main-${BUILD_NUMBER}|" .env
+
+                            echo "=== Pulling new image ==="
                             docker compose pull
 
                             echo "=== Restarting services ==="
                             docker compose up -d --no-deps --force-recreate \
                                 backend frontend websocket queue-short queue-long scheduler
 
-                            echo "=== Waiting for backend to be ready ==="
                             sleep 20
 
                             echo "=== Clearing stale assets ==="
-                            docker compose exec -T backend bash -c "
-                                rm -rf /home/frappe/frappe-bench/sites/assets
-                            "
+                            docker compose exec -T backend bash -c "rm -rf /home/frappe/frappe-bench/sites/assets"
 
                             echo "=== Rebuilding assets ==="
                             docker compose exec -T backend bench build --force
-
-                            echo "=== Running migrations ==="
                             docker compose exec -T backend bench --site mysite.localhost migrate
-
-                            echo "=== Clearing cache ==="
                             docker compose exec -T backend bench --site mysite.localhost clear-cache
-                            docker compose exec -T backend bench --site mysite.localhost clear-website-cache
 
-                            echo "=== Restarting frontend to serve new assets ==="
+                            echo "=== Restarting frontend ==="
                             docker compose restart frontend
-
-                            echo "=== Waiting for frontend ==="
                             sleep 10
 
                             echo "=== Health check ==="
-                            for i in \$(seq 1 10); do
-                                if curl -sf http://localhost:8080/health > /dev/null 2>&1; then
-                                    echo "Health check passed!"
-                                    break
-                                fi
-                                echo "Attempt \$i failed, retrying in 5s..."
-                                sleep 5
-                            done
+                            set +e
+                            curl -sf http://localhost:8080/health && echo "Health check passed!" || echo "Warning: health check failed"
+                            set -e
 
                             echo "=== Deployment complete ==="
                             docker compose ps
@@ -125,12 +125,12 @@ SSHEOF
             }
         }
 
-        stage('Cleanup Jenkins') {
+        stage('Cleanup') {
             steps {
                 withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
                     sh '''
                         IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
-                        docker rmi ${IMAGE_URI}:1.0.${BUILD_NUMBER} || true
+                        docker rmi ${IMAGE_URI}:main-${BUILD_NUMBER} || true
                         docker system prune -f || true
                     '''
                 }
@@ -139,11 +139,7 @@ SSHEOF
     }
 
     post {
-        success {
-            echo "Build and deploy successful! Version: 1.0.${BUILD_NUMBER}"
-        }
-        failure {
-            echo "Pipeline failed!"
-        }
+        success { echo "Backend main branch deployed successfully! Build: main-${BUILD_NUMBER}" }
+        failure { echo "Backend main branch deployment failed!" }
     }
 }
