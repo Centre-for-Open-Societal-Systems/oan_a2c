@@ -182,9 +182,17 @@ class TestConsentAPI(unittest.TestCase):
         self.assertEqual(submit_response.get("data", {}).get("openg2p_consent_id"), "MOCK-G2P-CONS-001")
         self.assertIsNotNone(submit_response.get("data", {}).get("consent_receipt"))
         
-        # Verify status updated to Approved in DB
-        vals_after_submit = self._get_consent_values(consent_name, "status")
+        # Verify status and validity updated in DB
+        vals_after_submit = self._get_consent_values(consent_name, "status", "validity_from", "validity_to")
         self.assertEqual(vals_after_submit.get("status"), "Approved")
+        self.assertIsNotNone(vals_after_submit.get("validity_from"))
+        self.assertIsNotNone(vals_after_submit.get("validity_to"))
+        
+        from frappe.utils import getdate, date_diff
+        self.assertEqual(
+            date_diff(getdate(vals_after_submit.get("validity_to")), getdate(vals_after_submit.get("validity_from"))),
+            12 * 30
+        )
         
         # Verify WebSub was queued
         MockEnqueue.assert_called_once()

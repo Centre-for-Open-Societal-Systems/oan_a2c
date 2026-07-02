@@ -85,7 +85,7 @@
    "in_list_view": 1,
    "label": "Phone Number",
    "options": "Phone",
-   "reqd": 1,
+   "reqd": 0,
    "unique": 1
   },
   {

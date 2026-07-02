@@ -44,14 +44,23 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         validated = ReceiveConsentDataSchema.model_validate(data)
         consent_info = validated.consent
         
-        # Update Consent Request status
+        # Update Consent Request status and validity details
+        updates_dict = {}
         new_status = consent_info.status
         if new_status:
-            mapped_status = new_status.capitalize() if new_status.islower() else new_status
-            frappe.db.set_value("A2C Consent Request", consent_doc_name, "status", mapped_status)
+            updates_dict["status"] = new_status.capitalize() if new_status.islower() else new_status
 
         if validated.published_at:
-            frappe.db.set_value("A2C Consent Request", consent_doc_name, "websub_delivered_at", validated.published_at)
+            updates_dict["websub_delivered_at"] = validated.published_at
+
+        if consent_info.validity_from:
+            updates_dict["validity_from"] = consent_info.validity_from.split(" ")[0].split("T")[0]
+
+        if consent_info.validity_to:
+            updates_dict["validity_to"] = consent_info.validity_to.split(" ")[0].split("T")[0]
+
+        if updates_dict:
+            frappe.db.set_value("A2C Consent Request", consent_doc_name, updates_dict)
 
         # Parse Farmer Data
         farmer_data = validated.farmer or FarmerInfoSchema()
@@ -168,7 +177,6 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 
         if lead_id:
             lead_doc = frappe.get_doc("A2C Lead", lead_id)
-            
             existing_profile_name = None
             if phone_number:
                 existing_profile_name = frappe.db.get_value("A2C Farmer Profile", {"phone_number": phone_number}, "name")

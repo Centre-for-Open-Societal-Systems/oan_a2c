@@ -446,6 +446,10 @@ def submit_consent(**kwargs):
         cr_doc.consent_type            = consent_type
         cr_doc.purpose                 = consent_reason_id
         cr_doc.consent_form_attachment = saved_file.file_url
+        if validity_months:
+            from frappe.utils import today, add_days
+            cr_doc.validity_from = today()
+            cr_doc.validity_to = add_days(cr_doc.validity_from, days=int(validity_months) * 30)
         cr_doc.set("requested_data_fields", [])
         for f_id in allowed_data_field_ids:
             cr_doc.append("requested_data_fields", {

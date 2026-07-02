@@ -189,7 +189,24 @@ class OpenG2PConsentClient:
         response = OpenG2PSearchFarmerResponse.model_validate(result)
         farmers = response.data.get("farmers")
         if farmers:
-            farmer_data = farmers[0].model_dump()
+            farmer_model = farmers[0]
+            if farmer_model.profile_image_url:
+                try:
+                    if farmer_model.profile_image_url.startswith("/"):
+                        full_url = f"{self.base_url}{farmer_model.profile_image_url}"
+                    else:
+                        full_url = farmer_model.profile_image_url
+                    
+                    img_resp = self.session.get(full_url, timeout=(5, 10))
+                    if img_resp.status_code == 200:
+                        import base64
+                        content_type = img_resp.headers.get("Content-Type") or "image/png"
+                        b64_data = base64.b64encode(img_resp.content).decode("utf-8")
+                        farmer_model.profile_image_url = f"data:{content_type};base64,{b64_data}"
+                except Exception as e:
+                    frappe.logger().warning(f"Failed to fetch profile image for farmer: {e}")
+            
+            farmer_data = farmer_model.model_dump()
             frappe.cache().set_value(cache_key, farmer_data, expires_in_sec=3600)
             return farmer_data
             
