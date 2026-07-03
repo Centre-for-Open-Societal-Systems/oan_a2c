@@ -9,6 +9,12 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 
 
+class ConsentNotApproved(Exception):
+    """Raised when OpenG2P declines/auto-fails a consent submission, so the
+    handler can persist a "Rejected" outcome instead of a false "Approved".
+    Carries the upstream reason as its string value."""
+
+
 # ─── Pydantic Validation Schemas ──────────────────────────────────────────────
 
 class SearchFarmerSchema(BaseModel):
@@ -520,6 +526,25 @@ def submit_consent(**kwargs):
 
         )
 
+        # OpenG2P now performs (auto-)approval upstream and returns the outcome.
+        # Do NOT assume success: only mark Approved when OpenG2P actually
+        # approved. On an auto-approval failure we raise ConsentNotApproved,
+        # which the except block below records as a persisted "Rejected" status
+        # (with the upstream reason) rather than a false "Approved".
+        upstream_status = (data_block.get("status") or "").strip().lower()
+        auto_approval_failed = data_block.get("auto_approval_failed")
+        is_approved = (
+            upstream_status in ("approved", "granted", "active")
+            or (data_block.get("auto_approved") is True and not auto_approval_failed)
+            # Backwards-compat: pre-drift responses omit status entirely but
+            # returning a consent_id has always signalled a successful create.
+            or (not upstream_status and data_block.get("auto_approved") is None and openg2p_consent_id)
+        )
+
+        if not is_approved or auto_approval_failed:
+            reason = data_block.get("error_details") or upstream_status or "unknown reason"
+            raise ConsentNotApproved(reason)
+
         frappe.db.set_value("A2C Consent Request", consent_request, {
             "status": "Approved",
             "openg2p_consent_id": openg2p_consent_id,
@@ -560,6 +585,19 @@ def submit_consent(**kwargs):
                 frappe.logger().warning(f"Could not save farmer name fields: {e}")
 
         frappe.db.commit()
+
+    except ConsentNotApproved as e:
+        # Upstream (OpenG2P) declined the consent. Roll back the partial writes,
+        # then persist a durable "Rejected" outcome (the rollback is scoped to
+        # the savepoint, so this post-rollback set_value + commit survives) so
+        # the request is auditable/retryable instead of stuck at "Pending OTP".
+        frappe.db.rollback(save_point="before_submit")
+        frappe.db.set_value("A2C Consent Request", consent_request, "status", "Rejected")
+        frappe.db.commit()
+        frappe.throw(
+            _("Consent was not approved by OpenG2P: {0}").format(str(e)),
+            frappe.ValidationError,
+        )
 
     except Exception as e:
         frappe.db.rollback(save_point="before_submit")

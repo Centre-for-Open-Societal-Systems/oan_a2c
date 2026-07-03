@@ -78,6 +78,11 @@ class OpenG2PSearchFarmerResponse(OpenG2PResponse):
 class OpenG2POTPData(DriftWarnModel):
     transaction_id: str
     masked_mobile: Optional[str] = "XXXX"
+    # Added after OpenG2P drift: request_otp now also returns email masking and
+    # identifier provenance. Modelled as optional so older responses still parse.
+    masked_email: Optional[str] = None
+    identifier_type: Optional[str] = None
+    identifier_source: Optional[str] = None
 
 
 class OpenG2POTPResponse(OpenG2PResponse):
@@ -92,6 +97,14 @@ class OpenG2PSubmitConsentData(DriftWarnModel):
     # Farmer profile returned inline by OpenG2P (keyed by farmer id). Declared
     # so Pydantic preserves it through model_dump() instead of dropping it.
     response_data: Optional[dict] = None
+    # Added after OpenG2P drift: submit_consent now returns the upstream
+    # auto-approval decision. `status` is the authoritative consent outcome —
+    # consuming code must NOT assume every submission is approved.
+    status: Optional[str] = None
+    auto_approved: Optional[bool] = None
+    auto_approval_failed: Optional[bool] = None
+    auto_approve_method: Optional[str] = None
+    error_details: Optional[str] = None
 
 
 class OpenG2PSubmitConsentResponse(OpenG2PResponse):

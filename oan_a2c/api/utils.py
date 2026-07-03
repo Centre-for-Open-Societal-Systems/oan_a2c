@@ -351,6 +351,14 @@ def apply_status_transition(doc, target_status):
             frappe.ValidationError,
         )
 
+    # The workflow engine (apply_workflow) and the db_set mirror below both
+    # BYPASS Document.before_save, so the doctype's own verification gate never
+    # runs on this path. Enforce the business prerequisites here, before the
+    # transition, so a lead cannot become Verified without credit info + an
+    # approved consent regardless of workflow/role permissions.
+    if doc.doctype == "A2C Lead" and target_status == "Verified":
+        doc._enforce_verification_prerequisites()
+
     doc = apply_workflow(doc, action)
 
     # apply_workflow moves `workflow_state` but not the separate `status` Select field that the
