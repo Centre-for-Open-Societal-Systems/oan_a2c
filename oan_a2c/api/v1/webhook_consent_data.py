@@ -30,6 +30,61 @@ class ReceiveConsentDataSchema(BaseModel):
     farmer: Optional[FarmerInfoSchema] = None
     selected_data: Optional[Dict[str, Any]] = None
 
+def normalize_field_key(key):
+    """Reduce an OpenG2P field label to a bare lowercase alphanumeric token so
+    that casing, spacing and punctuation drift do not break lookups, e.g.
+    "Number of Females ( Family )" and "Number of Females (Family)" both map to
+    "numberoffemalesfamily"."""
+    return "".join(ch for ch in str(key).lower() if ch.isalnum())
+
+
+def build_field_getter(farmer_info_dict):
+    """Return a spelling-tolerant getter over an OpenG2P farmer info dict.
+
+    The returned `get(label, default=None)` normalizes the requested label the
+    same way as the stored keys, so field lookups keep working even when
+    OpenG2P changes a label's casing, spacing or punctuation.
+    """
+    normalized = {normalize_field_key(k): v for k, v in (farmer_info_dict or {}).items()}
+
+    def get(label, default=None):
+        return normalized.get(normalize_field_key(label), default)
+
+    return get
+
+
+def download_cert_photo_to_file(url, lead_id):
+    """Download a certificate photo from an external URL and store it as a
+    Frappe File attached to the A2C Lead. Returns the local ``file_url`` on
+    success, or the original ``url`` unchanged if the download fails (non-fatal).
+    """
+    if not url or not isinstance(url, str) or not url.lower().startswith(("http://", "https://")):
+        return url
+
+    try:
+        import os
+        import requests
+        from urllib.parse import urlparse
+        from frappe.utils.file_manager import save_file
+
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+
+        fname = os.path.basename(urlparse(url).path) or "certificate.jpg"
+        saved = save_file(
+            fname=fname,
+            content=resp.content,
+            dt="A2C Lead",
+            dn=lead_id,
+            is_private=1,
+        )
+        return saved.file_url
+    except Exception as e:
+        frappe.logger().warning(f"Certificate photo download failed for {url}: {e}")
+        frappe.log_error(frappe.get_traceback(), "Cert Photo Download")
+        return url
+
+
 def process_consent_data(data, consent_doc_name, consent_request_id):
     """
     Background worker function that safely processes the OpenG2P payload.
@@ -44,14 +99,23 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         validated = ReceiveConsentDataSchema.model_validate(data)
         consent_info = validated.consent
         
-        # Update Consent Request status
+        # Update Consent Request status and validity details
+        updates_dict = {}
         new_status = consent_info.status
         if new_status:
-            mapped_status = new_status.capitalize() if new_status.islower() else new_status
-            frappe.db.set_value("A2C Consent Request", consent_doc_name, "status", mapped_status)
+            updates_dict["status"] = new_status.capitalize() if new_status.islower() else new_status
 
         if validated.published_at:
-            frappe.db.set_value("A2C Consent Request", consent_doc_name, "websub_delivered_at", validated.published_at)
+            updates_dict["websub_delivered_at"] = validated.published_at
+
+        if consent_info.validity_from:
+            updates_dict["validity_from"] = consent_info.validity_from.split(" ")[0].split("T")[0]
+
+        if consent_info.validity_to:
+            updates_dict["validity_to"] = consent_info.validity_to.split(" ")[0].split("T")[0]
+
+        if updates_dict:
+            frappe.db.set_value("A2C Consent Request", consent_doc_name, updates_dict)
 
         # Parse Farmer Data
         farmer_data = validated.farmer or FarmerInfoSchema()
@@ -65,7 +129,10 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
                     farmer_info_dict = val
                     break
 
-        full_name = farmer_info_dict.get("Full Name", "")
+        # Spelling-tolerant accessor over the farmer info dict.
+        g = build_field_getter(farmer_info_dict)
+
+        full_name = g("Full Name", "")
         if full_name:
             name_parts = full_name.split(" ")
         else:
@@ -75,7 +142,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
 
         # Mobile could be list or string
-        mobile_data = farmer_info_dict.get("Mobile Number", farmer_info_dict.get("Phone Number", []))
+        mobile_data = g("Mobile Number", g("Phone Number", []))
         if isinstance(mobile_data, list) and mobile_data:
             phone_number = str(mobile_data[0])
         elif isinstance(mobile_data, str):
@@ -83,35 +150,41 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         else:
             phone_number = ""
             
-        email = farmer_info_dict.get("Email", "")
+        email = g("Email", "")
 
         # Fetch Consent Request to check links
         consent_doc = frappe.get_doc("A2C Consent Request", consent_doc_name)
         lead_id = consent_doc.get("lead")
         
         # Parse Source of income
-        source_of_income_list = farmer_info_dict.get("Source of Income", [])
+        source_of_income_list = g("Source of Income", [])
         source_of_income = ", ".join([s.get("name") for s in source_of_income_list if isinstance(s, dict)]) if isinstance(source_of_income_list, list) else source_of_income_list
         
         # Parse farmland size
-        farmland_size_data = farmer_info_dict.get("Farmland size (Hectares)", [])
+        farmland_size_data = g("Farmland Size (Hectares)", [])
         if isinstance(farmland_size_data, list):
             farmland_size_hectares = ", ".join([str(x) for x in farmland_size_data])
         else:
             farmland_size_hectares = farmland_size_data
         
         # Parse Certification ID
-        land_ids = farmer_info_dict.get("Land ID", [])
+        land_ids = g("Land ID", [])
         if isinstance(land_ids, list):
             certification_id = ", ".join([str(x) for x in land_ids])
         else:
             certification_id = land_ids
 
-        cert_photos = farmer_info_dict.get("Certificate Provided", [])
+        cert_photos = g("Certificate Provided", [])
         certification_photo_url = cert_photos[0] if isinstance(cert_photos, list) and len(cert_photos) > 0 else (cert_photos if isinstance(cert_photos, str) else None)
 
-        fayda_id_list = farmer_info_dict.get("Fayda ID", [])
-        national_id_list = farmer_info_dict.get("National ID", [])
+        # OpenG2P provides the certificate photo as an external URL. Download it
+        # and store a local Frappe File attachment on the lead; on failure this
+        # falls back to keeping the original URL.
+        if certification_photo_url and lead_id:
+            certification_photo_url = download_cert_photo_to_file(certification_photo_url, lead_id)
+
+        fayda_id_list = g("Fayda ID", [])
+        national_id_list = g("National ID", [])
         
         id_type = ""
         id_number = ""
@@ -123,15 +196,15 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
             id_type = "national_id"
             id_number = national_id_list[0] if isinstance(national_id_list, list) and national_id_list else str(national_id_list)
 
-        education_level = farmer_info_dict.get("Education Level", "")
+        education_level = g("Education Level", "")
 
-        region_data = farmer_info_dict.get("Region")
+        region_data = g("Region")
         region = region_data.get("name") if isinstance(region_data, dict) else (region_data or "")
 
-        woreda_data = farmer_info_dict.get("Woreda")
+        woreda_data = g("Woreda")
         woreda = woreda_data.get("name") if isinstance(woreda_data, dict) else (woreda_data or "")
 
-        kebele_data = farmer_info_dict.get("Kebele")
+        kebele_data = g("Kebele")
         kebele = kebele_data.get("name") if isinstance(kebele_data, dict) else (kebele_data or "")
 
         updates = {
@@ -140,7 +213,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
             "region": region,
             "woreda": woreda,
             "kebele": kebele,
-            "language": farmer_info_dict.get("Language"),
+            "language": g("Language"),
             "id_type": id_type,
             "id_number": id_number,
             "farmer_id": farmer_data.id,
@@ -148,27 +221,26 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
             "phone_number": phone_number,
             "email": email,
             "lead_id": lead_id,
-            "date_of_birth": farmer_info_dict.get("Date of Birth"),
-            "gender": (farmer_info_dict.get("Gender") or "").capitalize(),
-            "marital_status": (farmer_info_dict.get("Marital Status") or "").capitalize(),
-            "size_of_family": frappe.utils.cint(farmer_info_dict.get("Size of Family")),
-            "number_of_children": frappe.utils.cint(farmer_info_dict.get("Number of Children")),
-            "no_of_females_family": frappe.utils.cint(farmer_info_dict.get("Number of Females ( Family )")),
+            "date_of_birth": g("Date of Birth"),
+            "gender": (g("Gender") or "").capitalize(),
+            "marital_status": (g("Marital Status") or "").capitalize(),
+            "size_of_family": frappe.utils.cint(g("Size of Family")),
+            "number_of_children": frappe.utils.cint(g("Number of Children")),
+            "no_of_females_family": frappe.utils.cint(g("Number of Females (Family)")),
             "source_of_income": source_of_income,
             "education_level": education_level,
-            "family_member_owns_land_independently": frappe.utils.cint(farmer_info_dict.get("Other family Member Own Land")),
-            "total_farmland_size_as_landowner": frappe.utils.flt(farmer_info_dict.get("Total Owned Land")),
-            "total_farmland_size_as_crop_sharing": frappe.utils.flt(farmer_info_dict.get("Total Crop sharing")),
-            "total_farmland_size_as_rented": frappe.utils.flt(farmer_info_dict.get("Total Rented Land")),
+            "family_member_owns_land_independently": frappe.utils.cint(g("Other Family Member Own Land")),
+            "total_farmland_size_as_landowner": frappe.utils.flt(g("Total Owned Land")),
+            "total_farmland_size_as_crop_sharing": frappe.utils.flt(g("Total Crop Sharing Land")),
+            "total_farmland_size_as_rented": frappe.utils.flt(g("Total Rented Land")),
             "farmland_size_hectares": farmland_size_hectares,
-            "land_ownership_status": farmer_info_dict.get("Land Ownership Status"),
+            "land_ownership_status": g("Land Ownership Status"),
             "certification_id": certification_id,
             "certification_photo_url": certification_photo_url
         }
 
         if lead_id:
             lead_doc = frappe.get_doc("A2C Lead", lead_id)
-            
             existing_profile_name = None
             if phone_number:
                 existing_profile_name = frappe.db.get_value("A2C Farmer Profile", {"phone_number": phone_number}, "name")

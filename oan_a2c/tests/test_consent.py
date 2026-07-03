@@ -118,9 +118,9 @@ class TestConsentAPI(unittest.TestCase):
         
         return consent_name
 
-    @patch("oan_a2c.api.v1.consent.consent.enqueue_websub_delivery")
+    @patch("oan_a2c.api.v1.consent.consent._save_direct_consent_response_to_lead")
     @patch("oan_a2c.api.v1.consent.consent.OpenG2PConsentClient")
-    def test_verify_and_submit_consent(self, MockClient, MockEnqueue):
+    def test_verify_and_submit_consent(self, MockClient, MockSaveDirect):
         mock_instance = MockClient.return_value
         
         # Create doc and send OTP first
@@ -182,9 +182,17 @@ class TestConsentAPI(unittest.TestCase):
         self.assertEqual(submit_response.get("data", {}).get("openg2p_consent_id"), "MOCK-G2P-CONS-001")
         self.assertIsNotNone(submit_response.get("data", {}).get("consent_receipt"))
         
-        # Verify status updated to Approved in DB
-        vals_after_submit = self._get_consent_values(consent_name, "status")
+        # Verify status and validity updated in DB
+        vals_after_submit = self._get_consent_values(consent_name, "status", "validity_from", "validity_to")
         self.assertEqual(vals_after_submit.get("status"), "Approved")
+        self.assertIsNotNone(vals_after_submit.get("validity_from"))
+        self.assertIsNotNone(vals_after_submit.get("validity_to"))
         
-        # Verify WebSub was queued
-        MockEnqueue.assert_called_once()
+        from frappe.utils import getdate, date_diff
+        self.assertEqual(
+            date_diff(getdate(vals_after_submit.get("validity_to")), getdate(vals_after_submit.get("validity_from"))),
+            12 * 30
+        )
+        
+        # Verify the direct consent-response save (internal queued path) was triggered
+        MockSaveDirect.assert_called_once()

@@ -146,7 +146,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"consent_request\": \"{{consent_request}}\",\n    \"consent_type\": \"specific\",\n    \"consent_reason_id\": 1,\n    \"validity_from\": \"2026-06-01\",\n    \"validity_to\": \"2027-06-01\",\n    \"consent_form_filename\": \"signed_consent.png\",\n    \"consent_form_base64\": \"dGVzdCBjb250ZW50\",\n    \"allowed_data_field_ids\": [1, 2]\n}"
+					"raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"consent_request\": \"{{consent_request}}\",\n    \"consent_type\": \"specific\",\n    \"consent_reason_id\": 1,\n    \"validity_months\": 12,\n    \"consent_form_filename\": \"signed_consent.png\",\n    \"consent_form_base64\": \"dGVzdCBjb250ZW50\",\n    \"allowed_data_field_ids\": [1, 2]\n}"
 				},
 				"url": {
 					"raw": "{{base_url}}/api/method/oan_a2c.api.v1.consent.consent.submit_consent",
@@ -158,7 +158,8 @@
 						"method",
 						"oan_a2c.api.v1.consent.consent.submit_consent"
 					]
-				}
+				},
+				"description": "Submits and approves the consent. OpenG2P returns the farmer profile inline in the response (data.response_data); the backend enqueues a background job (process_consent_data via validate_and_enqueue_consent) that persists the farmer profile onto the lead. The legacy WebSub trigger to OpenG2P /consent/frappe/otp_verified is disabled (placeholder endpoint, not yet implemented)."
 			}
 		},
 		{

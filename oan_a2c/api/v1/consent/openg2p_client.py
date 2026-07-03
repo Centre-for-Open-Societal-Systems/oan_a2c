@@ -1,16 +1,68 @@
+import os
 import frappe
 import requests
 from frappe import _
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from typing import Optional, Union
 
 
-class OpenG2PResponse(BaseModel):
+class DriftWarnModel(BaseModel):
+    """Base for OpenG2P response schemas.
+
+    Keeps unexpected fields instead of silently dropping them (extra="allow")
+    and logs a warning when OpenG2P returns fields we don't model — so API
+    payload drift is surfaced without raising/breaking the flow.
+    """
+    model_config = ConfigDict(extra="allow")
+
+    # How long (seconds) to suppress duplicate drift Error Logs for the same
+    # model + field signature, so a drifting OpenG2P endpoint doesn't flood the
+    # Error Log table on every request.
+    _DRIFT_LOG_TTL = 3600
+
+    @model_validator(mode="after")
+    def _warn_on_unexpected_fields(self):
+        extra = self.model_extra or {}
+        if extra:
+            model_name = type(self).__name__
+            field_keys = list(extra.keys())
+            message = (
+                f"OpenG2P response {model_name} returned unexpected "
+                f"fields (possible API drift): {field_keys}"
+            )
+            # Full, untruncated signal to the log file / dev console.
+            frappe.logger().warning(message)
+            # Persistent, UI-visible signal in the Error Log — this survives in
+            # production (WARNING logs are dropped there) but is rate-limited so
+            # sustained drift doesn't bloat the table.
+            self._log_drift_error(model_name, field_keys, message)
+        return self
+
+    def _log_drift_error(self, model_name, field_keys, message):
+        signature = f"{model_name}:{','.join(sorted(field_keys))}"
+        try:
+            # Resolve the underlying RedisWrapper regardless of whether
+            # frappe.cache() returns it directly or the ClientCache wrapper,
+            # so make_key / SET behave consistently across Frappe versions.
+            cache = frappe.cache()
+            redis = getattr(cache, "redis", cache)
+            cache_key = redis.make_key(f"openg2p_drift_logged:{signature}")
+            # SET NX EX: log only if the key isn't already present, and let it
+            # expire after the TTL — one Error Log per drift signature per hour.
+            was_set = redis.set(cache_key, 1, nx=True, ex=self._DRIFT_LOG_TTL)
+            if was_set:
+                frappe.log_error(title="OpenG2P API Drift", message=message)
+        except Exception:
+            # Never let observability break the response flow.
+            pass
+
+
+class OpenG2PResponse(DriftWarnModel):
     success: bool
     message: Optional[str] = None
 
 
-class OpenG2PFarmerSchema(BaseModel):
+class OpenG2PFarmerSchema(DriftWarnModel):
     id: Union[int, str]
     name: str
     mobile: Optional[str] = None
@@ -23,7 +75,7 @@ class OpenG2PSearchFarmerResponse(OpenG2PResponse):
     data: dict[str, list[OpenG2PFarmerSchema]] = Field(default_factory=dict)
 
 
-class OpenG2POTPData(BaseModel):
+class OpenG2POTPData(DriftWarnModel):
     transaction_id: str
     masked_mobile: Optional[str] = "XXXX"
 
@@ -32,11 +84,14 @@ class OpenG2POTPResponse(OpenG2PResponse):
     data: OpenG2POTPData
 
 
-class OpenG2PSubmitConsentData(BaseModel):
+class OpenG2PSubmitConsentData(DriftWarnModel):
     consent_request_id: Optional[Union[int, str]] = None
     consent_id: Optional[Union[int, str]] = None
     consent_creation_request_id: Optional[Union[int, str]] = None
     id: Optional[Union[int, str]] = None
+    # Farmer profile returned inline by OpenG2P (keyed by farmer id). Declared
+    # so Pydantic preserves it through model_dump() instead of dropping it.
+    response_data: Optional[dict] = None
 
 
 class OpenG2PSubmitConsentResponse(OpenG2PResponse):
@@ -44,6 +99,12 @@ class OpenG2PSubmitConsentResponse(OpenG2PResponse):
 
 
 class OpenG2PConsentClient:
+    # TEMPORARY (dev only): the OpenG2P dev server uses a self-signed TLS
+    # certificate. Set to False to skip certificate verification so requests
+    # succeed against it. MUST be True in production — disabling this exposes
+    # the connection to man-in-the-middle attacks.
+    VERIFY_SSL = True
+
     def __init__(self, portal_session_id=None, cookie_dict=None):
         self.base_url = frappe.conf.get("openg2p_base_url")
         self.db = frappe.conf.get("openg2p_db", "")
@@ -52,13 +113,29 @@ class OpenG2PConsentClient:
         self.username = frappe.conf.get("openg2p_username", "")
         self.password = frappe.conf.get("openg2p_password", "")
 
-        if not self.base_url:
-            frappe.throw(_("OpenG2P Base URL is missing in site_config.json"))
-
-        if not self.username or not self.password:
-            frappe.throw(_("OpenG2P portal credentials (openg2p_username, openg2p_password) are missing in site_config.json"))
+        if not self.base_url or not self.username or not self.password:
+            frappe.log_error(
+                "OpenG2P is not fully configured (base_url/username/password missing in site_config.json).",
+                "OpenG2P Configuration",
+            )
+            frappe.throw(_("OpenG2P integration is not configured. Please contact the administrator."))
 
         self.session = requests.Session()        # portal user session
+        # OpenG2P uses an internal CA ("OpenG2P Local CA"). When verifying, point
+        # requests at the CA bundle that includes it (REQUESTS_CA_BUNDLE, else the
+        # system bundle) rather than plain True, which would use certifi and fail.
+        # This is set on the session AND passed explicitly to session.send(), which
+        # otherwise bypasses this setting.
+        if self.VERIFY_SSL:
+            self.session.verify = os.environ.get(
+                "REQUESTS_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt"
+            )
+        else:
+            self.session.verify = False
+            # Silence the per-request InsecureRequestWarning while verification is off.
+            requests.packages.urllib3.disable_warnings(
+                requests.packages.urllib3.exceptions.InsecureRequestWarning
+            )
         self.portal_session_id = portal_session_id
         self.cookie_dict = cookie_dict
 
@@ -100,9 +177,20 @@ class OpenG2PConsentClient:
             result = response.json()
             if result.get("result", {}).get("uid"):
                 return
-            frappe.throw(_("OpenG2P authentication failed for user: {0}").format(username))
+            # Keep the internal username out of the client-facing error; log the
+            # detail server-side only.
+            frappe.log_error(
+                f"OpenG2P authentication failed for user: {username}",
+                "OpenG2P Authentication",
+            )
+            frappe.throw(_("Unable to authenticate with OpenG2P. Please try again later."))
         except requests.exceptions.RequestException as e:
-            frappe.throw(_("Failed to connect to OpenG2P: {0}").format(str(e)))
+            frappe.log_error(
+                f"OpenG2P connection error during authentication "
+                f"(transaction_id={self.portal_session_id}): {e}",
+                "OpenG2P Connection",
+            )
+            frappe.throw(_("Unable to reach OpenG2P. Please try again later."))
 
     def _refresh_portal_session(self):
         """Clears cached session cookies, re-authenticates, and updates cache."""
@@ -140,8 +228,11 @@ class OpenG2PConsentClient:
             
             req = requests.Request('POST', url, json=payload, headers=headers)
             prepared = session.prepare_request(req)
-            
-            response = session.send(prepared, timeout=(5, 10))
+
+            # session.send() bypasses requests' environment/session merging, so
+            # neither session.verify nor REQUESTS_CA_BUNDLE is applied unless we
+            # pass verify explicitly. Forward the session's verify setting.
+            response = session.send(prepared, timeout=(5, 10), verify=session.verify)
             response.raise_for_status()
             data = response.json()
 
@@ -154,16 +245,26 @@ class OpenG2PConsentClient:
                     self._refresh_portal_session()
                     return self._call_rpc(endpoint, method, params)
 
-                frappe.throw(_("OpenG2P Error: {0}").format(msg))
+                frappe.log_error(f"OpenG2P RPC error on {endpoint}: {msg}", "OpenG2P Error")
+                frappe.throw(_("OpenG2P request could not be completed. Please try again later."))
 
             result = data.get("result")
             if isinstance(result, dict) and result.get("success") is False:
-                frappe.throw(_("OpenG2P Error: {0}").format(result.get("message") or "Unknown error"))
+                frappe.log_error(
+                    f"OpenG2P returned failure on {endpoint}: {result.get('message') or 'Unknown error'}",
+                    "OpenG2P Error",
+                )
+                frappe.throw(_("OpenG2P request could not be completed. Please try again later."))
 
             return result
 
         except requests.exceptions.RequestException as e:
-            frappe.throw(_("Failed to connect to OpenG2P: {0}").format(str(e)))
+            txn_id = (params or {}).get("fayda_otp_transaction_id") or self.portal_session_id
+            frappe.log_error(
+                f"OpenG2P connection error on {endpoint} (transaction_id={txn_id}): {e}",
+                "OpenG2P Connection",
+            )
+            frappe.throw(_("Unable to reach OpenG2P. Please try again later."))
 
 
     # -------------------------------------------------------------------------
@@ -189,7 +290,24 @@ class OpenG2PConsentClient:
         response = OpenG2PSearchFarmerResponse.model_validate(result)
         farmers = response.data.get("farmers")
         if farmers:
-            farmer_data = farmers[0].model_dump()
+            farmer_model = farmers[0]
+            if farmer_model.profile_image_url:
+                try:
+                    if farmer_model.profile_image_url.startswith("/"):
+                        full_url = f"{self.base_url}{farmer_model.profile_image_url}"
+                    else:
+                        full_url = farmer_model.profile_image_url
+                    
+                    img_resp = self.session.get(full_url, timeout=(5, 10))
+                    if img_resp.status_code == 200:
+                        import base64
+                        content_type = img_resp.headers.get("Content-Type") or "image/png"
+                        b64_data = base64.b64encode(img_resp.content).decode("utf-8")
+                        farmer_model.profile_image_url = f"data:{content_type};base64,{b64_data}"
+                except Exception as e:
+                    frappe.logger().warning(f"Failed to fetch profile image for farmer: {e}")
+            
+            farmer_data = farmer_model.model_dump()
             frappe.cache().set_value(cache_key, farmer_data, expires_in_sec=3600)
             return farmer_data
             
@@ -310,6 +428,15 @@ class OpenG2PConsentClient:
         except ValidationError as e:
             frappe.log_error(f"Submit Consent Response Validation Failed: {str(e)}", "Submit Consent Error")
             frappe.throw(_("Invalid response from OpenG2P Consent Submission."))
+
+        # Expected-but-missing check: the farmer profile is delivered inline via
+        # response_data. Warn (don't fail) if it's absent so a silent no-op in
+        # the downstream save doesn't go unnoticed.
+        if not response.data.response_data:
+            frappe.logger().warning(
+                "OpenG2P submit_consent response has no response_data — "
+                "farmer profile will not be saved from the inline payload."
+            )
 
         return response.model_dump()
 

@@ -3,7 +3,7 @@ import unittest
 import jwt
 import datetime
 from oan_a2c.api.auth import login, forgot_password, reset_password, refresh, logout
-from oan_a2c.api.middleware import validate_jwt_request
+from oan_a2c.api.middleware import validate_jwt_request, JWTUnauthorized
 
 
 class TestAuthAPI(unittest.TestCase):
@@ -135,7 +135,7 @@ class TestAuthAPI(unittest.TestCase):
 		frappe.local.request = frappe._dict({"path": "/api/method/oan_a2c.api.v1.get_leads"})
 		self._mock_headers = {}
 
-		with self.assertRaises(frappe.AuthenticationError):
+		with self.assertRaises(JWTUnauthorized):
 			validate_jwt_request()
 
 	def test_5_middleware_expired_jwt(self):
@@ -149,7 +149,7 @@ class TestAuthAPI(unittest.TestCase):
 		frappe.local.request = frappe._dict({"path": "/api/method/oan_a2c.api.v1.get_leads"})
 		self._mock_headers["Authorization"] = f"Bearer {token}"
 
-		with self.assertRaises(frappe.AuthenticationError):
+		with self.assertRaises(JWTUnauthorized):
 			validate_jwt_request()
 
 	def test_6_forgot_password(self):
@@ -181,16 +181,16 @@ class TestAuthAPI(unittest.TestCase):
 		token_invalid_kid = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v2"})
 		frappe.local.request = frappe._dict({"path": "/api/method/oan_a2c.api.v1.get_leads"})
 		self._mock_headers["Authorization"] = f"Bearer {token_invalid_kid}"
-		with self.assertRaises(frappe.AuthenticationError) as context:
+		with self.assertRaises(JWTUnauthorized) as context:
 			validate_jwt_request()
-		self.assertIn("Invalid Key ID", str(context.exception))
+		self.assertIn("Invalid or missing Key ID", context.exception.message)
 
 		# Token with missing kid
 		token_missing_kid = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256")
 		self._mock_headers["Authorization"] = f"Bearer {token_missing_kid}"
-		with self.assertRaises(frappe.AuthenticationError) as context:
+		with self.assertRaises(JWTUnauthorized) as context:
 			validate_jwt_request()
-		self.assertIn("Invalid Key ID", str(context.exception))
+		self.assertIn("Invalid or missing Key ID", context.exception.message)
 
 	def test_9_middleware_disabled_user(self):
 		payload = {
@@ -206,9 +206,9 @@ class TestAuthAPI(unittest.TestCase):
 		frappe.db.commit()
 
 		try:
-			with self.assertRaises(frappe.AuthenticationError) as context:
+			with self.assertRaises(JWTUnauthorized) as context:
 				validate_jwt_request()
-			self.assertIn("User is disabled", str(context.exception))
+			self.assertIn("User is disabled", context.exception.message)
 		finally:
 			# Restore user
 			frappe.db.set_value("User", self.test_email, "enabled", 1)

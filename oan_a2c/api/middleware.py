@@ -1,5 +1,20 @@
 import frappe
 import jwt
+import json
+from werkzeug.exceptions import HTTPException
+from werkzeug.wrappers import Response
+
+class JWTUnauthorized(HTTPException):
+    def __init__(self, message):
+        super().__init__()
+        self.message = message
+
+    def get_response(self, environ=None):
+        return Response(
+            json.dumps({"error": "Unauthorized", "message": self.message}),
+            status=401,
+            mimetype="application/json"
+        )
 
 def validate_jwt_request(request=None):
     """
@@ -32,20 +47,20 @@ def validate_jwt_request(request=None):
     auth_header = frappe.get_request_header("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         # Forcing a hard boundary: If you hit our namespace, you need a JWT.
-        raise frappe.AuthenticationError("Missing Authorization Header")
+        raise JWTUnauthorized("Missing Authorization Header")
 
     token = auth_header.split(" ")[1]
     secret = frappe.conf.get("encryption_key")
     
     if not secret:
         # A server configuration error. The NSPF mindset demands we fail securely.
-        raise frappe.AuthenticationError("System encryption key missing")
+        raise JWTUnauthorized("System encryption key missing")
 
     try:
         # Verify Key ID (kid) in the JWT header
         header = jwt.get_unverified_header(token)
         if not header or header.get("kid") != "v1":
-            raise frappe.AuthenticationError("Invalid Key ID")
+            raise JWTUnauthorized("Invalid or missing Key ID ('kid') in JWT header. Expected 'kid': 'v1'.")
 
         # Decode and validate cryptographically
         payload = jwt.decode(token, secret, algorithms=["HS256"])
@@ -53,7 +68,7 @@ def validate_jwt_request(request=None):
         # Verify the user is active/enabled (revocation check)
         user_name = payload.get("sub")
         if not user_name or not frappe.db.get_value("User", user_name, "enabled"):
-            raise frappe.AuthenticationError("User is disabled or does not exist")
+            raise JWTUnauthorized("User is disabled or does not exist")
 
         # Log the user context into the Python thread memory for Frappe's ORM RBAC
         # Save and restore form_dict as frappe.set_user() resets local.form_dict = _dict()
@@ -63,6 +78,6 @@ def validate_jwt_request(request=None):
             frappe.local.form_dict = temp_form_dict
         
     except jwt.ExpiredSignatureError:
-        raise frappe.AuthenticationError("Token has expired")
+        raise JWTUnauthorized("Token has expired")
     except jwt.InvalidTokenError:
-        raise frappe.AuthenticationError("Invalid token")
+        raise JWTUnauthorized("Invalid token")

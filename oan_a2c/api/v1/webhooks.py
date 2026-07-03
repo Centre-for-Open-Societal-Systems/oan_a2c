@@ -89,7 +89,16 @@ def _update_existing_lead(lead_name, lead_source, external_ref_id, timestamp):
 
 
 def _build_event_note(lead_source, external_ref_id, timestamp):
-	"""Formats a single inbound event into a human-readable audit line."""
+	"""Formats a single inbound event into a human-readable audit line.
+
+	Note format is a contract parsed back by get_lead_call_logs in leads.py:
+	"Source: ... | Ref ID: ... | Received: ... | Timestamp: ...". Keep the
+	"Key: value" shape and the " | " separators intact.
+
+	"Received" is the server-side receive time and is ALWAYS present, so every
+	event has a trustworthy timestamp. "Timestamp" is the caller-reported time
+	(from the external telco/IVR system) and is optional / untrusted.
+	"""
 	if external_ref_id:
 		external_ref_id = sanitize_html(external_ref_id)
 	if timestamp:
@@ -98,6 +107,8 @@ def _build_event_note(lead_source, external_ref_id, timestamp):
 	parts = [f"Source: {lead_source}"]
 	if external_ref_id:
 		parts.append(f"Ref ID: {external_ref_id}")
+	# Server-generated receive time — reliable, always recorded.
+	parts.append(f"Received: {frappe.utils.now()}")
 	if timestamp:
 		parts.append(f"Timestamp: {timestamp}")
 	return " | ".join(parts)

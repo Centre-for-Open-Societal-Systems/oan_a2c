@@ -788,6 +788,7 @@ No parameters. Reads DocType meta only — no DB rows queried.
       {
         "source": "Missed Call",
         "ref_id": "TELCO-778899",
+        "received": "2026-07-03 14:22:01",
         "timestamp": "2026-05-27T12:00:00Z"
       }
     ]
@@ -796,7 +797,8 @@ No parameters. Reads DocType meta only — no DB rows queried.
 ```
 
 > **Response shape:** `data` is an object with `lead_id` and `call_logs` keys — not a flat array.
-> **Parsing:** Call notes are stored as pipe-delimited strings (`"Source: X | Ref ID: Y | Timestamp: Z"`). Keys in the parsed output are lowercased and space-replaced with `_`. An entry with no parseable parts is silently skipped.
+> **Time fields:** Each entry always includes **both** `received` and `timestamp`. `received` is the reliable server-side receive time (always set). `timestamp` is the caller-reported event time from the external telco/IVR system (optional/untrusted); when the caller did not send one, `timestamp` falls back to `received`, so both keys are always present.
+> **Parsing:** Call notes are stored as pipe-delimited strings (`"Source: X | Ref ID: Y | Received: <server time> | Timestamp: Z"`). Keys in the parsed output are lowercased and space-replaced with `_`. An entry with no parseable parts is silently skipped.
 
 **Error cases:**
 
@@ -1495,7 +1497,7 @@ JWT-exempt. Requires Frappe session or `Authorization: token apikey:apisecret`.
 | **`phone_number`** | string | Yes | — | |
 | `lead_source` | string | No | `"Missed Call"` | Coerced to `"Missed Call"` if invalid |
 | `external_ref_id` | string | No | — | Used for primary deduplication |
-| `timestamp` | string | No | — | Stored in call notes |
+| `timestamp` | string | No | — | Caller-reported event time, stored in call notes as `Timestamp:` (optional/untrusted). The server always additionally records a reliable `Received:` time in the note, regardless of this param. |
 
 **Lead source allowlist:** `Missed Call`, `IVR`, `SMS`, `Agent Entry`
 
@@ -1732,7 +1734,8 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 - Uploads consent document attachment to OpenG2P.
 - Submits and approves the consent request .
 - Marks `A2C Consent Request` as `"Approved"` and updates the lead with the farmer profile data.
-- Queues WebSub delivery payload.
+- OpenG2P returns the farmer profile inline in the submit response (`data.response_data`). When present, it is reshaped into the webhook envelope and routed through `validate_and_enqueue_consent`, which enqueues `process_consent_data` (background job) to persist the farmer profile onto the lead — the same internal path the inbound webhook uses.
+- The legacy WebSub trigger (`enqueue_websub_delivery` → `deliver_websub_payload` → OpenG2P `/consent/frappe/otp_verified`) is **disabled**: that OpenG2P endpoint is a placeholder reserved for future integration and does not exist yet. It is retained (commented) for when it goes live.
 
 ---
 
@@ -1799,8 +1802,8 @@ No parameters.
 
 | Job function | Queue | Triggered by | User context |
 |-------------|-------|-------------|-------------|
-| `process_consent_data` | `default` | `receive_consent_data` webhook | Set from `A2C Consent Request.owner`, fallback to `Administrator` |
-| `deliver_websub_payload` | `default` | `verify_otp_for_lead` | None set — runs without user context |
+| `process_consent_data` | `default` | `receive_consent_data` webhook **or** `submit_consent` inline response (via `validate_and_enqueue_consent`) | Set from `A2C Consent Request.owner`, fallback to `Administrator` |
+| `deliver_websub_payload` | `default` | _Disabled_ — was triggered after consent submit; targets a placeholder OpenG2P endpoint (`/consent/frappe/otp_verified`) not yet implemented | None set — runs without user context |
 
 ---
 

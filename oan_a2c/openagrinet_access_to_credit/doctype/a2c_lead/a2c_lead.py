@@ -11,8 +11,38 @@ class A2CLead(Document):
 				frappe.throw(_("Lead cannot be edited because it is already Processed"), frappe.ValidationError)
 			elif db_status == "Rejected" and self.status != "Rejected":
 				frappe.throw(_("Status is locked because the lead is Rejected"), frappe.ValidationError)
+			# Guard the transition *into* Verified: only fire when the status is
+			# actually changing to Verified (not on re-saves of an already
+			# Verified lead), so the prerequisites are enforced once, up front.
+			if self.status == "Verified" and db_status != "Verified":
+				self._enforce_verification_prerequisites()
 		self._enforce_phone_uniqueness()
 		self._enforce_external_id_uniqueness()
+
+	def _enforce_verification_prerequisites(self):
+		"""
+		A lead may only become 'Verified' once both exist and are linked to it:
+		  - at least one A2C Credit Information, and
+		  - an A2C Consent Request with status 'Approved'.
+		This guarantees credit info and an approved consent are in place before
+		verification, on every path (API, Desk, bulk edit).
+		"""
+		has_credit = frappe.db.exists("A2C Credit Information", {"lead": self.name})
+		has_approved_consent = frappe.db.exists(
+			"A2C Consent Request", {"lead": self.name, "status": "Approved"}
+		)
+
+		missing = []
+		if not has_credit:
+			missing.append(_("credit information"))
+		if not has_approved_consent:
+			missing.append(_("an approved consent request"))
+
+		if missing:
+			frappe.throw(
+				_("Lead cannot be Verified until {0} exists.").format(_(" and ").join(missing)),
+				frappe.ValidationError,
+			)
 
 	def after_insert(self):
 		self._clear_number_card_cache()

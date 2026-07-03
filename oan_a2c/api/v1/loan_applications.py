@@ -175,7 +175,9 @@ def update_basic_profile(lead_id=None, email=None, region=None, woreda=None, keb
     return success_response(
         data={
             "email": farmer_doc.email,
-            "location": farmer_doc.location
+            "region": farmer_doc.region,
+            "woreda": farmer_doc.woreda,
+            "kebele": farmer_doc.kebele
         },
         message="Basic profile updated successfully"
     )

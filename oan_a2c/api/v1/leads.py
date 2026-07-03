@@ -824,7 +824,10 @@ def get_lead_call_logs(**kwargs):
 	raw_lines = [line.strip() for line in call_notes.split("\n") if line.strip()]
 
 	for line in raw_lines:
-		# A line looks like: "Source: Missed Call | Ref ID: TELCO-778899 | Timestamp: 2026-05-27T12:00:00Z"
+		# A line looks like:
+		# "Source: Missed Call | Ref ID: TELCO-778899 | Received: 2026-07-03 14:22:01 | Timestamp: 2026-05-27T12:00:00Z"
+		# "received" is the reliable server receive time (always present); "timestamp"
+		# is the caller-reported time (optional/untrusted). Both are sent to the frontend.
 		parts = [p.strip() for p in line.split(" | ")]
 		log_entry = {}
 		for part in parts:
@@ -832,6 +835,10 @@ def get_lead_call_logs(**kwargs):
 				key, val = part.split(":", 1)
 				log_entry[key.strip().lower().replace(" ", "_")] = val.strip()
 		if log_entry:
+			# Always expose both time keys so the frontend has a stable shape.
+			# Fall back to the reliable server time when the reported one is absent.
+			log_entry.setdefault("received", None)
+			log_entry.setdefault("timestamp", log_entry.get("received"))
 			parsed_logs.append(log_entry)
 
 	return success_response(

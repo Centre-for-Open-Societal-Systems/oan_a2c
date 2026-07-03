@@ -2,7 +2,8 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 from .openg2p_client import OpenG2PConsentClient
-from .utils import generate_consent_receipt, enqueue_websub_delivery
+from .utils import generate_consent_receipt
+from oan_a2c.api.v1.webhook_consent_data import validate_and_enqueue_consent
 from oan_a2c.api.utils import success_response, handle_api_errors, validate_request, SafeDate
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -359,6 +360,50 @@ def verify_otp(**kwargs):
     )
 
 
+def _save_direct_consent_response_to_lead(consent_request, response_data, openg2p_consent_id):
+    """
+    OpenG2P now returns the farmer profile directly in the submit_consent
+    response instead of delivering it later via the WebSub webhook. When that
+    inline payload (`response_data`) is present, reshape it into the webhook
+    envelope and route it through `validate_and_enqueue_consent` — the same
+    internal, queued path the real webhook uses — so the farmer profile is
+    persisted onto the lead by a background job exactly as a webhook delivery
+    would.
+
+    No-op (returns False) when there is no payload, leaving the async webhook
+    path untouched. Non-fatal on failure.
+    """
+    if not response_data:
+        return False
+
+    # validate_and_enqueue_consent looks up the A2C Consent Request by
+    # consent.id == openg2p_consent_id, then enqueues process_consent_data,
+    # which reads the farmer dict from selected_data.
+    try:
+        payload = {
+            "source": "frappe_direct_response",
+            "event_type": "WEBSUB_INDIVIDUAL_UPDATED",
+            "published_at": str(now_datetime()),
+            "consent": {
+                "id": openg2p_consent_id,
+                "consent_creation_request_id": str(openg2p_consent_id),
+                "status": "approved",
+                "approved_at": str(now_datetime()),
+            },
+            "selected_data": response_data,
+        }
+        # enforce_permission=False: called in-process, not via authenticated HTTP.
+        validate_and_enqueue_consent(payload, enforce_permission=False)
+        frappe.logger().info(
+            f"Direct consent response enqueued for {consent_request}"
+        )
+        return True
+    except Exception as e:
+        frappe.logger().warning(f"Direct consent response enqueue failed: {e}")
+        frappe.log_error(frappe.get_traceback(), "Direct Consent Response Save")
+        return False
+
+
 # 5 ───────────────────────────────────────────────────────────────────────────
 @frappe.whitelist(allow_guest=False)
 @validate_request(SubmitConsentSchema)
@@ -446,6 +491,10 @@ def submit_consent(**kwargs):
         cr_doc.consent_type            = consent_type
         cr_doc.purpose                 = consent_reason_id
         cr_doc.consent_form_attachment = saved_file.file_url
+        if validity_months:
+            from frappe.utils import today, add_days
+            cr_doc.validity_from = today()
+            cr_doc.validity_to = add_days(cr_doc.validity_from, days=int(validity_months) * 30)
         cr_doc.set("requested_data_fields", [])
         for f_id in allowed_data_field_ids:
             cr_doc.append("requested_data_fields", {
@@ -476,9 +525,17 @@ def submit_consent(**kwargs):
             "openg2p_consent_id": openg2p_consent_id,
         })
 
-        # Generate the receipt and trigger the WebSub callback.
+        # TEMPORARY: OpenG2P now returns the farmer profile inline in the
+        # response. If present, persist it to the lead like the webhook would;
+        # otherwise this is a no-op and the async WebSub path still applies.
+        _save_direct_consent_response_to_lead(
+            consent_request,
+            data_block.get("response_data"),
+            openg2p_consent_id,
+        )
+
+        # Generate and store the signed consent receipt.
         receipt = generate_consent_receipt(consent_request)
-        enqueue_websub_delivery(receipt)
         frappe.db.set_value("A2C Consent Request", consent_request, "consent_receipt", receipt.get("signature"))
 
         # Persist the farmer profile onto the lead and sync the headline fields.
