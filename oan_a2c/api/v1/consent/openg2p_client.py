@@ -15,15 +15,46 @@ class DriftWarnModel(BaseModel):
     """
     model_config = ConfigDict(extra="allow")
 
+    # How long (seconds) to suppress duplicate drift Error Logs for the same
+    # model + field signature, so a drifting OpenG2P endpoint doesn't flood the
+    # Error Log table on every request.
+    _DRIFT_LOG_TTL = 3600
+
     @model_validator(mode="after")
     def _warn_on_unexpected_fields(self):
         extra = self.model_extra or {}
         if extra:
-            frappe.logger().warning(
-                f"OpenG2P response {type(self).__name__} returned unexpected "
-                f"fields (possible API drift): {list(extra.keys())}"
+            model_name = type(self).__name__
+            field_keys = list(extra.keys())
+            message = (
+                f"OpenG2P response {model_name} returned unexpected "
+                f"fields (possible API drift): {field_keys}"
             )
+            # Full, untruncated signal to the log file / dev console.
+            frappe.logger().warning(message)
+            # Persistent, UI-visible signal in the Error Log — this survives in
+            # production (WARNING logs are dropped there) but is rate-limited so
+            # sustained drift doesn't bloat the table.
+            self._log_drift_error(model_name, field_keys, message)
         return self
+
+    def _log_drift_error(self, model_name, field_keys, message):
+        signature = f"{model_name}:{','.join(sorted(field_keys))}"
+        try:
+            # Resolve the underlying RedisWrapper regardless of whether
+            # frappe.cache() returns it directly or the ClientCache wrapper,
+            # so make_key / SET behave consistently across Frappe versions.
+            cache = frappe.cache()
+            redis = getattr(cache, "redis", cache)
+            cache_key = redis.make_key(f"openg2p_drift_logged:{signature}")
+            # SET NX EX: log only if the key isn't already present, and let it
+            # expire after the TTL — one Error Log per drift signature per hour.
+            was_set = redis.set(cache_key, 1, nx=True, ex=self._DRIFT_LOG_TTL)
+            if was_set:
+                frappe.log_error(title="OpenG2P API Drift", message=message)
+        except Exception:
+            # Never let observability break the response flow.
+            pass
 
 
 class OpenG2PResponse(DriftWarnModel):
