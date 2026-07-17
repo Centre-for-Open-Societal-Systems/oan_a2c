@@ -3,6 +3,30 @@ import unittest
 from oan_a2c.api.v1.webhooks import lead_inbound
 
 
+def _make_lead_verifiable(lead_id):
+	"""Create the prerequisites a lead needs before it can move to 'Verified'.
+
+	The workflow gate (A2CLead._enforce_verification_prerequisites) requires at
+	least one A2C Credit Information and an Approved A2C Consent Request linked to
+	the lead. Idempotent so it can be called from setUp without piling up records.
+	"""
+	if not frappe.db.exists("A2C Credit Information", {"lead": lead_id}):
+		frappe.get_doc({
+			"doctype": "A2C Credit Information",
+			"lead": lead_id,
+			"loan_type": "Input loan (seeds, agrochemicals)",
+			"loan_amount": 5000.0,
+			"purpose_message": "Verification prerequisite",
+		}).insert(ignore_permissions=True)
+	if not frappe.db.exists("A2C Consent Request", {"lead": lead_id, "status": "Approved"}):
+		frappe.get_doc({
+			"doctype": "A2C Consent Request",
+			"lead": lead_id,
+			"status": "Approved",
+		}).insert(ignore_permissions=True)
+	frappe.db.commit()
+
+
 class TestA2CLead(unittest.TestCase):
 	"""
 	Tests for the A2C Lead DocType controller and the lead_inbound webhook.
@@ -580,8 +604,10 @@ class TestVisitScheduleAPI(unittest.TestCase):
 		lead_status = frappe.db.get_value("A2C Lead", self.lead_id, "status")
 		self.assertEqual(lead_status, "Active")
 
-		# Manually promote Lead status to Verified (simulating manual UI action)
+		# Manually promote Lead status to Verified (simulating manual UI action).
+		# Verification requires credit info + an approved consent to be in place.
 		from oan_a2c.api.v1.leads import update_lead_status
+		_make_lead_verifiable(self.lead_id)
 		update_lead_status(lead_id=self.lead_id, status="Verified")
 
 		# Verify Lead status is now Verified
@@ -727,6 +753,10 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 		"""Verifies that update_lead_status successfully updates status and records the reason as a timeline comment."""
 		from oan_a2c.api.v1.leads import update_lead_status
 
+		# A lead can only move Active -> Verified once credit info + an approved
+		# consent exist (enforced by the workflow gate).
+		_make_lead_verifiable(self.lead_id)
+
 		res = update_lead_status(
 			lead_id=self.lead_id,
 			status="Verified",
@@ -766,12 +796,20 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 		"""Verifies update_lead_status blocks modifications when a lead is in a locked/terminal state."""
 		from oan_a2c.api.v1.leads import update_lead_status
 
-		# 1. Promote to Processed (Terminal)
+		# 1. Walk the workflow to the terminal Processed state: Active -> Verified
+		#    (requires prerequisites) -> Processed.
+		_make_lead_verifiable(self.lead_id)
+		update_lead_status(
+			lead_id=self.lead_id,
+			status="Verified",
+			reason="Verified before processing."
+		)
 		update_lead_status(
 			lead_id=self.lead_id,
 			status="Processed",
 			reason="Processing lead to loan application."
 		)
+		self.assertEqual(frappe.db.get_value("A2C Lead", self.lead_id, "status"), "Processed")
 
 		# 2. Attempting to change status again must raise a ValidationError
 		res = update_lead_status(
@@ -955,6 +993,7 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 
 	def test_lead_status_reason_sanitization(self):
 		from oan_a2c.api.v1.leads import update_lead_status
+		_make_lead_verifiable(self.lead_id)
 		payload = "<iframe src='javascript:alert(1)'></iframe>Reason text"
 		res = update_lead_status(lead_id=self.lead_id, status="Verified", reason=payload)
 		self.assertEqual(res["status"], "success")

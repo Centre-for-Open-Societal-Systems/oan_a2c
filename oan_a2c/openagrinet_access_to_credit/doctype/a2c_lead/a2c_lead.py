@@ -68,8 +68,11 @@ class A2CLead(Document):
 				cache_key = f"number_card_data:{card}"
 				frappe.cache().delete_value(cache_key)
 		except Exception:
-			# Fail close. Never allow cache clearance anomalies to block core lead transactions.
-			pass
+			# Fail close. Never allow cache clearance anomalies to block core lead
+			# transactions — but leave a trace so silent cache drift is diagnosable.
+			frappe.logger().warning(
+				f"Number Card cache invalidation failed for lead {self.name}: {frappe.get_traceback(with_context=False)}"
+			)
 
 	def _enforce_external_id_uniqueness(self):
 		"""

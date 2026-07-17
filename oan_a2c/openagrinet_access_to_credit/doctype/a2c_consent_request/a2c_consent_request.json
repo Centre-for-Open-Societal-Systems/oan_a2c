@@ -84,7 +84,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Draft\nPending OTP\nApproved\nRejected"
+   "options": "Draft\nPending OTP\nOTP Verified\nApproved\nRejected\nFailed"
   },
   {
    "fieldname": "otp_transaction_id",
