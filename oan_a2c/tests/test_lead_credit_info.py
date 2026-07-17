@@ -1,5 +1,7 @@
-import frappe
 import unittest
+
+import frappe
+
 from oan_a2c.api.v1.leads import add_lead_credit_info, get_lead_credit_infos, get_lead_metadata
 
 
@@ -53,7 +55,7 @@ class TestLeadCreditInfo(unittest.TestCase):
 			lead_id=self.lead_id,
 			loan_type="Input loan (seeds, agrochemicals)",
 			loan_amount=90000,
-			purpose_message="Seeds and fertilizer for next planting season."
+			purpose_message="Seeds and fertilizer for next planting season.",
 		)
 
 		self.assertEqual(res["status"], "success")
@@ -69,9 +71,7 @@ class TestLeadCreditInfo(unittest.TestCase):
 
 		# Verify lead timeline audit events
 		events = frappe.get_all(
-			"A2C Lead Audit Event",
-			filters={"lead": self.lead_id},
-			fields=["event_description"]
+			"A2C Lead Audit Event", filters={"lead": self.lead_id}, fields=["event_description"]
 		)
 		self.assertTrue(any("Credit Information added" in e["event_description"] for e in events))
 
@@ -111,13 +111,10 @@ class TestLeadCreditInfo(unittest.TestCase):
 			lead_id=self.lead_id,
 			loan_type="Agricultural term loan",
 			loan_amount=50000,
-			purpose_message="Message 1"
+			purpose_message="Message 1",
 		)
 		add_lead_credit_info(
-			lead_id=self.lead_id,
-			loan_type="Land loan",
-			loan_amount=150000,
-			purpose_message="Message 2"
+			lead_id=self.lead_id, loan_type="Land loan", loan_amount=150000, purpose_message="Message 2"
 		)
 
 		res = get_lead_credit_infos(lead_id=self.lead_id)

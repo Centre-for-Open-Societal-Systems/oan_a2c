@@ -4,11 +4,12 @@
 import frappe
 from frappe.model.document import Document
 
+
 class A2CLoanApplication(Document):
 	def validate(self):
 		if self.loan_amount and self.loan_amount < 0:
 			frappe.throw("Loan Amount cannot be negative")
-		if self.phone_number and not self.phone_number.isdigit() and not self.phone_number.startswith('+'):
+		if self.phone_number and not self.phone_number.isdigit() and not self.phone_number.startswith("+"):
 			frappe.throw("Phone Number must contain only digits or start with +")
 
 		# Status ordering, terminal-state locking, and per-role gating are enforced by the
@@ -21,5 +22,3 @@ class A2CLoanApplication(Document):
 			if self.current_step and self.current_step != db_step:
 				if self.current_step > db_step + 1:
 					frappe.throw("Invalid step transition. You cannot skip steps.", frappe.ValidationError)
-
-
