@@ -126,6 +126,18 @@
    "read": 1,
    "role": "System Manager",
    "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Development Agent",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Bank Agent",
+   "write": 1
   }
  ],
  "row_format": "Dynamic",
