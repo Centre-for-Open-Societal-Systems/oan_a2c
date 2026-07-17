@@ -152,7 +152,7 @@ Middleware errors are thrown before `handle_api_errors` runs — they are NOT in
 - Attempting any status change on a Completed or Missed schedule → 400 `VALIDATION_ERROR`
 
 **A2C Consent Request `status`:**
-- Values: `Pending OTP`, `Approved`, `Failed` (set by background job on error)
+- Values: `Draft`, `Pending OTP`, `OTP Verified`, `Approved`, `Rejected`, `Failed` (set on error)
 
 ---
 
@@ -612,6 +612,7 @@ No parameters. Reads DocType meta only — no DB rows queried.
 | `lead_id` or `status` missing | 400 | `VALIDATION_ERROR` | `"X is required"` |
 | `lead_id` not found | 404 | `NOT_FOUND` | `"A2C Lead {lead_id} not found"` |
 | Current status is terminal | 400 | `VALIDATION_ERROR` | `"Lead status is locked and cannot be updated because its current state is '{status}'."` |
+| `status` = `Verified` but missing credit info or approved consent | 400 | `VALIDATION_ERROR` | (Workflow transition error) |
 | `status` not in allowlist | 400 | `VALIDATION_ERROR` | `"Invalid status: {status}"` |
 | No write permission on lead | 403 | `PERMISSION_DENIED` | |
 
@@ -1523,6 +1524,8 @@ JWT-exempt. Requires Frappe session or `Authorization: token apikey:apisecret`.
   "data": { "lead_id": "LEAD-2026-0001" }
 }
 ```
+
+**Side effect:** Creates a real-time `Notification Log` for the assigned agent (if any) alerting them of the new inbound lead or event.
 
 **Error cases:**
 

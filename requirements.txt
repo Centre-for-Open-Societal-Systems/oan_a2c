@@ -1,2 +1,2 @@
-PyJWT~=2.12.1
+PyJWT~=2.13.0
 pydantic>=2.0

@@ -1022,7 +1022,7 @@
 								"oan_a2c.api.v1.leads.update_lead_status"
 							]
 						},
-						"description": "Updates the workflow status of a lead, logs the reason to the timeline, and enforces terminal locking."
+						"description": "Updates the workflow status of a lead, logs the reason to the timeline, and enforces terminal locking.\\n\\n### Lead Verification Pre-requisites:\\nA lead can only transition to 'Verified' if:\\n1. It has at least one associated 'A2C Credit Information' record.\\n2. It has an 'Approved' 'A2C Consent Request'.\\nIf these prerequisites are not met, the API returns a `400 VALIDATION_ERROR`.\\n\\n### Consent Request Statuses:\\nThe following are the legal statuses for an A2C Consent Request: `Draft`, `Pending OTP`, `OTP Verified`, `Approved`, `Rejected`, `Failed`."
 					},
 					"response": [],
 					"event": [
@@ -1247,6 +1247,46 @@
 							}
 						}
 					]
+				},
+				{
+					"name": "16. Get Unread Notifications",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/resource/Notification Log?filters={\"read\": 0}&limit_page_length=50&order_by=creation desc",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"resource",
+								"Notification Log"
+							],
+							"query": [
+								{
+									"key": "filters",
+									"value": "{\"read\": 0}"
+								},
+								{
+									"key": "limit_page_length",
+									"value": "50"
+								},
+								{
+									"key": "order_by",
+									"value": "creation desc"
+								}
+							]
+						},
+						"description": "Fetches unread Notification Log documents for the authenticated agent. This is used by the frontend to poll or display real-time alerts (e.g., when a new lead is assigned or an inbound webhook occurs)."
+					},
+					"response": []
 				}
 			]
 		},

@@ -1,6 +1,6 @@
 import frappe
 import json
-from oan_a2c.api.utils import success_response, handle_api_errors, validate_request
+from oan_a2c.api.utils import success_response, handle_api_errors, validate_request, notify_lead_event
 from pydantic import BaseModel, Field, ValidationError
 from typing import Optional, Dict, Any, Any as DummyAny
 
@@ -94,6 +94,10 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
     # TODO: This fallback to "Administrator" will be changed to fail/raise an exception if owner is not present
     user_to_set = owner if owner and frappe.db.exists("User", owner) else "Administrator"
     frappe.set_user(user_to_set)
+
+    # Bound before the try so it's always safe to reference in the except block,
+    # even if the failure happens before the lead link is resolved below.
+    lead_id = None
 
     try:
         validated = ReceiveConsentDataSchema.model_validate(data)
@@ -270,6 +274,12 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
         frappe.db.commit()
         frappe.logger().info(f"✅ SUCCESS: Background webhook data saved for consent {consent_doc_name}")
 
+        notify_lead_event(
+            lead_id,
+            subject=frappe._("Consent data received for lead"),
+            message=frappe._("Farmer profile details from OpenG2P have been saved for consent {0}.").format(consent_doc_name),
+        )
+
     except Exception as e:
         frappe.db.rollback()
         # Log to Frappe Desk visible Error Log (Option 1)
@@ -279,7 +289,19 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
             frappe.db.set_value("A2C Consent Request", consent_doc_name, "status", "Failed")
             frappe.db.commit()
         except Exception:
-            pass
+            # If we cannot even record the failure, the request is left in an
+            # unknown state — surface that explicitly rather than losing it.
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Failed to mark Consent Request {consent_doc_name} as Failed",
+            )
+
+        notify_lead_event(
+            lead_id,
+            subject=frappe._("Consent data processing failed"),
+            message=frappe._("Processing the OpenG2P consent webhook for {0} failed. See the Error Log.").format(consent_doc_name),
+            notification_type="Alert",
+        )
 
         raise e
 

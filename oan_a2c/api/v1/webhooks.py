@@ -1,7 +1,7 @@
 import frappe
 from frappe import _
 from frappe.utils import sanitize_html
-from oan_a2c.api.utils import success_response, handle_api_errors
+from oan_a2c.api.utils import success_response, handle_api_errors, notify_lead_event
 
 
 @frappe.whitelist(allow_guest=False)
@@ -60,6 +60,11 @@ def lead_inbound(phone_number=None, lead_source="Missed Call", external_ref_id=N
 	new_lead.call_notes = _build_event_note(lead_source, external_ref_id, timestamp)
 	new_lead.insert(ignore_permissions=False)
 
+	notify_lead_event(
+		new_lead.name,
+		subject=_("New inbound lead captured ({0})").format(lead_source),
+	)
+
 	return success_response(
 		data={"lead_id": new_lead.name},
 		message="Lead captured successfully."
@@ -81,6 +86,11 @@ def _update_existing_lead(lead_name, lead_source, external_ref_id, timestamp):
 		existing_doc.external_id = external_ref_id
 
 	existing_doc.save(ignore_permissions=False)
+
+	notify_lead_event(
+		lead_name,
+		subject=_("New inbound event on lead ({0})").format(lead_source),
+	)
 
 	return success_response(
 		data={"lead_id": lead_name},

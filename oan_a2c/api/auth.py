@@ -4,7 +4,6 @@ import jwt
 import datetime
 import hashlib
 from frappe.auth import LoginManager
-from frappe.core.doctype.user.user import reset_password as reset_password_core
 from frappe.core.doctype.user.user import update_password
 from oan_a2c.api.utils import success_response, handle_api_errors, validate_request, SafeEmail
 from pydantic import BaseModel, Field, field_validator
@@ -120,17 +119,36 @@ def login(usr=None, pwd=None, remember_me=False):
 @handle_api_errors
 def forgot_password(email):
 	"""
-	Triggers Frappe's native secure password recovery flow via email.
-	Inherits: active-user validation, system email templates, 24h link expiry.
+	Generates a 6-digit OTP for password recovery. Sends via SMS if available, otherwise Email.
 	"""
+	import random
+	import string
+
 	try:
-		reset_password_core(email)
+		user = frappe.db.get_value("User", {"email": email}, ["name", "mobile_no"], as_dict=True)
+		if user:
+			otp = "".join(random.choices(string.digits, k=6))
+			
+			# Save key in user document to work with frappe's update_password
+			frappe.db.set_value("User", user.name, "reset_password_key", otp)
+			frappe.db.commit()
+			
+			if user.mobile_no:
+				frappe.send_sms([user.mobile_no], f"Your A2C password reset OTP is {otp}. Do not share this with anyone.")
+			else:
+				frappe.sendmail(
+					recipients=[email],
+					subject="Password Reset OTP",
+					message=f"Your A2C password reset OTP is: <b>{otp}</b>. Do not share this with anyone."
+				)
 	except Exception:
-		# Do not leak whether the email exists — return success unconditionally.
-		pass
+		frappe.logger().warning(
+			f"forgot_password: OTP reset flow raised (expected for unknown users, "
+			f"but investigate if frequent): {frappe.get_traceback(with_context=False)}"
+		)
 
 	return success_response(
-		message=_("Password reset instructions have been sent to your registered email.")
+		message=_("If your email is registered, a password reset OTP has been sent via email or SMS.")
 	)
 
 
@@ -139,17 +157,22 @@ def forgot_password(email):
 @handle_api_errors
 def reset_password(email, key, new_password):
 	"""
-	Decoupled bridge: accepts the key from the reset email link and sets a new password.
+	Decoupled bridge: accepts the 6-digit OTP key and sets a new password.
 	"""
 	user = frappe.db.get_value("User", {"email": email, "reset_password_key": key}, "name")
 
 	if not user:
-		raise frappe.AuthenticationError(_("Invalid or expired reset token."))
+		raise frappe.AuthenticationError(_("Invalid or expired reset OTP."))
 
 	# user= must be passed explicitly. In a stateless (guest) context, omitting it
 	# causes Frappe to default to frappe.session.user which is "Guest", not the
 	# target account — resulting in a silent no-op or a permission error.
 	update_password(new_password=new_password, logout_all_sessions=True, key=key, user=user)
+	
+	# Clear the key after successful reset just in case
+	frappe.db.set_value("User", user, "reset_password_key", "")
+	frappe.db.commit()
+
 	return success_response(
 		message=_("Your password has been successfully updated. You may now login.")
 	)

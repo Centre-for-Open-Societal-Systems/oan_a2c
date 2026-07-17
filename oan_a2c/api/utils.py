@@ -163,7 +163,10 @@ def extract_message_from_str(val):
             if isinstance(parsed, dict) and "message" in parsed:
                 return str(parsed["message"])
         except Exception:
-            pass
+            # Best-effort extraction only; unparseable input falls through to the
+            # raw value. Debug level so it's available when troubleshooting but
+            # doesn't add noise (this fires on any non-dict-shaped string).
+            frappe.logger().debug("Could not parse message payload; returning raw value")
     return val
 
 def get_error_message(e, default_msg="Validation Error"):
@@ -368,5 +371,37 @@ def apply_status_transition(doc, target_status):
         doc.db_set("status", doc.workflow_state)
 
     return doc
+
+
+def notify_lead_event(lead_id, subject, message=None, notification_type="Alert"):
+    """Create a persistent Notification Log for a lead-related webhook event.
+
+    Targets the lead's assigned agent (falls back to no-op if unassigned) so the
+    event shows up in the recipient's notification bell. This both persists to the
+    DB and pushes realtime via Frappe's Notification Log, so the bell updates live
+    and survives a reload.
+
+    Best-effort: never raises, so an inbound webhook is not failed just because a
+    notification could not be created.
+    """
+    try:
+        if not lead_id:
+            return
+        for_user = frappe.db.get_value("A2C Lead", lead_id, "assigned_to")
+        if not for_user:
+            # No assigned agent to notify; nothing to do.
+            return
+        frappe.get_doc({
+            "doctype": "Notification Log",
+            "for_user": for_user,
+            "type": notification_type,
+            "subject": subject,
+            "email_content": message or subject,
+            "document_type": "A2C Lead",
+            "document_name": lead_id,
+        }).insert(ignore_permissions=True)
+    except Exception:
+        # Notifications are non-critical; log and move on.
+        frappe.logger().warning(f"Could not create Notification Log for lead {lead_id}")
 
 
