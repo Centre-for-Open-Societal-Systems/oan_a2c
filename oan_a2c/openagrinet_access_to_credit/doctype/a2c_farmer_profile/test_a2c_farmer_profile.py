@@ -1,5 +1,7 @@
-import frappe
 import unittest
+
+import frappe
+
 
 class TestA2CFarmerProfile(unittest.TestCase):
 	def test_phone_number_validation(self):
@@ -7,7 +9,7 @@ class TestA2CFarmerProfile(unittest.TestCase):
 		doc.first_name = "Test"
 		doc.last_name = "Farmer"
 		doc.phone_number = "invalid_phone"
-		
+
 		with self.assertRaises(frappe.ValidationError):
 			doc.insert()
 
@@ -19,6 +21,6 @@ class TestA2CFarmerProfile(unittest.TestCase):
 		doc.first_name = "Test"
 		doc.last_name = "Farmer"
 		doc.phone_number = "+251912345678"
-		
+
 		doc.insert()
 		self.assertTrue(doc.name)

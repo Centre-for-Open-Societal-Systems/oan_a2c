@@ -3,4 +3,4 @@ from frappe.model.document import Document
 
 
 class A2CConsentRequest(Document):
-    pass
+	pass
