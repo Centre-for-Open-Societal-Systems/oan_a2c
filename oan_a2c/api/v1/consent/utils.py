@@ -3,13 +3,14 @@ import hmac
 import json
 
 import frappe
+from frappe import _
 from frappe.utils import now_datetime
 
 
 def generate_consent_receipt(consent_request_name):
 	secret_key = frappe.conf.get("secret_key")
 	if not secret_key:
-		frappe.throw("secret_key not found in site_config.json")
+		frappe.throw(_("secret_key not found in site_config.json"))
 
 	consent = frappe.get_doc("A2C Consent Request", consent_request_name)
 

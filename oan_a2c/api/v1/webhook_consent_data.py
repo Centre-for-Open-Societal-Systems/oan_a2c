@@ -101,6 +101,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 	owner = frappe.db.get_value("A2C Consent Request", consent_doc_name, "owner")
 	# TODO: This fallback to "Administrator" will be changed to fail/raise an exception if owner is not present
 	user_to_set = owner if owner and frappe.db.exists("User", owner) else "Administrator"
+	# nosemgrep: frappe-setuser -- reviewed: background worker sets context to the consent request owner
 	frappe.set_user(user_to_set)
 
 	# Bound before the try so it's always safe to reference in the except block,

@@ -42,7 +42,7 @@ class A2CLead(Document):
 
 		if missing:
 			frappe.throw(
-				_("Lead cannot be Verified until {0} exists.").format(_(" and ").join(missing)),
+				_("Lead cannot be Verified until {0} exists.").format(f" {_('and')} ".join(missing)),
 				frappe.ValidationError,
 			)
 

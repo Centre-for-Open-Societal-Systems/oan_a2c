@@ -108,5 +108,6 @@ def execute():
 	create_role("Bank Agent")
 	setup_lead_workflow()
 	setup_loan_workflow()
+	# nosemgrep: frappe-manual-commit -- reviewed: one-off setup script persists workflow creation
 	frappe.db.commit()
 	print("Workflows created successfully!")

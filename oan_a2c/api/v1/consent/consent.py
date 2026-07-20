@@ -383,6 +383,7 @@ def verify_otp(**kwargs):
 			"otp_verified_at": now_datetime(),
 		},
 	)
+	# nosemgrep: frappe-manual-commit -- reviewed: persist OTP-verified status before returning
 	frappe.db.commit()
 
 	return success_response(
