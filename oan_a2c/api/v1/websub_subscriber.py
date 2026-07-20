@@ -55,6 +55,7 @@ def _verify_signature(raw_body: bytes, signature_header: str, secret: str) -> bo
 	return hmac.compare_digest(expected_sig, sent_sig.strip())
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public WebSub callback, HMAC-signature verified
 @frappe.whitelist(allow_guest=True)
 def callback(**kwargs):
 	"""W3C WebSub callback: GET = intent verification, POST = content delivery."""

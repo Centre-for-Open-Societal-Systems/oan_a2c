@@ -7,7 +7,12 @@ from oan_a2c.api.utils import handle_api_errors, notify_lead_event, success_resp
 
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
-def lead_inbound(phone_number=None, lead_source="Missed Call", external_ref_id=None, timestamp=None):
+def lead_inbound(
+	phone_number: str | None = None,
+	lead_source: str = "Missed Call",
+	external_ref_id: str | None = None,
+	timestamp: str | None = None,
+):
 	"""
 	Automated lead intake from external telco systems (IVR / missed call gateways).
 

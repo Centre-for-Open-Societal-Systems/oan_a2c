@@ -70,14 +70,16 @@ def generate_refresh_token(usr: str, remember_me: bool = False) -> str:
 		}
 	)
 	token_doc.insert(ignore_permissions=True)
+	# nosemgrep: frappe-manual-commit -- reviewed: persist refresh token before returning it
 	frappe.db.commit()
 	return raw_token
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public auth endpoint, validated + rate-limited
 @frappe.whitelist(allow_guest=True)
 @validate_request(LoginSchema)
 @handle_api_errors
-def login(usr=None, pwd=None, remember_me=False):
+def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = False):
 	"""
 	Authenticates a user and returns a short-lived access JWT and a database-backed refresh token.
 	Wraps Frappe's core LoginManager to ensure standard validations apply
@@ -117,10 +119,11 @@ def login(usr=None, pwd=None, remember_me=False):
 	)
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public password-recovery endpoint, enumeration-safe
 @frappe.whitelist(allow_guest=True)
 @validate_request(ForgotPasswordSchema)
 @handle_api_errors
-def forgot_password(email):
+def forgot_password(email: str):
 	"""
 	Generates a 6-digit OTP for password recovery. Sends via SMS if available, otherwise Email.
 	"""
@@ -134,6 +137,7 @@ def forgot_password(email):
 
 			# Save key in user document to work with frappe's update_password
 			frappe.db.set_value("User", user.name, "reset_password_key", otp)
+			# nosemgrep: frappe-manual-commit -- reviewed: persist OTP before dispatching SMS/email
 			frappe.db.commit()
 
 			if user.mobile_no:
@@ -157,10 +161,11 @@ def forgot_password(email):
 	)
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public reset endpoint, gated on emailed OTP key
 @frappe.whitelist(allow_guest=True)
 @validate_request(ResetPasswordSchema)
 @handle_api_errors
-def reset_password(email, key, new_password):
+def reset_password(email: str, key: str, new_password: str):
 	"""
 	Decoupled bridge: accepts the 6-digit OTP key and sets a new password.
 	"""
@@ -176,15 +181,17 @@ def reset_password(email, key, new_password):
 
 	# Clear the key after successful reset just in case
 	frappe.db.set_value("User", user, "reset_password_key", "")
+	# nosemgrep: frappe-manual-commit -- reviewed: clear used reset key before returning success
 	frappe.db.commit()
 
 	return success_response(message=_("Your password has been successfully updated. You may now login."))
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public token-rotation endpoint, gated on refresh token
 @frappe.whitelist(allow_guest=True)
 @validate_request(RefreshTokenSchema)
 @handle_api_errors
-def refresh(refresh_token):
+def refresh(refresh_token: str):
 	"""
 	Validates the refresh token, performs rotation, and returns a new access & refresh token.
 	"""
@@ -206,12 +213,14 @@ def refresh(refresh_token):
 	expiry_dt = get_datetime(record["expiry"])
 	if expiry_dt < now_datetime():
 		frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)
+		# nosemgrep: frappe-manual-commit -- reviewed: persist token deletion before the raise rolls back
 		frappe.db.commit()
 		raise frappe.AuthenticationError(_("Refresh token has expired."))
 
 	user_enabled = frappe.db.get_value("User", record["user"], "enabled")
 	if not user_enabled:
 		frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)
+		# nosemgrep: frappe-manual-commit -- reviewed: persist token deletion before the raise rolls back
 		frappe.db.commit()
 		raise frappe.AuthenticationError(_("User is disabled or does not exist."))
 
@@ -225,15 +234,17 @@ def refresh(refresh_token):
 	new_access_token = generate_access_token(user_name, roles)
 	new_refresh_token = generate_refresh_token(user_name, bool(record["remember_me"]))
 
+	# nosemgrep: frappe-manual-commit -- reviewed: commit token rotation before returning new tokens
 	frappe.db.commit()
 
 	return success_response(data={"token": new_access_token, "refresh_token": new_refresh_token})
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public logout/revoke endpoint, gated on refresh token
 @frappe.whitelist(allow_guest=True)
 @validate_request(LogoutSchema)
 @handle_api_errors
-def logout(refresh_token):
+def logout(refresh_token: str):
 	"""
 	Revokes the provided refresh token by deleting it from the database.
 	"""
@@ -245,6 +256,7 @@ def logout(refresh_token):
 
 	if token_records:
 		frappe.delete_doc("A2C User Refresh Token", token_records[0]["name"], ignore_permissions=True)
+		# nosemgrep: frappe-manual-commit -- reviewed: persist token revocation on logout
 		frappe.db.commit()
 
 	return success_response(message=_("Logged out successfully."))

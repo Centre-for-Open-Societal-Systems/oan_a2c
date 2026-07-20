@@ -76,6 +76,7 @@ def validate_jwt_request(request=None):
 		# Log the user context into the Python thread memory for Frappe's ORM RBAC
 		# Save and restore form_dict as frappe.set_user() resets local.form_dict = _dict()
 		temp_form_dict = getattr(frappe.local, "form_dict", None)
+		# nosemgrep: frappe-setuser -- reviewed: user derived from a cryptographically verified JWT + enabled check
 		frappe.set_user(user_name)
 		if temp_form_dict is not None:
 			frappe.local.form_dict = temp_form_dict
