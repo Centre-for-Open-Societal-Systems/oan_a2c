@@ -5,19 +5,23 @@ from oan_a2c.api.utils import handle_api_errors, success_response
 @frappe.whitelist()
 @handle_api_errors
 def get_stats():
-	total_products = frappe.db.count("A2C Loan Product")
-	active_products = frappe.db.count("A2C Loan Product", {"status": "Active"})
-	
-	total_applications = frappe.db.count("A2C Loan Application")
-	pending_applications = frappe.db.count("A2C Loan Application", {"status": ["in", ["Submitted", "Under Review"]]})
-	approved_applications = frappe.db.count("A2C Loan Application", {"status": "Approved"})
-	
-	approved_amount_data = frappe.get_all(
-		"A2C Loan Application",
-		filters={"status": "Approved"},
-		fields=["sum(approved_amount) as total_approved_amount"]
+	product_counts = frappe.get_all(
+		"A2C Loan Product",
+		fields=["status", "count(name) as count"],
+		group_by="status"
 	)
-	total_approved_amount = approved_amount_data[0].total_approved_amount if approved_amount_data else 0
+	total_products = sum(item.count for item in product_counts)
+	active_products = sum(item.count for item in product_counts if item.status == "Active")
+	
+	app_counts = frappe.get_all(
+		"A2C Loan Application",
+		fields=["status", "count(name) as count", "sum(approved_amount) as total_amount"],
+		group_by="status"
+	)
+	total_applications = sum(item.count for item in app_counts)
+	pending_applications = sum(item.count for item in app_counts if item.status in ["Submitted", "Under Review"])
+	approved_applications = sum(item.count for item in app_counts if item.status == "Approved")
+	total_approved_amount = sum((item.total_amount or 0) for item in app_counts if item.status == "Approved")
 	
 	return success_response(data={"stats": {
 		"total_products": total_products,
