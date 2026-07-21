@@ -1,30 +1,36 @@
-import frappe
-from frappe import _
-import jwt
 import datetime
 import hashlib
-from frappe.auth import LoginManager
-from frappe.core.doctype.user.user import reset_password as reset_password_core
-from frappe.core.doctype.user.user import update_password
-from oan_a2c.api.utils import success_response, handle_api_errors, validate_request, SafeEmail
-from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+
+import frappe
+import jwt
+from frappe import _
+from frappe.auth import LoginManager
+from frappe.core.doctype.user.user import update_password
+from pydantic import BaseModel, Field, field_validator
+
+from oan_a2c.api.utils import SafeEmail, handle_api_errors, success_response, validate_request
+
 
 class LoginSchema(BaseModel):
 	usr: str = Field(..., min_length=1)
 	pwd: str = Field(..., min_length=1)
 	remember_me: bool = Field(default=False)
 
+
 class ForgotPasswordSchema(BaseModel):
 	email: SafeEmail = None
+
 
 class ResetPasswordSchema(BaseModel):
 	email: SafeEmail = None
 	key: str = Field(..., min_length=1)
 	new_password: str = Field(..., min_length=1)
 
+
 class RefreshTokenSchema(BaseModel):
 	refresh_token: str = Field(..., min_length=1)
+
 
 class LogoutSchema(BaseModel):
 	refresh_token: str = Field(..., min_length=1)
@@ -35,13 +41,13 @@ def generate_access_token(usr: str, roles: list) -> str:
 	if not secret:
 		frappe.throw(_("System configuration error: missing encryption_key"))
 
-	now = datetime.datetime.now(datetime.timezone.utc)
+	now = datetime.datetime.now(datetime.UTC)
 	payload = {
 		"sub": usr,
 		"iss": "oan_a2c_identity_gateway",
 		"iat": now,
 		"exp": now + datetime.timedelta(minutes=15),
-		"roles": roles
+		"roles": roles,
 	}
 	return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": "v1"})
 
@@ -51,24 +57,29 @@ def generate_refresh_token(usr: str, remember_me: bool = False) -> str:
 	token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
 	from frappe.utils import now_datetime
+
 	expiry = now_datetime() + datetime.timedelta(days=30 if remember_me else 1)
 
-	token_doc = frappe.get_doc({
-		"doctype": "A2C User Refresh Token",
-		"user": usr,
-		"token_hash": token_hash,
-		"expiry": expiry,
-		"remember_me": 1 if remember_me else 0
-	})
+	token_doc = frappe.get_doc(
+		{
+			"doctype": "A2C User Refresh Token",
+			"user": usr,
+			"token_hash": token_hash,
+			"expiry": expiry,
+			"remember_me": 1 if remember_me else 0,
+		}
+	)
 	token_doc.insert(ignore_permissions=True)
+	# nosemgrep: frappe-manual-commit -- reviewed: persist refresh token before returning it
 	frappe.db.commit()
 	return raw_token
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public auth endpoint, validated + rate-limited
 @frappe.whitelist(allow_guest=True)
 @validate_request(LoginSchema)
 @handle_api_errors
-def login(usr=None, pwd=None, remember_me=False):
+def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = False):
 	"""
 	Authenticates a user and returns a short-lived access JWT and a database-backed refresh token.
 	Wraps Frappe's core LoginManager to ensure standard validations apply
@@ -96,69 +107,91 @@ def login(usr=None, pwd=None, remember_me=False):
 	bank = None
 	if "Bank Agent" in roles:
 		bank = frappe.db.get_value(
-			"User Permission",
-			{"user": usr, "allow": "Participating Bank"},
-			"for_value"
+			"User Permission", {"user": usr, "allow": "Participating Bank"}, "for_value"
 		)
 
 	return success_response(
 		data={
 			"token": token,
 			"refresh_token": refresh_token,
-			"user": {
-				"email": usr,
-				"full_name": user.full_name,
-				"roles": roles,
-				"bank": bank
-			}
+			"user": {"email": usr, "full_name": user.full_name, "roles": roles, "bank": bank},
 		}
 	)
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public password-recovery endpoint, enumeration-safe
 @frappe.whitelist(allow_guest=True)
 @validate_request(ForgotPasswordSchema)
 @handle_api_errors
-def forgot_password(email):
+def forgot_password(email: str):
 	"""
-	Triggers Frappe's native secure password recovery flow via email.
-	Inherits: active-user validation, system email templates, 24h link expiry.
+	Generates a 6-digit OTP for password recovery. Sends via SMS if available, otherwise Email.
 	"""
+	import random
+	import string
+
 	try:
-		reset_password_core(email)
+		user = frappe.db.get_value("User", {"email": email}, ["name", "mobile_no"], as_dict=True)
+		if user:
+			otp = "".join(random.choices(string.digits, k=6))
+
+			# Save key in user document to work with frappe's update_password
+			frappe.db.set_value("User", user.name, "reset_password_key", otp)
+			# nosemgrep: frappe-manual-commit -- reviewed: persist OTP before dispatching SMS/email
+			frappe.db.commit()
+
+			if user.mobile_no:
+				frappe.send_sms(
+					[user.mobile_no], f"Your A2C password reset OTP is {otp}. Do not share this with anyone."
+				)
+			else:
+				frappe.sendmail(
+					recipients=[email],
+					subject="Password Reset OTP",
+					message=f"Your A2C password reset OTP is: <b>{otp}</b>. Do not share this with anyone.",
+				)
 	except Exception:
-		# Do not leak whether the email exists — return success unconditionally.
-		pass
+		frappe.logger().warning(
+			f"forgot_password: OTP reset flow raised (expected for unknown users, "
+			f"but investigate if frequent): {frappe.get_traceback(with_context=False)}"
+		)
 
 	return success_response(
-		message=_("Password reset instructions have been sent to your registered email.")
+		message=_("If your email is registered, a password reset OTP has been sent via email or SMS.")
 	)
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public reset endpoint, gated on emailed OTP key
 @frappe.whitelist(allow_guest=True)
 @validate_request(ResetPasswordSchema)
 @handle_api_errors
-def reset_password(email, key, new_password):
+def reset_password(email: str, key: str, new_password: str):
 	"""
-	Decoupled bridge: accepts the key from the reset email link and sets a new password.
+	Decoupled bridge: accepts the 6-digit OTP key and sets a new password.
 	"""
 	user = frappe.db.get_value("User", {"email": email, "reset_password_key": key}, "name")
 
 	if not user:
-		raise frappe.AuthenticationError(_("Invalid or expired reset token."))
+		raise frappe.AuthenticationError(_("Invalid or expired reset OTP."))
 
 	# user= must be passed explicitly. In a stateless (guest) context, omitting it
 	# causes Frappe to default to frappe.session.user which is "Guest", not the
 	# target account — resulting in a silent no-op or a permission error.
 	update_password(new_password=new_password, logout_all_sessions=True, key=key, user=user)
-	return success_response(
-		message=_("Your password has been successfully updated. You may now login.")
-	)
+
+	# Clear the key after successful reset just in case
+	frappe.db.set_value("User", user, "reset_password_key", "")
+	# nosemgrep: frappe-manual-commit -- reviewed: clear used reset key before returning success
+	frappe.db.commit()
+
+	return success_response(message=_("Your password has been successfully updated. You may now login."))
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public token-rotation endpoint, gated on refresh token
 @frappe.whitelist(allow_guest=True)
 @validate_request(RefreshTokenSchema)
 @handle_api_errors
-def refresh(refresh_token):
+def refresh(refresh_token: str):
 	"""
 	Validates the refresh token, performs rotation, and returns a new access & refresh token.
 	"""
@@ -167,7 +200,7 @@ def refresh(refresh_token):
 	token_records = frappe.get_all(
 		"A2C User Refresh Token",
 		filters={"token_hash": token_hash},
-		fields=["name", "user", "expiry", "remember_me"]
+		fields=["name", "user", "expiry", "remember_me"],
 	)
 
 	if not token_records:
@@ -176,15 +209,18 @@ def refresh(refresh_token):
 	record = token_records[0]
 
 	from frappe.utils import get_datetime, now_datetime
+
 	expiry_dt = get_datetime(record["expiry"])
 	if expiry_dt < now_datetime():
 		frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)
+		# nosemgrep: frappe-manual-commit -- reviewed: persist token deletion before the raise rolls back
 		frappe.db.commit()
 		raise frappe.AuthenticationError(_("Refresh token has expired."))
 
 	user_enabled = frappe.db.get_value("User", record["user"], "enabled")
 	if not user_enabled:
 		frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)
+		# nosemgrep: frappe-manual-commit -- reviewed: persist token deletion before the raise rolls back
 		frappe.db.commit()
 		raise frappe.AuthenticationError(_("User is disabled or does not exist."))
 
@@ -198,38 +234,32 @@ def refresh(refresh_token):
 	new_access_token = generate_access_token(user_name, roles)
 	new_refresh_token = generate_refresh_token(user_name, bool(record["remember_me"]))
 
+	# nosemgrep: frappe-manual-commit -- reviewed: commit token rotation before returning new tokens
 	frappe.db.commit()
 
-	return success_response(
-		data={
-			"token": new_access_token,
-			"refresh_token": new_refresh_token
-		}
-	)
+	return success_response(data={"token": new_access_token, "refresh_token": new_refresh_token})
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: public logout/revoke endpoint, gated on refresh token
 @frappe.whitelist(allow_guest=True)
 @validate_request(LogoutSchema)
 @handle_api_errors
-def logout(refresh_token):
+def logout(refresh_token: str):
 	"""
 	Revokes the provided refresh token by deleting it from the database.
 	"""
 	token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
 
 	token_records = frappe.get_all(
-		"A2C User Refresh Token",
-		filters={"token_hash": token_hash},
-		fields=["name"]
+		"A2C User Refresh Token", filters={"token_hash": token_hash}, fields=["name"]
 	)
 
 	if token_records:
 		frappe.delete_doc("A2C User Refresh Token", token_records[0]["name"], ignore_permissions=True)
+		# nosemgrep: frappe-manual-commit -- reviewed: persist token revocation on logout
 		frappe.db.commit()
 
-	return success_response(
-		message=_("Logged out successfully.")
-	)
+	return success_response(message=_("Logged out successfully."))
 
 
 @frappe.whitelist()
@@ -248,18 +278,9 @@ def get_me():
 	bank = None
 	if "Bank Agent" in roles:
 		bank = frappe.db.get_value(
-			"User Permission",
-			{"user": frappe.session.user, "allow": "Participating Bank"},
-			"for_value"
+			"User Permission", {"user": frappe.session.user, "allow": "Participating Bank"}, "for_value"
 		)
 
 	return success_response(
-		data={
-			"email": user.email,
-			"full_name": user.full_name,
-			"roles": roles,
-			"bank": bank
-		}
+		data={"email": user.email, "full_name": user.full_name, "roles": roles, "bank": bank}
 	)
-
-

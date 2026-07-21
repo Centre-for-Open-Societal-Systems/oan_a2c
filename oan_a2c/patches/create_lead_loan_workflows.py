@@ -28,8 +28,14 @@ WORKFLOW_STATES = {
 
 # Workflow Action master records (the "buttons")
 WORKFLOW_ACTIONS = [
-	"Verify", "Mark Processed", "Grant", "Reject", "Mark Dormant", "Reactivate",
-	"Send for Review", "Approve",
+	"Verify",
+	"Mark Processed",
+	"Grant",
+	"Reject",
+	"Mark Dormant",
+	"Reactivate",
+	"Send for Review",
+	"Approve",
 ]
 
 
@@ -45,20 +51,24 @@ def execute():
 def _ensure_workflow_states():
 	for state, style in WORKFLOW_STATES.items():
 		if not frappe.db.exists("Workflow State", state):
-			frappe.get_doc({
-				"doctype": "Workflow State",
-				"workflow_state_name": state,
-				"style": style,
-			}).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{
+					"doctype": "Workflow State",
+					"workflow_state_name": state,
+					"style": style,
+				}
+			).insert(ignore_permissions=True)
 
 
 def _ensure_workflow_actions():
 	for action in WORKFLOW_ACTIONS:
 		if not frappe.db.exists("Workflow Action Master", action):
-			frappe.get_doc({
-				"doctype": "Workflow Action Master",
-				"workflow_action_name": action,
-			}).insert(ignore_permissions=True)
+			frappe.get_doc(
+				{
+					"doctype": "Workflow Action Master",
+					"workflow_action_name": action,
+				}
+			).insert(ignore_permissions=True)
 
 
 def _upsert_workflow(name, doctype, states, transitions):
@@ -93,13 +103,28 @@ def _create_lead_workflow():
 	]
 	transitions = [
 		{"state": "Active", "action": "Verify", "next_state": "Verified", "allowed": "Development Agent"},
-		{"state": "Verified", "action": "Mark Processed", "next_state": "Processed", "allowed": "Development Agent"},
+		{
+			"state": "Verified",
+			"action": "Mark Processed",
+			"next_state": "Processed",
+			"allowed": "Development Agent",
+		},
 		{"state": "Processed", "action": "Grant", "next_state": "Granted", "allowed": "Bank Agent"},
 		{"state": "Processed", "action": "Reject", "next_state": "Rejected", "allowed": "Bank Agent"},
 		{"state": "Active", "action": "Reject", "next_state": "Rejected", "allowed": "Development Agent"},
 		{"state": "Verified", "action": "Reject", "next_state": "Rejected", "allowed": "Development Agent"},
-		{"state": "Active", "action": "Mark Dormant", "next_state": "Dormant", "allowed": "Development Agent"},
-		{"state": "Verified", "action": "Mark Dormant", "next_state": "Dormant", "allowed": "Development Agent"},
+		{
+			"state": "Active",
+			"action": "Mark Dormant",
+			"next_state": "Dormant",
+			"allowed": "Development Agent",
+		},
+		{
+			"state": "Verified",
+			"action": "Mark Dormant",
+			"next_state": "Dormant",
+			"allowed": "Development Agent",
+		},
 		{"state": "Dormant", "action": "Reactivate", "next_state": "Active", "allowed": "Development Agent"},
 	]
 	_upsert_workflow("A2C Lead Workflow", "A2C Lead", states, transitions)
@@ -114,7 +139,12 @@ def _create_loan_workflow():
 		{"state": "Rejected", "doc_status": "1", "allow_edit": "System Manager"},
 	]
 	transitions = [
-		{"state": "Draft", "action": "Send for Review", "next_state": "Processing", "allowed": "Development Agent"},
+		{
+			"state": "Draft",
+			"action": "Send for Review",
+			"next_state": "Processing",
+			"allowed": "Development Agent",
+		},
 		{"state": "Processing", "action": "Approve", "next_state": "Approved", "allowed": "Bank Agent"},
 		{"state": "Processing", "action": "Reject", "next_state": "Rejected", "allowed": "Bank Agent"},
 	]
@@ -124,9 +154,7 @@ def _create_loan_workflow():
 def _backfill_workflow_state():
 	"""Map existing `status` -> `workflow_state`, and submit terminal loans to docstatus 1."""
 	# Leads: workflow_state mirrors status 1:1 (same option names).
-	for name, status in frappe.get_all(
-		"A2C Lead", fields=["name", "status"], as_list=True
-	):
+	for name, status in frappe.get_all("A2C Lead", fields=["name", "status"], as_list=True):
 		frappe.db.set_value("A2C Lead", name, "workflow_state", status, update_modified=False)
 
 	# Loans: blank/legacy statuses default to Draft; Approved/Rejected become docstatus 1.

@@ -1,12 +1,18 @@
 import frappe
 from frappe import _
 from frappe.utils import sanitize_html
-from oan_a2c.api.utils import success_response, handle_api_errors
+
+from oan_a2c.api.utils import handle_api_errors, notify_lead_event, success_response
 
 
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
-def lead_inbound(phone_number=None, lead_source="Missed Call", external_ref_id=None, timestamp=None):
+def lead_inbound(
+	phone_number: str | None = None,
+	lead_source: str = "Missed Call",
+	external_ref_id: str | None = None,
+	timestamp: str | None = None,
+):
 	"""
 	Automated lead intake from external telco systems (IVR / missed call gateways).
 
@@ -33,11 +39,7 @@ def lead_inbound(phone_number=None, lead_source="Missed Call", external_ref_id=N
 
 	# 1. Primary Deduplication Check: By External Reference ID
 	if external_ref_id:
-		existing_by_ref = frappe.db.get_value(
-			"A2C Lead",
-			{"external_id": external_ref_id},
-			"name"
-		)
+		existing_by_ref = frappe.db.get_value("A2C Lead", {"external_id": external_ref_id}, "name")
 		if existing_by_ref:
 			return _update_existing_lead(existing_by_ref, lead_source, external_ref_id, timestamp)
 
@@ -60,10 +62,12 @@ def lead_inbound(phone_number=None, lead_source="Missed Call", external_ref_id=N
 	new_lead.call_notes = _build_event_note(lead_source, external_ref_id, timestamp)
 	new_lead.insert(ignore_permissions=False)
 
-	return success_response(
-		data={"lead_id": new_lead.name},
-		message="Lead captured successfully."
+	notify_lead_event(
+		new_lead.name,
+		subject=_("New inbound lead captured ({0})").format(lead_source),
 	)
+
+	return success_response(data={"lead_id": new_lead.name}, message="Lead captured successfully.")
 
 
 def _update_existing_lead(lead_name, lead_source, external_ref_id, timestamp):
@@ -82,9 +86,13 @@ def _update_existing_lead(lead_name, lead_source, external_ref_id, timestamp):
 
 	existing_doc.save(ignore_permissions=False)
 
+	notify_lead_event(
+		lead_name,
+		subject=_("New inbound event on lead ({0})").format(lead_source),
+	)
+
 	return success_response(
-		data={"lead_id": lead_name},
-		message="Existing active lead updated with new event."
+		data={"lead_id": lead_name}, message="Existing active lead updated with new event."
 	)
 
 

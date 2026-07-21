@@ -242,9 +242,7 @@ before_tests = "oan_a2c.tests.before_tests"
 # Authentication and authorization
 # --------------------------------
 
-auth_hooks = [
-	"oan_a2c.api.middleware.validate_jwt_request"
-]
+auth_hooks = ["oan_a2c.api.middleware.validate_jwt_request"]
 
 # Automatically update python controller files with type annotations for this app.
 # export_python_type_annotations = True
@@ -257,4 +255,3 @@ auth_hooks = [
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-

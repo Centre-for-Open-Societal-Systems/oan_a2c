@@ -84,7 +84,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Draft\nPending OTP\nApproved\nRejected"
+   "options": "Draft\nPending OTP\nOTP Verified\nApproved\nRejected\nFailed"
   },
   {
    "fieldname": "otp_transaction_id",
@@ -125,6 +125,18 @@
    "delete": 1,
    "read": 1,
    "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Development Agent",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "Bank Agent",
    "write": 1
   }
  ],

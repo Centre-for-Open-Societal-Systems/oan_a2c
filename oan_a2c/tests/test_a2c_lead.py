@@ -1,6 +1,36 @@
-import frappe
 import unittest
+
+import frappe
+
 from oan_a2c.api.v1.webhooks import lead_inbound
+
+
+def _make_lead_verifiable(lead_id):
+	"""Create the prerequisites a lead needs before it can move to 'Verified'.
+
+	The workflow gate (A2CLead._enforce_verification_prerequisites) requires at
+	least one A2C Credit Information and an Approved A2C Consent Request linked to
+	the lead. Idempotent so it can be called from setUp without piling up records.
+	"""
+	if not frappe.db.exists("A2C Credit Information", {"lead": lead_id}):
+		frappe.get_doc(
+			{
+				"doctype": "A2C Credit Information",
+				"lead": lead_id,
+				"loan_type": "Input loan (seeds, agrochemicals)",
+				"loan_amount": 5000.0,
+				"purpose_message": "Verification prerequisite",
+			}
+		).insert(ignore_permissions=True)
+	if not frappe.db.exists("A2C Consent Request", {"lead": lead_id, "status": "Approved"}):
+		frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"lead": lead_id,
+				"status": "Approved",
+			}
+		).insert(ignore_permissions=True)
+	frappe.db.commit()
 
 
 class TestA2CLead(unittest.TestCase):
@@ -87,7 +117,6 @@ class TestA2CLead(unittest.TestCase):
 		lead.email = "updated_processed_email@example.com"
 		with self.assertRaises(frappe.ValidationError):
 			lead.save()
-
 
 	# ------------------------------------------------------------------
 	# Webhook tests
@@ -242,6 +271,7 @@ class TestLeadListAPI(unittest.TestCase):
 	def test_get_leads_pagination(self):
 		"""Verifies list pagination slice parameters start and page_length work."""
 		from oan_a2c.api.v1.leads import get_leads
+
 		res = get_leads(start=0, page_length=2, search_query="+251922000")
 		self.assertEqual(res["status"], "success")
 		self.assertEqual(res["pagination"]["limit"], 2)
@@ -256,7 +286,7 @@ class TestLeadListAPI(unittest.TestCase):
 	def test_get_leads_search(self):
 		"""Verifies searching by phone number, Lead ID, and external ID works."""
 		from oan_a2c.api.v1.leads import get_leads
-		
+
 		# Search by Phone Number
 		res_phone = get_leads(search_query="+251922000003")
 		self.assertEqual(res_phone["pagination"]["total"], 1)
@@ -276,7 +306,7 @@ class TestLeadListAPI(unittest.TestCase):
 	def test_get_leads_filters(self):
 		"""Verifies applying status and lead_source filters works."""
 		from oan_a2c.api.v1.leads import get_leads
-		
+
 		# Filter by Granted status (new status)
 		res_status = get_leads(status="Granted", search_query="+251922000")
 		self.assertEqual(res_status["pagination"]["total"], 1)
@@ -312,32 +342,33 @@ class TestLeadListAPI(unittest.TestCase):
 	def test_get_leads_invalid_filters_throw(self):
 		"""Verifies that passing invalid status or lead_source values returns a validation error."""
 		from oan_a2c.api.v1.leads import get_leads
-		
+
 		# Test invalid status
 		frappe.local.response = frappe._dict({"http_status_code": 200})
 		res = get_leads(status="InvalidStatus")
 		self.assertEqual(res.get("status"), "error")
 		self.assertEqual(frappe.local.response.get("http_status_code"), 400)
 		self.assertIn("Invalid value 'InvalidStatus'", res.get("message"))
-			
+
 		# Test invalid lead_source
 		frappe.local.response = frappe._dict({"http_status_code": 200})
 		res2 = get_leads(lead_source="InvalidSource")
 		self.assertEqual(res2.get("status"), "error")
 		self.assertEqual(frappe.local.response.get("http_status_code"), 400)
 		self.assertIn("Invalid value 'InvalidSource'", res2.get("message"))
-		
+
 		# Reset response code
 		frappe.local.response["http_status_code"] = 200
 
 	def test_get_lead_summary(self):
 		"""Verifies that get_lead_summary correctly returns counts of all leads by status."""
 		from oan_a2c.api.v1.leads import get_lead_summary
+
 		res = get_lead_summary()
-		
+
 		self.assertEqual(res["status"], "success")
 		self.assertEqual(res["data"]["total"], 5)
-		
+
 		by_status = res["data"]["by_status"]
 		self.assertEqual(by_status["Active"], 1)
 		self.assertEqual(by_status["Verified"], 1)
@@ -348,6 +379,7 @@ class TestLeadListAPI(unittest.TestCase):
 	def test_get_lead_metadata(self):
 		"""Verifies get_lead_metadata dynamically parses Select field options."""
 		from oan_a2c.api.v1.leads import get_lead_metadata
+
 		res = get_lead_metadata()
 		self.assertEqual(res["status"], "success")
 		self.assertIn("Active", res["data"]["statuses"])
@@ -358,9 +390,9 @@ class TestLeadListAPI(unittest.TestCase):
 	def test_comments_and_timeline_workflow(self):
 		"""Verifies that adding a comment works and is correctly reflected on the lead's timeline."""
 		from oan_a2c.api.v1.leads import add_lead_comment, get_lead_timeline
-		
+
 		target_lead = self.leads[0]
-		
+
 		# 1. Add comment
 		res_add = add_lead_comment(lead_id=target_lead, content="Test comment from field officer.")
 		self.assertEqual(res_add["status"], "success")
@@ -371,45 +403,44 @@ class TestLeadListAPI(unittest.TestCase):
 		self.assertEqual(res_timeline["status"], "success")
 		self.assertEqual(res_timeline["data"]["lead_id"], target_lead)
 		self.assertTrue(len(res_timeline["data"]["timeline"]) >= 1)
-		
-		found_comment = next((c for c in res_timeline["data"]["timeline"] if c["name"] == res_add["data"]["comment_id"]), None)
+
+		found_comment = next(
+			(c for c in res_timeline["data"]["timeline"] if c["name"] == res_add["data"]["comment_id"]), None
+		)
 		self.assertIsNotNone(found_comment)
 		self.assertEqual(found_comment["event_description"], "Test comment from field officer.")
 
 	def test_get_lead_call_logs(self):
 		"""Verifies that call notes are correctly retrieved and parsed into structured call logs."""
 		from oan_a2c.api.v1.leads import get_lead_call_logs
-		
+
 		target_lead = self.leads[0]
-		
+
 		# Set raw call notes to simulate multiple calls recorded by webhooks
 		frappe.db.set_value(
-			"A2C Lead", 
-			target_lead, 
-			"call_notes", 
-			"Source: IVR | Ref ID: REF-IVR-101 | Timestamp: 2026-05-27T10:00:00Z\n\nSource: Missed Call | Ref ID: REF-MC-202 | Timestamp: 2026-05-27T10:05:00Z"
+			"A2C Lead",
+			target_lead,
+			"call_notes",
+			"Source: IVR | Ref ID: REF-IVR-101 | Timestamp: 2026-05-27T10:00:00Z\n\nSource: Missed Call | Ref ID: REF-MC-202 | Timestamp: 2026-05-27T10:05:00Z",
 		)
 		frappe.db.commit()
 
 		res = get_lead_call_logs(lead_id=target_lead)
 		self.assertEqual(res["status"], "success")
 		self.assertEqual(res["data"]["lead_id"], target_lead)
-		
+
 		call_logs = res["data"]["call_logs"]
 		self.assertEqual(len(call_logs), 2)
-		
+
 		first_call = call_logs[0]
 		self.assertEqual(first_call["source"], "IVR")
 		self.assertEqual(first_call["ref_id"], "REF-IVR-101")
 		self.assertEqual(first_call["timestamp"], "2026-05-27T10:00:00Z")
-		
+
 		second_call = call_logs[1]
 		self.assertEqual(second_call["source"], "Missed Call")
 		self.assertEqual(second_call["ref_id"], "REF-MC-202")
 		self.assertEqual(second_call["timestamp"], "2026-05-27T10:05:00Z")
-
-
-
 
 
 class TestLeadCreationAPI(unittest.TestCase):
@@ -445,13 +476,14 @@ class TestLeadCreationAPI(unittest.TestCase):
 	def test_create_lead_api_success(self):
 		"""Verifies that create_lead API saves first_name, last_name, and email successfully."""
 		from oan_a2c.api.v1.leads import create_lead
+
 		res = create_lead(
 			phone_number=self.TEST_PHONE,
 			first_name="Abebe",
 			last_name="Bikila",
 			email="abebe@coopbank.com",
 			lead_source="Agent Entry",
-			external_id="EXT-API-999"
+			external_id="EXT-API-999",
 		)
 		self.assertEqual(res["status"], "success")
 		self.assertTrue(res["data"]["lead_id"].startswith("LEAD-"))
@@ -467,11 +499,9 @@ class TestLeadCreationAPI(unittest.TestCase):
 	def test_create_lead_api_invalid_email(self):
 		"""Verifies that an invalid email address raises a ValidationError."""
 		from oan_a2c.api.v1.leads import create_lead
+
 		res = create_lead(
-			phone_number=self.TEST_PHONE,
-			first_name="Abebe",
-			last_name="Bikila",
-			email="invalid-email-format"
+			phone_number=self.TEST_PHONE, first_name="Abebe", last_name="Bikila", email="invalid-email-format"
 		)
 		self.assertEqual(res["status"], "error")
 		self.assertEqual(res["code"], "VALIDATION_ERROR")
@@ -479,19 +509,12 @@ class TestLeadCreationAPI(unittest.TestCase):
 	def test_create_lead_api_duplicate(self):
 		"""Verifies that duplicate lead validation is triggered via the API creation flow."""
 		from oan_a2c.api.v1.leads import create_lead
-		r1 = create_lead(
-			phone_number=self.TEST_PHONE,
-			first_name="First",
-			last_name="Last"
-		)
+
+		r1 = create_lead(phone_number=self.TEST_PHONE, first_name="First", last_name="Last")
 		self.assertEqual(r1["status"], "success")
-		
+
 		# Attempting to create a duplicate active lead
-		r2 = create_lead(
-			phone_number=self.TEST_PHONE,
-			first_name="Second",
-			last_name="Last"
-		)
+		r2 = create_lead(phone_number=self.TEST_PHONE, first_name="Second", last_name="Last")
 		self.assertEqual(r2["status"], "error")
 		self.assertEqual(r2["code"], "VALIDATION_ERROR")
 
@@ -540,7 +563,7 @@ class TestVisitScheduleAPI(unittest.TestCase):
 	def test_schedule_visit_success(self):
 		"""Verifies that schedule_visit successfully creates a visit schedule, promotes lead status, and logs timeline."""
 		from oan_a2c.api.v1.leads import schedule_visit
-		
+
 		res = schedule_visit(
 			lead_id=self.lead_id,
 			visit_date="2026-06-10",
@@ -550,7 +573,7 @@ class TestVisitScheduleAPI(unittest.TestCase):
 			woreda="Ada'ama",
 			kebele="Kebele 02",
 			meeting_location="Cooperative Office",
-			notes="Bring farm certificates"
+			notes="Bring farm certificates",
 		)
 
 		self.assertEqual(res["status"], "success")
@@ -574,14 +597,18 @@ class TestVisitScheduleAPI(unittest.TestCase):
 
 		# Promote the visit schedule status to Completed
 		from oan_a2c.api.v1.leads import update_visit_schedule_status
+
 		update_visit_schedule_status(schedule_id=schedule_id, status="Completed")
 
 		# Verify Lead status remains Active (since promotion is manual in the UI)
 		lead_status = frappe.db.get_value("A2C Lead", self.lead_id, "status")
 		self.assertEqual(lead_status, "Active")
 
-		# Manually promote Lead status to Verified (simulating manual UI action)
+		# Manually promote Lead status to Verified (simulating manual UI action).
+		# Verification requires credit info + an approved consent to be in place.
 		from oan_a2c.api.v1.leads import update_lead_status
+
+		_make_lead_verifiable(self.lead_id)
 		update_lead_status(lead_id=self.lead_id, status="Verified")
 
 		# Verify Lead status is now Verified
@@ -590,15 +617,13 @@ class TestVisitScheduleAPI(unittest.TestCase):
 
 		# Verify system timeline comment is created
 		comments = frappe.get_all(
-			"A2C Lead Audit Event",
-			filters={"lead": self.lead_id},
-			fields=["event_description"]
+			"A2C Lead Audit Event", filters={"lead": self.lead_id}, fields=["event_description"]
 		)
 		self.assertTrue(any("Visit scheduled for 2026-06-10" in c["event_description"] for c in comments))
 
 	def test_get_visit_schedules_filtering(self):
 		"""Verifies filtering and pagination of get_visit_schedules API."""
-		from oan_a2c.api.v1.leads import schedule_visit, get_visit_schedules
+		from oan_a2c.api.v1.leads import get_visit_schedules, schedule_visit
 
 		# Create two schedules
 		schedule_visit(
@@ -608,7 +633,7 @@ class TestVisitScheduleAPI(unittest.TestCase):
 			region="Oromia",
 			zone="East Shewa",
 			woreda="Ada'ama",
-			kebele="01"
+			kebele="01",
 		)
 		schedule_visit(
 			lead_id=self.lead_id,
@@ -617,7 +642,7 @@ class TestVisitScheduleAPI(unittest.TestCase):
 			region="Oromia",
 			zone="East Shewa",
 			woreda="Ada'ama",
-			kebele="02"
+			kebele="02",
 		)
 
 		# Fetch all schedules
@@ -643,7 +668,7 @@ class TestVisitScheduleAPI(unittest.TestCase):
 			region="Oromia",
 			zone="East Shewa",
 			woreda="Ada'ama",
-			kebele="01"
+			kebele="01",
 		)
 		schedule_id = res["data"]["schedule_id"]
 
@@ -672,7 +697,7 @@ class TestVisitScheduleAPI(unittest.TestCase):
 			region="Oromia",
 			zone="East Shewa",
 			woreda="Ada'ama",
-			kebele="01"
+			kebele="01",
 		)
 		schedule_id_2 = res2["data"]["schedule_id"]
 
@@ -727,10 +752,14 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 		"""Verifies that update_lead_status successfully updates status and records the reason as a timeline comment."""
 		from oan_a2c.api.v1.leads import update_lead_status
 
+		# A lead can only move Active -> Verified once credit info + an approved
+		# consent exist (enforced by the workflow gate).
+		_make_lead_verifiable(self.lead_id)
+
 		res = update_lead_status(
 			lead_id=self.lead_id,
 			status="Verified",
-			reason="Conducted discovery call and verified information."
+			reason="Conducted discovery call and verified information.",
 		)
 
 		self.assertEqual(res["status"], "success")
@@ -742,9 +771,7 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 
 		# Check timeline comment
 		comments = frappe.get_all(
-			"A2C Lead Audit Event",
-			filters={"lead": self.lead_id},
-			fields=["event_description"]
+			"A2C Lead Audit Event", filters={"lead": self.lead_id}, fields=["event_description"]
 		)
 		self.assertEqual(len(comments), 1)
 		self.assertIn("Changed to Verified", comments[0]["event_description"])
@@ -755,10 +782,7 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 		"""Verifies update_lead_status rejects target statuses not defined in the Select choices."""
 		from oan_a2c.api.v1.leads import update_lead_status
 
-		res = update_lead_status(
-			lead_id=self.lead_id,
-			status="InvalidOutcomeStatusName"
-		)
+		res = update_lead_status(lead_id=self.lead_id, status="InvalidOutcomeStatusName")
 		self.assertEqual(res["status"], "error")
 		self.assertEqual(res["code"], "VALIDATION_ERROR")
 
@@ -766,19 +790,17 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 		"""Verifies update_lead_status blocks modifications when a lead is in a locked/terminal state."""
 		from oan_a2c.api.v1.leads import update_lead_status
 
-		# 1. Promote to Processed (Terminal)
+		# 1. Walk the workflow to the terminal Processed state: Active -> Verified
+		#    (requires prerequisites) -> Processed.
+		_make_lead_verifiable(self.lead_id)
+		update_lead_status(lead_id=self.lead_id, status="Verified", reason="Verified before processing.")
 		update_lead_status(
-			lead_id=self.lead_id,
-			status="Processed",
-			reason="Processing lead to loan application."
+			lead_id=self.lead_id, status="Processed", reason="Processing lead to loan application."
 		)
+		self.assertEqual(frappe.db.get_value("A2C Lead", self.lead_id, "status"), "Processed")
 
 		# 2. Attempting to change status again must raise a ValidationError
-		res = update_lead_status(
-			lead_id=self.lead_id,
-			status="Active",
-			reason="Try to make it active again"
-		)
+		res = update_lead_status(lead_id=self.lead_id, status="Active", reason="Try to make it active again")
 		self.assertEqual(res["status"], "error")
 		self.assertEqual(res["code"], "VALIDATION_ERROR")
 
@@ -796,7 +818,6 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 		lead = frappe.get_doc("A2C Lead", self.lead_id)
 		lead.status = "Active"
 		self.assertRaises(frappe.ValidationError, lead.save)
-
 
 
 class TestLeadAssignmentAPI(unittest.TestCase):
@@ -840,6 +861,7 @@ class TestLeadAssignmentAPI(unittest.TestCase):
 	def test_1_get_assignable_users(self):
 		"""Verifies that get_assignable_users returns users with appropriate roles."""
 		from oan_a2c.api.v1.leads import get_assignable_users
+
 		# Verify that we can run the query and check formatting keys are present
 		res = get_assignable_users()
 		self.assertEqual(res["status"], "success")
@@ -876,13 +898,11 @@ class TestLeadAssignmentAPI(unittest.TestCase):
 
 	def test_2_assign_lead_success(self):
 		"""Verifies that lead assignment updates properties and creates timeline logs."""
-		from oan_a2c.api.v1.leads import assign_lead, get_leads
 		from frappe.utils import today
 
-		res = assign_lead(
-			lead_id=self.lead_id,
-			assigned_to="Administrator"
-		)
+		from oan_a2c.api.v1.leads import assign_lead, get_leads
+
+		res = assign_lead(lead_id=self.lead_id, assigned_to="Administrator")
 
 		self.assertEqual(res["status"], "success")
 		self.assertEqual(res["data"]["assigned_to"], "Administrator")
@@ -895,9 +915,7 @@ class TestLeadAssignmentAPI(unittest.TestCase):
 
 		# Check comment timeline log
 		comments = frappe.get_all(
-			"A2C Lead Audit Event",
-			filters={"lead": self.lead_id},
-			fields=["event_description"]
+			"A2C Lead Audit Event", filters={"lead": self.lead_id}, fields=["event_description"]
 		)
 		self.assertTrue(any("Assigned to" in c["event_description"] for c in comments))
 
@@ -909,10 +927,8 @@ class TestLeadAssignmentAPI(unittest.TestCase):
 	def test_3_assign_lead_nonexistent_user_throws(self):
 		"""Verifies assign_lead blocks assignment to nonexistent user."""
 		from oan_a2c.api.v1.leads import assign_lead
-		res = assign_lead(
-			lead_id=self.lead_id,
-			assigned_to="nonexistent_email_123@coopbank.com"
-		)
+
+		res = assign_lead(lead_id=self.lead_id, assigned_to="nonexistent_email_123@coopbank.com")
 		self.assertEqual(res["status"], "error")
 		self.assertEqual(res["code"], "NOT_FOUND")
 
@@ -943,11 +959,12 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 
 	def test_comment_content_sanitization(self):
 		from oan_a2c.api.v1.leads import add_lead_comment
+
 		payload = "<script>alert('XSS')</script>Safe text <b>bold</b>"
 		res = add_lead_comment(lead_id=self.lead_id, content=payload)
 		self.assertEqual(res["status"], "success")
 		comment_id = res["data"]["comment_id"]
-		
+
 		# Verify comment is sanitized in DB
 		doc = frappe.get_doc("A2C Lead Audit Event", comment_id)
 		self.assertNotIn("<script>", doc.event_description)
@@ -955,6 +972,8 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 
 	def test_lead_status_reason_sanitization(self):
 		from oan_a2c.api.v1.leads import update_lead_status
+
+		_make_lead_verifiable(self.lead_id)
 		payload = "<iframe src='javascript:alert(1)'></iframe>Reason text"
 		res = update_lead_status(lead_id=self.lead_id, status="Verified", reason=payload)
 		self.assertEqual(res["status"], "success")
@@ -963,19 +982,20 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 		comments = frappe.get_all(
 			"A2C Lead Audit Event",
 			filters={"lead": self.lead_id, "event_type": "Status Changed"},
-			fields=["event_description"]
+			fields=["event_description"],
 		)
 		self.assertTrue(any("Reason text" in c["event_description"] for c in comments))
 		self.assertTrue(all("<iframe>" not in c["event_description"] for c in comments))
 
 	def test_credit_info_purpose_message_sanitization(self):
 		from oan_a2c.api.v1.leads import add_lead_credit_info
+
 		payload = "<img src=x onerror=alert(1)>Credit Purpose"
 		res = add_lead_credit_info(
 			lead_id=self.lead_id,
 			loan_type="Input loan (seeds, agrochemicals)",
 			loan_amount=5000.0,
-			purpose_message=payload
+			purpose_message=payload,
 		)
 		self.assertEqual(res["status"], "success")
 		credit_info_id = res["data"]["credit_info_id"]
@@ -987,6 +1007,7 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 
 	def test_schedule_visit_notes_sanitization(self):
 		from oan_a2c.api.v1.leads import schedule_visit
+
 		payload = "<a href='javascript:alert(1)'>Click me</a>Visit Notes"
 		res = schedule_visit(
 			lead_id=self.lead_id,
@@ -996,7 +1017,7 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 			zone="East Shewa",
 			woreda="Ada'ama",
 			kebele="01",
-			notes=payload
+			notes=payload,
 		)
 		self.assertEqual(res["status"], "success")
 		schedule_id = res["data"]["schedule_id"]
@@ -1007,20 +1028,18 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 
 	def test_webhook_call_notes_sanitization(self):
 		from oan_a2c.api.v1.webhooks import lead_inbound
+
 		# Unauthenticated Webhook parameters external_ref_id and timestamp sanitization
 		xss_ref = "<script>alert('Ref')</script>"
 		xss_time = "<img src=1 onerror=alert('Time')>"
-		
+
 		# Clear existing lead with phone 2 to ensure it creates one
 		test_phone = "+251977000002"
 		for name in frappe.get_all("A2C Lead", filters={"phone_number": test_phone}, pluck="name"):
 			frappe.delete_doc("A2C Lead", name, ignore_permissions=True, force=True)
-			
+
 		res = lead_inbound(
-			phone_number=test_phone,
-			lead_source="Missed Call",
-			external_ref_id=xss_ref,
-			timestamp=xss_time
+			phone_number=test_phone, lead_source="Missed Call", external_ref_id=xss_ref, timestamp=xss_time
 		)
 		self.assertEqual(res["status"], "success")
 		lead_id = res["data"]["lead_id"]
@@ -1028,10 +1047,7 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 		doc = frappe.get_doc("A2C Lead", lead_id)
 		self.assertNotIn("<script>", doc.call_notes)
 		self.assertNotIn("onerror", doc.call_notes)
-		
+
 		# Clean up
 		frappe.delete_doc("A2C Lead", lead_id, ignore_permissions=True, force=True)
 		frappe.db.commit()
-
-
-

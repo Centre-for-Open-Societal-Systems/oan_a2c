@@ -8,7 +8,9 @@ class A2CLead(Document):
 		if not self.is_new():
 			db_status = self.get_db_value("status")
 			if db_status == "Processed":
-				frappe.throw(_("Lead cannot be edited because it is already Processed"), frappe.ValidationError)
+				frappe.throw(
+					_("Lead cannot be edited because it is already Processed"), frappe.ValidationError
+				)
 			elif db_status == "Rejected" and self.status != "Rejected":
 				frappe.throw(_("Status is locked because the lead is Rejected"), frappe.ValidationError)
 			# Guard the transition *into* Verified: only fire when the status is
@@ -40,7 +42,7 @@ class A2CLead(Document):
 
 		if missing:
 			frappe.throw(
-				_("Lead cannot be Verified until {0} exists.").format(_(" and ").join(missing)),
+				_("Lead cannot be Verified until {0} exists.").format(f" {_('and')} ".join(missing)),
 				frappe.ValidationError,
 			)
 
@@ -59,17 +61,16 @@ class A2CLead(Document):
 		associated with the 'A2C Lead' DocType to maintain real-time aggregates.
 		"""
 		try:
-			cards = frappe.get_all(
-				"Number Card",
-				filters={"document_type": "A2C Lead"},
-				pluck="name"
-			)
+			cards = frappe.get_all("Number Card", filters={"document_type": "A2C Lead"}, pluck="name")
 			for card in cards:
 				cache_key = f"number_card_data:{card}"
 				frappe.cache().delete_value(cache_key)
 		except Exception:
-			# Fail close. Never allow cache clearance anomalies to block core lead transactions.
-			pass
+			# Fail close. Never allow cache clearance anomalies to block core lead
+			# transactions — but leave a trace so silent cache drift is diagnosable.
+			frappe.logger().warning(
+				f"Number Card cache invalidation failed for lead {self.name}: {frappe.get_traceback(with_context=False)}"
+			)
 
 	def _enforce_external_id_uniqueness(self):
 		"""
@@ -89,9 +90,9 @@ class A2CLead(Document):
 		)
 		if existing:
 			frappe.throw(
-				_(
-					"A lead ({0}) already exists with External Reference ID {1}."
-				).format(existing, self.external_id),
+				_("A lead ({0}) already exists with External Reference ID {1}.").format(
+					existing, self.external_id
+				),
 				frappe.DuplicateEntryError,
 			)
 
