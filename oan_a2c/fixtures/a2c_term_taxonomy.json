@@ -1,0 +1,38 @@
+[
+    {
+        "doctype": "A2C Term Taxonomy",
+        "term": "Input Financing",
+        "taxonomy": "loan_category",
+        "description": "Loan Categories"
+    },
+    {
+        "doctype": "A2C Term Taxonomy",
+        "term": "Machinery/Equipment",
+        "taxonomy": "loan_category",
+        "description": "Loan Categories"
+    },
+    {
+        "doctype": "A2C Term Taxonomy",
+        "term": "Conventional",
+        "taxonomy": "loan_category",
+        "description": "Loan Categories"
+    },
+    {
+        "doctype": "A2C Term Taxonomy",
+        "term": "Murabaha",
+        "taxonomy": "loan_category",
+        "description": "Loan Categories"
+    },
+    {
+        "doctype": "A2C Term Taxonomy",
+        "term": "Fixed",
+        "taxonomy": "pa_rate_type",
+        "description": "Rate Type Attribute"
+    },
+    {
+        "doctype": "A2C Term Taxonomy",
+        "term": "Floating",
+        "taxonomy": "pa_rate_type",
+        "description": "Rate Type Attribute"
+    }
+]

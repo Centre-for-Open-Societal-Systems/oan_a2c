@@ -13,6 +13,13 @@
   "current_step",
   "loan_officer",
   "credit_info_section",
+  "bank",
+  "loan_product",
+  "requested_amount",
+  "approved_amount",
+  "interest_rate",
+  "tenure_months",
+  "term_snapshot",
   "loan_amount",
   "loan_type",
   "col_break_loan",
@@ -318,6 +325,50 @@
    "fieldtype": "Link",
    "label": "Consent ID",
    "options": "A2C Consent Request"
+  },
+  {
+   "fieldname": "bank",
+   "fieldtype": "Data",
+   "label": "Bank",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "loan_product",
+   "fieldtype": "Data",
+   "label": "Loan Product",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "requested_amount",
+   "fieldtype": "Currency",
+   "label": "Requested Amount",
+   "reqd": 1
+  },
+  {
+   "fieldname": "approved_amount",
+   "fieldtype": "Currency",
+   "label": "Approved Amount"
+  },
+  {
+   "fieldname": "interest_rate",
+   "fieldtype": "Percent",
+   "label": "Interest Rate",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tenure_months",
+   "fieldtype": "Int",
+   "label": "Tenure (Months)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "term_snapshot",
+   "fieldtype": "Table",
+   "label": "Term Snapshot",
+   "options": "A2C Loan Application Term Snapshot",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

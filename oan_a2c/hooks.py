@@ -5,7 +5,7 @@ app_description = "Access to Credit platform as a DPG for the Open Agro Stack in
 app_email = "admin@openagrinet.org"
 app_license = "mit"
 
-fixtures = ["Workflow", "Workflow State", "Workflow Action Master"]
+fixtures = ["Workflow", "Workflow State", "Workflow Action Master", "A2C Term", "A2C Term Taxonomy"]
 
 # Apps
 # ------------------
@@ -128,25 +128,26 @@ fixtures = ["Workflow", "Workflow State", "Workflow Action Master"]
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+BANK_SCOPED = [
+	"A2C Loan Product",
+	"A2C Term Relationship",
+	"A2C Loan Product Lookup",
+	"A2C Loan Product Attribute Lookup",
+	"A2C Loan Application",
+]
+
+permission_query_conditions = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_query" for d in BANK_SCOPED}
+has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d in BANK_SCOPED}
 
 # Document Events
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"A2C Loan Product": {
+		"on_update": "oan_a2c.a2c_marketplace.lookups.refresh_product_lookups",
+	}
+}
 
 # Scheduled Tasks
 # ---------------

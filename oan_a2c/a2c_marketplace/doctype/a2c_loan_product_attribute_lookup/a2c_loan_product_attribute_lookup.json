@@ -1,0 +1,85 @@
+{
+ "actions": [],
+ "autoname": "format:{loan_product}-{term}",
+ "creation": "2026-07-20 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "loan_product",
+  "bank",
+  "taxonomy",
+  "term_id",
+  "accepting"
+ ],
+ "fields": [
+  {
+   "fieldname": "loan_product",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Loan Product",
+   "options": "A2C Loan Product",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "bank",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Bank",
+   "options": "A2C Participating Bank",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "taxonomy",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Taxonomy",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "term_id",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Term ID",
+   "options": "A2C Term",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "accepting",
+   "fieldtype": "Check",
+   "label": "Accepting"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-20 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A2C Marketplace",
+ "name": "A2C Loan Product Attribute Lookup",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

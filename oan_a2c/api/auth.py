@@ -102,13 +102,15 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 	token = generate_access_token(usr, roles)
 	refresh_token = generate_refresh_token(usr, remember_me)
 
-	# Fetch the user's linked bank via User Permissions (populated once
-	# the Participating Bank DocType and permission fixtures are active).
+	BANK_ROLES = ["Bank Admin", "Bank Agent"]
+	has_bank_role = any(r in BANK_ROLES for r in roles)
 	bank = None
-	if "Bank Agent" in roles:
+	if has_bank_role:
 		bank = frappe.db.get_value(
-			"User Permission", {"user": usr, "allow": "Participating Bank"}, "for_value"
+			"User Permission", {"user": usr, "allow": "A2C Participating Bank"}, "for_value"
 		)
+		if not bank:
+			frappe.logger().warning(f"User {usr} has bank role but no bank binding.")
 
 	return success_response(
 		data={
@@ -274,12 +276,15 @@ def get_me():
 	user = frappe.get_doc("User", frappe.session.user)
 	roles = [d.role for d in user.roles]
 
-	# Fetch the user's linked bank via User Permissions
+	BANK_ROLES = ["Bank Admin", "Bank Agent"]
+	has_bank_role = any(r in BANK_ROLES for r in roles)
 	bank = None
-	if "Bank Agent" in roles:
+	if has_bank_role:
 		bank = frappe.db.get_value(
-			"User Permission", {"user": frappe.session.user, "allow": "Participating Bank"}, "for_value"
+			"User Permission", {"user": frappe.session.user, "allow": "A2C Participating Bank"}, "for_value"
 		)
+		if not bank:
+			frappe.logger().warning(f"User {frappe.session.user} has bank role but no bank binding.")
 
 	return success_response(
 		data={"email": user.email, "full_name": user.full_name, "roles": roles, "bank": bank}
