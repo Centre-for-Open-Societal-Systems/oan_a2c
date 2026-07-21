@@ -42,6 +42,10 @@ def register_user(email: str, full_name: str, password: str, phone_number: str):
 	})
 	user.insert(ignore_permissions=True)
 	
+	# Clear the warning message Frappe automatically adds when a user has no roles
+	if hasattr(frappe.local, 'message_log'):
+		frappe.local.message_log = []
+
 	# nosemgrep: frappe-manual-commit -- reviewed: persist user registration
 	frappe.db.commit()
 
