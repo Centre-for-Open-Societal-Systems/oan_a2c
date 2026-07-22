@@ -42,9 +42,8 @@
   },
   {
    "fieldname": "entity_type",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "label": "Entity Type",
-   "options": "Commercial Bank\nMicrofinance Institution",
    "reqd": 1
   },
   {
@@ -155,6 +154,18 @@
  "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Administrator",
+   "share": 1,
+   "write": 1
+  },
   {
    "create": 1,
    "delete": 1,

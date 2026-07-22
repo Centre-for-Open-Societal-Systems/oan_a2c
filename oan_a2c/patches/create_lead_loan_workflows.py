@@ -158,9 +158,10 @@ def _backfill_workflow_state():
 		frappe.db.set_value("A2C Lead", name, "workflow_state", status, update_modified=False)
 
 	# Loans: blank/legacy statuses default to Draft; Approved/Rejected become docstatus 1.
+	# Migration runs as Administrator over every bank's records by design. bank-scope-exempt
 	for name, status, docstatus in frappe.get_all(
 		"A2C Loan Application", fields=["name", "status", "docstatus"], as_list=True
-	):
+	):  # bank-scope-exempt
 		state = status if status in ("Draft", "Processing", "Approved", "Rejected") else "Draft"
 		frappe.db.set_value("A2C Loan Application", name, "workflow_state", state, update_modified=False)
 		# Submit existing terminal records so their docstatus matches the new workflow.

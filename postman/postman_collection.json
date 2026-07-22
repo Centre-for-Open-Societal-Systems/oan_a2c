@@ -1328,7 +1328,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text",
                                 "description": "Standard Frappe API Key and API Secret token."
                             },
@@ -1881,7 +1881,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],

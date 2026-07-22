@@ -138,6 +138,13 @@
    "read": 1,
    "role": "Bank Agent",
    "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "A2C Administrator",
+   "write": 1
   }
  ],
  "row_format": "Dynamic",

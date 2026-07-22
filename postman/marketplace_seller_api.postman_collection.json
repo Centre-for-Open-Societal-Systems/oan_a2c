@@ -7,6 +7,105 @@
     },
     "item": [
         {
+            "name": "Authentication",
+            "item": [
+                {
+                    "name": "Register User",
+                    "event": [
+                        {
+                            "listen": "prerequest",
+                            "script": {
+                                "exec": [
+                                    "const randomId = Math.random().toString(36).substring(2, 8);",
+                                    "const randomNumber = Math.floor(10000000 + Math.random() * 90000000);",
+                                    "const randomPhone = `09${randomNumber}`;",
+                                    "const randomEmail = `user_${randomId}@bank.com`;",
+                                    "const randomPassword = `Pass_${randomId}!123`;",
+                                    "pm.collectionVariables.set(\"user_email\", randomEmail);",
+                                    "pm.collectionVariables.set(\"user_password\", randomPassword);",
+                                    "pm.collectionVariables.set(\"user_phone\", randomPhone);"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.auth.register_user",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.auth.register_user"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"{{user_email}}\",\n    \"full_name\": \"{{user_full_name}}\",\n    \"password\": \"{{user_password}}\",\n    \"phone_number\": \"{{user_phone}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Login",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "if (pm.response.code === 200) {",
+                                    "    var jsonData = pm.response.json();",
+                                    "    if (jsonData.data && jsonData.data.access_token) {",
+                                    "        pm.collectionVariables.set(\"jwt_token\", jsonData.data.access_token);",
+                                    "    }",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.auth.login",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.auth.login"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"usr\": \"{{user_email}}\",\n    \"pwd\": \"{{user_password}}\",\n    \"remember_me\": {{remember_me}}\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
             "name": "Dashboard",
             "item": [
                 {
@@ -35,7 +134,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -95,7 +194,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -120,29 +219,24 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.applicants.get_applicants_for_product?product_id=test",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.applicants.get_applicants_for_product?product_id={{product_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "applicants",
-                                "get_applicants_for_product"
+                                "oan_a2c.api.v1.seller.applicants.get_applicants_for_product"
                             ],
                             "query": [
                                 {
                                     "key": "product_id",
-                                    "value": "test"
+                                    "value": "{{product_id}}"
                                 }
                             ]
                         }
@@ -156,29 +250,24 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.applicants.search_applicants?query=test",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.applicants.search_applicants?query={{search_query}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "applicants",
-                                "search_applicants"
+                                "oan_a2c.api.v1.seller.applicants.search_applicants"
                             ],
                             "query": [
                                 {
                                     "key": "query",
-                                    "value": "test"
+                                    "value": "{{search_query}}"
                                 }
                             ]
                         }
@@ -192,7 +281,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -204,17 +293,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "applicants",
-                                "update_status"
+                                "oan_a2c.api.v1.seller.applicants.update_status"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"application_id\": \"test\",\n    \"status\": \"Approved\"\n}",
+                            "raw": "{\n    \"application_id\": \"{{application_id}}\",\n    \"status\": \"{{applicant_status}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -231,7 +315,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -243,17 +327,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "applicants",
-                                "assign_applicant"
+                                "oan_a2c.api.v1.seller.applicants.assign_applicant"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"application_id\": \"test\",\n    \"assigned_to\": \"test@test.com\"\n}",
+                            "raw": "{\n    \"application_id\": \"{{application_id}}\",\n    \"assigned_to\": \"{{assigned_to_email}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -270,7 +349,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -282,17 +361,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "applicants",
-                                "unassign_applicant"
+                                "oan_a2c.api.v1.seller.applicants.unassign_applicant"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"application_id\": \"test\",\n    \"unassign_from\": \"test@test.com\"\n}",
+                            "raw": "{\n    \"application_id\": \"{{application_id}}\",\n    \"unassign_from\": \"{{assigned_to_email}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -314,7 +388,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -326,17 +400,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "loan_products",
-                                "create_product"
+                                "oan_a2c.api.v1.seller.loan_products.create_product"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"product_name\": \"Test Product\",\n    \"min_interest_rate\": 10.0,\n    \"max_amount\": 100000.0,\n    \"tenure_months\": 12,\n    \"max_interest_rate\": 20.0,\n    \"min_amount\": 10000.0,\n    \"description\": \"A test loan product\",\n    \"product_meta\": [\n        {\n            \"meta_key\": \"key\",\n            \"meta_value\": \"value\"\n        }\n    ]\n}",
+                            "raw": "{\n    \"product_name\": \"{{product_name}}\",\n    \"min_interest_rate\": {{min_interest_rate}},\n    \"max_amount\": {{max_amount}},\n    \"tenure_months\": {{tenure_months}},\n    \"max_interest_rate\": {{max_interest_rate}},\n    \"min_amount\": {{min_amount}},\n    \"description\": \"{{product_description}}\",\n    \"product_meta\": [\n        {\n            \"meta_key\": \"{{meta_key}}\",\n            \"meta_value\": \"{{meta_value}}\"\n        }\n    ]\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -353,7 +422,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -365,17 +434,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "loan_products",
-                                "update_product"
+                                "oan_a2c.api.v1.seller.loan_products.update_product"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"product_id\": \"test\",\n    \"product_name\": \"Updated Test Product\",\n    \"product_meta\": [\n        {\n            \"meta_key\": \"key\",\n            \"meta_value\": \"value2\"\n        }\n    ]\n}",
+                            "raw": "{\n    \"product_id\": \"{{product_id}}\",\n    \"product_name\": \"{{updated_product_name}}\",\n    \"product_meta\": [\n        {\n            \"meta_key\": \"{{meta_key}}\",\n            \"meta_value\": \"{{updated_meta_value}}\"\n        }\n    ]\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -392,7 +456,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -404,17 +468,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "loan_products",
-                                "set_product_status"
+                                "oan_a2c.api.v1.seller.loan_products.set_product_status"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"product_id\": \"test\",\n    \"status\": \"Active\"\n}",
+                            "raw": "{\n    \"product_id\": \"{{product_id}}\",\n    \"status\": \"{{product_status}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -431,7 +490,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -443,12 +502,7 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "loan_products",
-                                "list_products"
+                                "oan_a2c.api.v1.seller.loan_products.list_products"
                             ]
                         }
                     },
@@ -461,29 +515,24 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.loan_products.get_product?product_id=test",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.loan_products.get_product?product_id={{product_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "loan_products",
-                                "get_product"
+                                "oan_a2c.api.v1.seller.loan_products.get_product"
                             ],
                             "query": [
                                 {
                                     "key": "product_id",
-                                    "value": "test"
+                                    "value": "{{product_id}}"
                                 }
                             ]
                         }
@@ -502,7 +551,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -514,12 +563,7 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "taxonomy",
-                                "get_categories"
+                                "oan_a2c.api.v1.seller.taxonomy.get_categories"
                             ]
                         }
                     },
@@ -532,7 +576,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -544,12 +588,7 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "taxonomy",
-                                "get_tags"
+                                "oan_a2c.api.v1.seller.taxonomy.get_tags"
                             ]
                         }
                     },
@@ -562,7 +601,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -574,17 +613,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "taxonomy",
-                                "set_product_categories"
+                                "oan_a2c.api.v1.seller.taxonomy.set_product_categories"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"product_id\": \"test\",\n    \"term_ids\": [\n        \"term1\",\n        \"term2\"\n    ]\n}",
+                            "raw": "{\n    \"product_id\": \"{{product_id}}\",\n    \"term_ids\": [\n        \"{{category_term_1}}\",\n        \"{{category_term_2}}\"\n    ]\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -601,7 +635,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -613,17 +647,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "taxonomy",
-                                "set_product_tags"
+                                "oan_a2c.api.v1.seller.taxonomy.set_product_tags"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"product_id\": \"test\",\n    \"term_ids\": [\n        \"tag1\",\n        \"tag2\"\n    ]\n}",
+                            "raw": "{\n    \"product_id\": \"{{product_id}}\",\n    \"term_ids\": [\n        \"{{tag_term_1}}\",\n        \"{{tag_term_2}}\"\n    ]\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -640,7 +669,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -652,17 +681,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "taxonomy",
-                                "set_product_attributes"
+                                "oan_a2c.api.v1.seller.taxonomy.set_product_attributes"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"product_id\": \"test\",\n    \"attributes\": {\n        \"taxonomy1\": [\n            \"term1\",\n            \"term2\"\n        ]\n    }\n}",
+                            "raw": "{\n    \"product_id\": \"{{product_id}}\",\n    \"attributes\": {\n        \"{{attribute_taxonomy}}\": [\n            \"{{attribute_term_1}}\",\n            \"{{attribute_term_2}}\"\n        ]\n    }\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -684,7 +708,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -696,17 +720,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "onboarding",
-                                "register_bank"
+                                "oan_a2c.api.v1.seller.onboarding.register_bank"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"bank_name\": \"Test Bank\",\n    \"bank_code\": \"TB001\",\n    \"entity_type\": \"Bank\",\n    \"registered_street\": \"123 Test St\",\n    \"registered_city\": \"Test City\",\n    \"registered_country\": \"Test Country\",\n    \"registered_postal_code\": \"12345\",\n    \"registered_email\": \"bank@test.com\",\n    \"registered_phone\": \"1234567890\"\n}",
+                            "raw": "{\n    \"bank_name\": \"{{bank_name}}\",\n    \"bank_code\": \"{{bank_code}}\",\n    \"entity_type\": \"{{entity_type}}\",\n    \"registered_street\": \"{{registered_street}}\",\n    \"registered_city\": \"{{registered_city}}\",\n    \"registered_country\": \"{{registered_country}}\",\n    \"registered_postal_code\": \"{{registered_postal_code}}\",\n    \"registered_email\": \"{{registered_email}}\",\n    \"registered_phone\": \"{{registered_phone}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -723,7 +742,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -735,17 +754,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "onboarding",
-                                "save_org_contacts"
+                                "oan_a2c.api.v1.seller.onboarding.save_org_contacts"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"gro_name\": \"Test GRO\",\n    \"gro_mobile\": \"1234567890\",\n    \"ops_name\": \"Test Ops\",\n    \"ops_mobile\": \"0987654321\"\n}",
+                            "raw": "{\n    \"gro_name\": \"{{gro_name}}\",\n    \"gro_mobile\": \"{{gro_mobile}}\",\n    \"ops_name\": \"{{ops_name}}\",\n    \"ops_mobile\": \"{{ops_mobile}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -762,7 +776,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -774,62 +788,71 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "onboarding",
-                                "upload_kyc_document"
+                                "oan_a2c.api.v1.seller.onboarding.upload_kyc_document"
                             ]
                         },
                         "body": {
-                            "mode": "formdata",
-                            "formdata": [
-                                {
-                                    "key": "filename",
-                                    "value": "kyc.pdf",
-                                    "type": "text"
-                                },
-                                {
-                                    "key": "filedata",
-                                    "value": "dummy data",
-                                    "type": "text"
+                            "mode": "raw",
+                            "raw": "{\n    \"filename\": \"{{kyc_filename}}\",\n    \"filedata\": \"{{kyc_filedata}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
                                 }
-                            ]
+                            }
                         }
                     },
                     "response": []
                 },
                 {
-                    "name": "Activate Bank",
+                    "name": "Get Bank Status",
                     "request": {
-                        "method": "POST",
+                        "method": "GET",
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.activate_bank",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.get_bank_status",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
+                                "oan_a2c.api.v1.seller.onboarding.get_bank_status"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Bank Status",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
                                 "api",
-                                "v1",
-                                "seller",
-                                "onboarding",
-                                "activate_bank"
+                                "method",
+                                "oan_a2c.api.v1.seller.onboarding.update_bank_status"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{}",
+                            "raw": "{\n    \"bank_code\": \"{{bank_code}}\",\n    \"new_status\": \"{{bank_status}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -846,7 +869,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -858,17 +881,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "onboarding",
-                                "invite_user"
+                                "oan_a2c.api.v1.seller.onboarding.invite_user"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"email\": \"user@test.com\",\n    \"full_name\": \"Test User\",\n    \"role_profile\": \"Bank Admin\"\n}",
+                            "raw": "{\n    \"email\": \"{{invited_user_email}}\",\n    \"full_name\": \"{{invited_user_name}}\",\n    \"role\": \"{{invited_user_role}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -885,7 +903,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -897,17 +915,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "onboarding",
-                                "deactivate_user"
+                                "oan_a2c.api.v1.seller.onboarding.deactivate_user"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"email\": \"user@test.com\"\n}",
+                            "raw": "{\n    \"email\": \"{{deactivate_user_email}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -924,7 +937,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -936,12 +949,7 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "onboarding",
-                                "list_users"
+                                "oan_a2c.api.v1.seller.onboarding.list_users"
                             ]
                         }
                     },
@@ -954,7 +962,7 @@
                         "header": [
                             {
                                 "key": "Authorization",
-                                "value": "token {{api_key}}:{{api_secret}}",
+                                "value": "Bearer {{jwt_token}}",
                                 "type": "text"
                             }
                         ],
@@ -966,17 +974,12 @@
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c",
-                                "api",
-                                "v1",
-                                "seller",
-                                "onboarding",
-                                "update_user_profile"
+                                "oan_a2c.api.v1.seller.onboarding.update_user_profile"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"email\": \"user@test.com\",\n    \"full_name\": \"Updated User\",\n    \"role_profile\": \"Bank Officer\"\n}",
+                            "raw": "{\n    \"email\": \"{{invited_user_email}}\",\n    \"full_name\": \"{{updated_user_name}}\",\n    \"role\": \"{{updated_user_role}}\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -995,12 +998,220 @@
             "value": "http://localhost:8000"
         },
         {
+            "key": "jwt_token",
+            "value": "your_jwt_token_here"
+        },
+        {
             "key": "api_key",
             "value": "your_api_key_here"
         },
         {
             "key": "api_secret",
             "value": "your_api_secret_here"
+        },
+        {
+            "key": "user_email",
+            "value": "test@bank.com"
+        },
+        {
+            "key": "user_full_name",
+            "value": "Test User"
+        },
+        {
+            "key": "user_password",
+            "value": "securePassword123"
+        },
+        {
+            "key": "user_phone",
+            "value": "0911000000"
+        },
+        {
+            "key": "remember_me",
+            "value": "false"
+        },
+        {
+            "key": "product_id",
+            "value": "test"
+        },
+        {
+            "key": "search_query",
+            "value": "test"
+        },
+        {
+            "key": "application_id",
+            "value": "test"
+        },
+        {
+            "key": "applicant_status",
+            "value": "Approved"
+        },
+        {
+            "key": "assigned_to_email",
+            "value": "test@test.com"
+        },
+        {
+            "key": "product_name",
+            "value": "Test Product"
+        },
+        {
+            "key": "min_interest_rate",
+            "value": "10.0"
+        },
+        {
+            "key": "max_amount",
+            "value": "100000.0"
+        },
+        {
+            "key": "tenure_months",
+            "value": "12"
+        },
+        {
+            "key": "max_interest_rate",
+            "value": "20.0"
+        },
+        {
+            "key": "min_amount",
+            "value": "10000.0"
+        },
+        {
+            "key": "product_description",
+            "value": "A test loan product"
+        },
+        {
+            "key": "meta_key",
+            "value": "key"
+        },
+        {
+            "key": "meta_value",
+            "value": "value"
+        },
+        {
+            "key": "updated_product_name",
+            "value": "Updated Test Product"
+        },
+        {
+            "key": "updated_meta_value",
+            "value": "value2"
+        },
+        {
+            "key": "product_status",
+            "value": "Active"
+        },
+        {
+            "key": "category_term_1",
+            "value": "term1"
+        },
+        {
+            "key": "category_term_2",
+            "value": "term2"
+        },
+        {
+            "key": "tag_term_1",
+            "value": "tag1"
+        },
+        {
+            "key": "tag_term_2",
+            "value": "tag2"
+        },
+        {
+            "key": "attribute_taxonomy",
+            "value": "taxonomy1"
+        },
+        {
+            "key": "attribute_term_1",
+            "value": "term1"
+        },
+        {
+            "key": "attribute_term_2",
+            "value": "term2"
+        },
+        {
+            "key": "bank_name",
+            "value": "Test Bank"
+        },
+        {
+            "key": "bank_code",
+            "value": "TB001"
+        },
+        {
+            "key": "entity_type",
+            "value": "Bank"
+        },
+        {
+            "key": "registered_street",
+            "value": "123 Test St"
+        },
+        {
+            "key": "registered_city",
+            "value": "Test City"
+        },
+        {
+            "key": "registered_country",
+            "value": "Test Country"
+        },
+        {
+            "key": "registered_postal_code",
+            "value": "12345"
+        },
+        {
+            "key": "registered_email",
+            "value": "bank@test.com"
+        },
+        {
+            "key": "registered_phone",
+            "value": "1234567890"
+        },
+        {
+            "key": "gro_name",
+            "value": "Test GRO"
+        },
+        {
+            "key": "gro_mobile",
+            "value": "1234567890"
+        },
+        {
+            "key": "ops_name",
+            "value": "Test Ops"
+        },
+        {
+            "key": "ops_mobile",
+            "value": "0987654321"
+        },
+        {
+            "key": "kyc_filename",
+            "value": "kyc.pdf"
+        },
+        {
+            "key": "kyc_filedata",
+            "value": "JVBERi0xLjQKJcOkw7zDtsOfCjIg..."
+        },
+        {
+            "key": "bank_status",
+            "value": "Active"
+        },
+        {
+            "key": "invited_user_email",
+            "value": "user@test.com"
+        },
+        {
+            "key": "invited_user_name",
+            "value": "Test User"
+        },
+        {
+            "key": "invited_user_role",
+            "value": "Bank Admin"
+        },
+        {
+            "key": "deactivate_user_email",
+            "value": "user@test.com"
+        },
+        {
+            "key": "updated_user_name",
+            "value": "Updated User"
+        },
+        {
+            "key": "updated_user_role",
+            "value": "Bank Officer"
         }
     ]
 }
