@@ -13,6 +13,7 @@ from frappe import _
 from frappe.utils import sanitize_html, strip_html
 from pydantic import BaseModel, Field, field_validator
 
+from oan_a2c.a2c_marketplace.roles import BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
 from oan_a2c.api.utils import (
 	SafeDate,
 	SafeEmail,
@@ -52,6 +53,7 @@ class AddLeadCreditInfoSchema(BaseModel):
 	loan_type: str = Field(..., min_length=1)
 	loan_amount: float = Field(..., gt=0, le=999999999999.0)
 	purpose_message: str = Field(..., min_length=1)
+	loan_product: str | None = None
 
 
 class LeadIDSchema(BaseModel):
@@ -473,6 +475,7 @@ def add_lead_credit_info(**kwargs):
 	loan_type = kwargs.get("loan_type")
 	loan_amount = kwargs.get("loan_amount")
 	purpose_message = kwargs.get("purpose_message")
+	loan_product = kwargs.get("loan_product")
 
 	if purpose_message:
 		purpose_message = strip_html(purpose_message)
@@ -491,11 +494,15 @@ def add_lead_credit_info(**kwargs):
 	if loan_type not in allowed_types:
 		frappe.throw(_("Invalid loan type: {0}").format(loan_type), frappe.ValidationError)
 
+	if loan_product and not frappe.db.exists("A2C Loan Product", loan_product):
+		frappe.throw(_("Loan Product {0} not found").format(loan_product), frappe.DoesNotExistError)
+
 	credit_info = frappe.new_doc("A2C Credit Information")
 	credit_info.lead = lead_id
 	credit_info.loan_type = loan_type
 	credit_info.loan_amount = loan_amount
 	credit_info.purpose_message = purpose_message
+	credit_info.loan_product = loan_product
 	credit_info.insert(ignore_permissions=False)
 
 	# Insert Audit Event
@@ -605,7 +612,7 @@ def get_assignable_users(**kwargs):
 	# do not have permission to read/query the Has Role doctype.
 	role_users = frappe.get_list(
 		"Has Role",
-		filters={"role": ["in", ["Development Agent", "Bank Agent"]]},
+		filters={"role": ["in", [DEVELOPMENT_AGENT_ROLE, BANK_AGENT_ROLE]]},
 		pluck="parent",
 		ignore_permissions=True,
 	)

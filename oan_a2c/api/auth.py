@@ -9,6 +9,7 @@ from frappe.auth import LoginManager
 from frappe.core.doctype.user.user import update_password
 from pydantic import BaseModel, Field, field_validator
 
+from oan_a2c.a2c_marketplace.roles import BANK_ROLES
 from oan_a2c.api.utils import SafeEmail, handle_api_errors, success_response, validate_request
 
 
@@ -102,7 +103,6 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 	token = generate_access_token(usr, roles)
 	refresh_token = generate_refresh_token(usr, remember_me)
 
-	BANK_ROLES = ["Bank Admin", "Bank Agent"]
 	has_bank_role = any(r in BANK_ROLES for r in roles)
 	bank = None
 	if has_bank_role:
@@ -276,7 +276,6 @@ def get_me():
 	user = frappe.get_doc("User", frappe.session.user)
 	roles = [d.role for d in user.roles]
 
-	BANK_ROLES = ["Bank Admin", "Bank Agent"]
 	has_bank_role = any(r in BANK_ROLES for r in roles)
 	bank = None
 	if has_bank_role:

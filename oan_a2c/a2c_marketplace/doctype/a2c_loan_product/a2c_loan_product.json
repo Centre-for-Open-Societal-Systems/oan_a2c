@@ -125,7 +125,7 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Bank Product Manager",
+   "role": "A2C Bank Admin",
    "share": 1,
    "write": 1
   },
@@ -135,16 +135,7 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Bank Admin",
-   "share": 1
-  },
-  {
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Bank Agent",
+   "role": "A2C Bank Agent",
    "share": 1
   },
   {

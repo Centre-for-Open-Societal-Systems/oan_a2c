@@ -1,15 +1,12 @@
 import frappe
 from frappe import _
 
-# Platform-level admin that sits above Bank Admin / Bank Agent and is unbound by
-# bank tenant isolation (sees all banks). Created by the
-# create_marketplace_admin_role patch.
-MARKETPLACE_ADMIN_ROLE = "A2C Marketplace Admin"
-
-# Roles exempt from bank scoping. System Manager is kept alongside the app role
-# so that a plain site admin (not necessarily the Administrator user, who bypasses
-# everything in Frappe core) is never locked out of data for support/migrations.
-BANK_UNBOUND_ROLES = {MARKETPLACE_ADMIN_ROLE, "System Manager"}
+# Role names live in one place. Re-exported here so existing imports
+# (e.g. the create_marketplace_admin_role patch) keep working.
+from oan_a2c.a2c_marketplace.roles import (
+	BANK_UNBOUND_ROLES,
+	MARKETPLACE_ADMIN_ROLE,
+)
 
 
 def is_bank_unbound(user=None):
@@ -72,6 +69,13 @@ def bank_filters(user=None, base=None):
 
 	bank = get_user_bank(user)
 	if not bank:
+		# Rare: a non-admin user with no bank binding is an onboarding/config bug.
+		# log_error surfaces it in the Error Log UI so ops notice; low volume, so
+		# the DB write cost is acceptable here (unlike per-request deny logging).
+		frappe.log_error(
+			title="Bank scope: user without bank binding",
+			message=f"user={user} hit a bank-scoped query with no A2C Participating Bank User Permission.",
+		)
 		frappe.throw(_("No bank is assigned to this user."), frappe.PermissionError)
 
 	if is_list:
@@ -116,8 +120,15 @@ def bank_scope_doc(doc, user=None):
 		return True
 
 	bank = get_user_bank(user)
+	allowed = bool(bank) and doc.bank == bank
 
-	if not bank:
-		return False
+	if not allowed:
+		# Potentially high volume (probing), so use the file logger, not log_error:
+		# cheap and won't bloat the Error Log / DB. Ship logs/ to your aggregator
+		# in production to make this an audit trail.
+		frappe.logger("bank_scope").warning(
+			f"Denied cross-bank access: user={user} bank={bank} "
+			f"{doc.doctype}={doc.name} doc_bank={doc.get('bank')}"
+		)
 
-	return doc.bank == bank
+	return allowed

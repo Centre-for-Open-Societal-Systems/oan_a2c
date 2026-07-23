@@ -145,6 +145,7 @@ has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d 
 doc_events = {
 	"A2C Loan Product": {
 		"on_update": "oan_a2c.a2c_marketplace.lookups.refresh_product_lookups",
+		"on_trash": "oan_a2c.a2c_marketplace.lookups.delete_product_lookups",
 	}
 }
 
@@ -255,3 +256,21 @@ auth_hooks = ["oan_a2c.api.middleware.validate_jwt_request"]
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
+
+fixtures = [
+	{
+		"dt": "Role",
+		"filters": [
+			[
+				"name",
+				"in",
+				[
+					"A2C Marketplace Admin",
+					"A2C Bank Admin",
+					"A2C Bank Agent",
+					"A2C Development Agent",
+				],
+			]
+		],
+	}
+]

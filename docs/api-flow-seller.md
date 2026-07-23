@@ -51,7 +51,7 @@ All endpoints in this module use the standard `@handle_api_errors` and `success_
 
 ---
 
-## 3. Endpoint Referencewearewher
+## 3. Endpoint Reference
 
 Convention for parameter tables:
 
@@ -97,11 +97,11 @@ Retrieves a paginated list of all loan applications belonging to the bank.
 
 **Parameters:**
 
-| Param      | Type   | Required | Default | Notes                               |
-| ---------- | ------ | -------- | ------- | ----------------------------------- |
+| Param    | Type   | Required | Default | Notes                               |
+| -------- | ------ | -------- | ------- | ----------------------------------- |
 | `limit`  | int    | No       | 20      | Pagination limit                    |
 | `start`  | int    | No       | 0       | Pagination offset                   |
-| `status` | string | No       | —      | Filter applications by exact status |
+| `status` | string | No       | —       | Filter applications by exact status |
 
 **Success response** (HTTP 200):
 
@@ -132,11 +132,11 @@ Retrieves a paginated list of loan applications linked to a specific loan produc
 
 **Parameters:**
 
-| Param                    | Type   | Required | Default | Notes                          |
-| ------------------------ | ------ | -------- | ------- | ------------------------------ |
-| **`product_id`** | string | Yes      | —      | The ID of the A2C Loan Product |
-| `limit`                | int    | No       | 20      | Pagination limit               |
-| `start`                | int    | No       | 0       | Pagination offset              |
+| Param            | Type   | Required | Default | Notes                          |
+| ---------------- | ------ | -------- | ------- | ------------------------------ |
+| **`product_id`** | string | Yes      | —       | The ID of the A2C Loan Product |
+| `limit`          | int    | No       | 20      | Pagination limit               |
+| `start`          | int    | No       | 0       | Pagination offset              |
 
 **Success response** (HTTP 200):
 
@@ -170,11 +170,11 @@ Searches loan applications by application ID (name) or customer name.
 
 **Parameters:**
 
-| Param               | Type   | Required | Default | Notes                                                |
-| ------------------- | ------ | -------- | ------- | ---------------------------------------------------- |
-| **`query`** | string | Yes      | —      | Substring match against`name` OR `customer_name` |
-| `limit`           | int    | No       | 20      | Pagination limit                                     |
-| `start`           | int    | No       | 0       | Pagination offset                                    |
+| Param       | Type   | Required | Default | Notes                                             |
+| ----------- | ------ | -------- | ------- | ------------------------------------------------- |
+| **`query`** | string | Yes      | —       | Substring match against `name` OR `customer_name` |
+| `limit`     | int    | No       | 20      | Pagination limit                                  |
+| `start`     | int    | No       | 0       | Pagination offset                                 |
 
 **Success response** (HTTP 200):
 
@@ -196,10 +196,10 @@ Updates the status of a specific loan application.
 
 **Parameters (JSON Body):**
 
-| Param                        | Type   | Required | Notes                                                                                     |
-| ---------------------------- | ------ | -------- | ----------------------------------------------------------------------------------------- |
-| **`application_id`** | string | Yes      | The ID of the A2C Loan Application                                                        |
-| **`status`**         | string | Yes      | Must be one of:`Submitted`, `Under Review`, `Approved`, `Rejected`, `Disbursed` |
+| Param                | Type   | Required | Notes                                                                    |
+| -------------------- | ------ | -------- | ------------------------------------------------------------------------ |
+| **`application_id`** | string | Yes      | The ID of the A2C Loan Application                                       |
+| **`status`**         | string | Yes      | One of: `Submitted`, `Under Review`, `Approved`, `Rejected`, `Disbursed` |
 
 **Success response** (HTTP 200):
 
@@ -226,8 +226,8 @@ Assigns a loan application to a specific user (Bank Agent).
 
 **Parameters (JSON Body):**
 
-| Param                        | Type   | Required | Notes                                   |
-| ---------------------------- | ------ | -------- | --------------------------------------- |
+| Param                | Type   | Required | Notes                                   |
+| -------------------- | ------ | -------- | --------------------------------------- |
 | **`application_id`** | string | Yes      | The ID of the A2C Loan Application      |
 | **`assigned_to`**    | string | Yes      | Email or user ID of the target assignee |
 
@@ -253,10 +253,10 @@ Assigns a loan application to a specific user (Bank Agent).
 
 Removes an assignment from a loan application.
 
-**Parameters (JSON Body / Query):**
+**Parameters (JSON Body):**
 
-| Param                        | Type   | Required | Notes                                    |
-| ---------------------------- | ------ | -------- | ---------------------------------------- |
+| Param                | Type   | Required | Notes                                    |
+| -------------------- | ------ | -------- | ---------------------------------------- |
 | **`application_id`** | string | Yes      | The ID of the A2C Loan Application       |
 | **`unassign_from`**  | string | Yes      | Email or user ID of the user to unassign |
 
@@ -280,242 +280,163 @@ Removes an assignment from a loan application.
 
 ## 4. Onboarding & Registration (`api/v1/seller/onboarding.py`)
 
-### 4.1 `POST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank`
+### 4.1 `POST /api/method/oan_a2c.api.v1.seller.onboarding.register_seller`
 
-Registers a new bank entity.
-
-**Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `bank_name` | string | Yes | |
-| `bank_code` | string | Yes | |
-| `entity_type` | string | Yes | |
-| `registered_street` | string | Yes | |
-| `registered_city` | string | Yes | |
-| `registered_country` | string | Yes | |
-| `registered_postal_code` | string | Yes | |
-| `registered_email` | string | Yes | |
-| `registered_phone` | string | Yes | |
-
-### 4.2 `POST /api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts`
-Saves organizational contacts (GRO, OPS).
-
-### 4.3 `POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document`
-Uploads the KYC Document.
+Registers a new Bank Admin user. Guest-accessible (no JWT required).
 
 **Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `filename` | string | Yes | Example: `kyc.pdf` |
-| `filedata` | string | Yes | Base64 Encoded Document String |
 
-### 4.4 `GET /api/method/oan_a2c.api.v1.seller.onboarding.get_bank_status`
-Retrieves the bank's current onboarding status.
-
-### 4.5 `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status`
-(A2C Administrator only) Updates the bank's onboarding status.
-
-**Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `bank_code` | string | Yes | |
-| `new_status` | string | Yes | One of: `Onboarding`, `Active`, `Suspended` |
-
-### 4.6 `POST /api/method/oan_a2c.api.v1.seller.onboarding.invite_user`
-Invites a new user to the bank.
-
-**Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `email` | string | Yes | |
-| `full_name` | string | Yes | |
-| `role` | string | Yes | |
-
-### 4.7 `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_user_profile`
-Updates a user profile.
-
-**Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `email` | string | Yes | |
-| `full_name` | string | No | |
-| `role` | string | No | |
-
-### 4.8 `POST /api/method/oan_a2c.api.v1.seller.onboarding.list_users`
-Lists all users under the current bank.
-
-### 4.9 `POST /api/method/oan_a2c.api.v1.seller.onboarding.deactivate_user`
-Deactivates a user.
+| Param              | Type   | Required | Notes |
+| ------------------ | ------ | -------- | ----- |
+| **`email`**        | string | Yes      |       |
+| **`full_name`**    | string | Yes      |       |
+| **`password`**     | string | Yes      |       |
+| **`phone_number`** | string | Yes      |       |
 
 ---
 
-## 5. Authentication (`api/v1/auth.py`)
+### 4.2 `POST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank`
 
-### 5.1 `POST /api/method/oan_a2c.api.v1.auth.register_user`
-Registers a new user (first step of onboarding).
+Registers a new bank entity for the authenticated Bank Admin.
 
-### 5.2 `POST /api/method/oan_a2c.api.v1.auth.login`
-Logs the user in and returns access and refresh tokens.
+**Parameters (JSON Body):**
 
+| Param                        | Type   | Required | Notes                                                  |
+| ---------------------------- | ------ | -------- | ------------------------------------------------------ |
+| **`bank_name`**              | string | Yes      |                                                        |
+| **`bank_code`**              | string | Yes      | Used as TIN; non-alphanumeric characters are stripped  |
+| **`entity_type`**            | string | Yes      |                                                        |
+| **`registered_street`**      | string | Yes      |                                                        |
+| **`registered_city`**        | string | Yes      |                                                        |
+| **`registered_country`**     | string | Yes      |                                                        |
+| **`registered_postal_code`** | string | Yes      |                                                        |
+| **`registered_email`**       | string | Yes      |                                                        |
+| **`registered_phone`**       | string | Yes      |                                                        |
 
 ---
 
-## 4. Onboarding & Registration (`api/v1/seller/onboarding.py`)
+### 4.3 `POST /api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts`
 
-### 4.1 `POST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank`
-
-Registers a new bank entity.
+Saves organizational contacts (GRO, OPS) for the caller's bank.
 
 **Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `bank_name` | string | Yes | |
-| `bank_code` | string | Yes | |
-| `entity_type` | string | Yes | |
-| `registered_street` | string | Yes | |
-| `registered_city` | string | Yes | |
-| `registered_country` | string | Yes | |
-| `registered_postal_code` | string | Yes | |
-| `registered_email` | string | Yes | |
-| `registered_phone` | string | Yes | |
 
-### 4.2 `POST /api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts`
-Saves organizational contacts (GRO, OPS).
+| Param            | Type   | Required | Notes |
+| ---------------- | ------ | -------- | ----- |
+| **`gro_name`**   | string | Yes      |       |
+| **`gro_mobile`** | string | Yes      |       |
+| **`ops_name`**   | string | Yes      |       |
+| **`ops_mobile`** | string | Yes      |       |
 
-### 4.3 `POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document`
-Uploads the KYC Document.
+---
+
+### 4.4 `POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document`
+
+Uploads the KYC document for the caller's bank.
 
 **Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `filename` | string | Yes | Example: `kyc.pdf` |
-| `filedata` | string | Yes | Base64 Encoded Document String |
 
-### 4.4 `GET /api/method/oan_a2c.api.v1.seller.onboarding.get_bank_status`
+| Param          | Type   | Required | Notes                           |
+| -------------- | ------ | -------- | ------------------------------- |
+| **`filename`** | string | Yes      | Example: `kyc.pdf` (4–30 chars) |
+| **`filedata`** | string | Yes      | Base64-encoded document         |
+
+---
+
+### 4.5 `GET /api/method/oan_a2c.api.v1.seller.onboarding.get_bank_status`
+
 Retrieves the bank's current onboarding status.
 
-### 4.5 `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status`
+**Parameters:** None.
+
+---
+
+### 4.6 `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status`
+
 (Bank Admin only) Updates the bank's onboarding status.
 
 **Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `bank_code` | string | Yes | |
-| `new_status` | string | Yes | One of: `Onboarding`, `Active`, `Suspended` |
 
-### 4.6 `POST /api/method/oan_a2c.api.v1.seller.onboarding.invite_user`
-Invites a new user to the bank.
+| Param            | Type   | Required | Notes                                       |
+| ---------------- | ------ | -------- | ------------------------------------------- |
+| **`bank_code`**  | string | Yes      |                                             |
+| **`new_status`** | string | Yes      | One of: `Onboarding`, `Active`, `Suspended` |
 
-**Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `email` | string | Yes | |
-| `full_name` | string | Yes | |
-| `role` | string | Yes | |
+---
 
-### 4.7 `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_user_profile`
-Updates a user profile.
+### 4.7 `POST /api/method/oan_a2c.api.v1.seller.onboarding.invite_user`
+
+Invites a new user to the caller's bank. If the email doesn't exist yet, a new Frappe user is created with the given password and role. If the user already exists in the same bank, returns success immediately.
 
 **Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `email` | string | Yes | |
-| `full_name` | string | No | |
-| `role` | string | No | |
 
-### 4.8 `GET /api/method/oan_a2c.api.v1.seller.onboarding.list_users`
-Lists all users under the current bank.
+| Param           | Type   | Required | Notes                                                  |
+| --------------- | ------ | -------- | ------------------------------------------------------ |
+| **`email`**     | string | Yes      |                                                        |
+| **`full_name`** | string | Yes      | Min 2 characters                                       |
+| **`role`**      | string | Yes      | Exactly one of: `A2C Bank Admin`, `A2C Bank Agent`     |
+| **`password`**  | string | Yes      | Min 6 characters. Used only when creating a new user.  |
 
-### 4.9 `POST /api/method/oan_a2c.api.v1.seller.onboarding.deactivate_user`
-Deactivates a user.
+**Error cases:**
+
+- 400 `VALIDATION_ERROR`: If `role` is not exactly `A2C Bank Admin` or `A2C Bank Agent`.
+- 400 `VALIDATION_ERROR`: If `password` is fewer than 6 characters.
+
+---
+
+### 4.8 `POST /api/method/oan_a2c.api.v1.seller.onboarding.deactivate_user`
+
+Deactivates a user belonging to the caller's bank.
+
+**Parameters (JSON Body):**
+
+| Param       | Type   | Required | Notes |
+| ----------- | ------ | -------- | ----- |
+| **`email`** | string | Yes      |       |
+
+**Error cases:**
+
+- 403 `PERMISSION_DENIED`: If the target user belongs to a different bank.
+
+---
+
+### 4.9 `GET /api/method/oan_a2c.api.v1.seller.onboarding.list_users`
+
+Lists all users under the caller's bank.
+
+**Parameters:** None.
+
+---
+
+### 4.10 `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_user_profile`
+
+Updates a user's profile within the caller's bank.
+
+**Parameters (JSON Body):**
+
+| Param          | Type   | Required | Notes                                              |
+| -------------- | ------ | -------- | -------------------------------------------------- |
+| **`email`**    | string | Yes      |                                                    |
+| `full_name`    | string | No       |                                                    |
+| `role`         | string | No       | Exactly one of: `A2C Bank Admin`, `A2C Bank Agent` |
+
+**Error cases:**
+
+- 403 `PERMISSION_DENIED`: If the target user belongs to a different bank.
+- 400 `VALIDATION_ERROR`: If `role` is supplied but not a valid role string.
 
 ---
 
 ## 5. Authentication (`api/v1/auth.py`)
 
-### 5.1 `POST /api/method/oan_a2c.api.v1.auth.register_user`
-Registers a new user (first step of onboarding).
+### 5.1 `POST /api/method/oan_a2c.api.v1.auth.login`
 
-### 5.2 `POST /api/method/oan_a2c.api.v1.auth.login`
 Logs the user in and returns access and refresh tokens.
 
----
-
-## 4. Onboarding & Registration (`api/v1/seller/onboarding.py`)
-
-### 4.1 `POST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank`
-
-Registers a new bank entity.
-
 **Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `bank_name` | string | Yes | |
-| `bank_code` | string | Yes | |
-| `entity_type` | string | Yes | |
-| `registered_street` | string | Yes | |
-| `registered_city` | string | Yes | |
-| `registered_country` | string | Yes | |
-| `registered_postal_code` | string | Yes | |
-| `registered_email` | string | Yes | |
-| `registered_phone` | string | Yes | |
 
-### 4.2 `POST /api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts`
-Saves organizational contacts (GRO, OPS).
-
-### 4.3 `POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document`
-Uploads the KYC Document.
-
-**Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `filename` | string | Yes | Example: `kyc.pdf` |
-| `filedata` | string | Yes | Base64 Encoded Document String |
-
-### 4.4 `GET /api/method/oan_a2c.api.v1.seller.onboarding.get_bank_status`
-Retrieves the bank's current onboarding status.
-
-### 4.5 `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status`
-(Bank Admin only) Updates the bank's onboarding status.
-
-**Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `bank_code` | string | Yes | |
-| `new_status` | string | Yes | One of: `Onboarding`, `Active`, `Suspended` |
-
-### 4.6 `POST /api/method/oan_a2c.api.v1.seller.onboarding.invite_user`
-Invites a new user to the bank.
-
-**Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `email` | string | Yes | |
-| `full_name` | string | Yes | |
-| `role` | string | Yes | |
-
-### 4.7 `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_user_profile`
-Updates a user profile.
-
-**Parameters (JSON Body):**
-| Param | Type | Required | Notes |
-|---|---|---|---|
-| `email` | string | Yes | |
-| `full_name` | string | No | |
-| `role` | string | No | |
-
-### 4.8 `GET /api/method/oan_a2c.api.v1.seller.onboarding.list_users`
-Lists all users under the current bank.
-
-### 4.9 `POST /api/method/oan_a2c.api.v1.seller.onboarding.deactivate_user`
-Deactivates a user.
-
----
-
-## 5. Authentication (`api/v1/auth.py`)
-
-### 5.1 `POST /api/method/oan_a2c.api.v1.auth.register_user`
-Registers a new user (first step of onboarding).
-
-### 5.2 `POST /api/method/oan_a2c.api.v1.auth.login`
-Logs the user in and returns access and refresh tokens.
+| Param         | Type    | Required | Notes |
+| ------------- | ------- | -------- | ----- |
+| **`usr`**     | string  | Yes      | Email |
+| **`pwd`**     | string  | Yes      |       |
+| `remember_me` | boolean | No       |       |

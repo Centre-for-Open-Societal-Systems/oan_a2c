@@ -4,7 +4,41 @@ import frappe
 from frappe import _
 from pydantic import BaseModel, Field
 
+from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, BANK_AGENT_ROLE
 from oan_a2c.api.utils import SafeEmail, handle_api_errors, success_response, validate_request
+from oan_a2c.api.v1.auth import RegisterUserSchema, create_user_account
+
+RegisterSellerSchema = RegisterUserSchema
+
+
+def resolve_assignable_role(role: str, allowed: set[str]) -> str:
+	"""Validate a client-supplied role against an allowlist, or reject it.
+
+	Canonical `Role` names only (from a2c_marketplace.roles). This is the ONLY
+	gate on the client-supplied `role` in invite_user/update_user_profile — never
+	append a raw client string to User.roles, or a caller can hand themselves
+	System Manager / A2C Administrator, or resurrect a retired plain-named role.
+	"""
+	if role not in allowed:
+		frappe.throw(_("Invalid role."), frappe.ValidationError)
+	return role
+
+
+@frappe.whitelist(allow_guest=True)
+@validate_request(RegisterSellerSchema)
+@handle_api_errors
+def register_seller(email: str, full_name: str, password: str, phone_number: str):
+	"""
+	Guest accessible: Creates a User with the A2C Bank Admin role.
+	"""
+	create_user_account(
+		email=email,
+		full_name=full_name,
+		password=password,
+		phone_number=phone_number,
+		role=BANK_ADMIN_ROLE,
+	)
+	return success_response(data={"message": _("Seller registered successfully. You may now login.")})
 
 
 class RegisterBankSchema(BaseModel):
@@ -27,7 +61,7 @@ class SaveOrgContactsSchema(BaseModel):
 
 
 class UploadKycSchema(BaseModel):
-	filename: str = Field(..., min_length=4, max_length=100)
+	filename: str = Field(..., min_length=4, max_length=30, pattern=r"^.+\.pdf$")
 	# Max length approx 15MB for base64
 	filedata: str = Field(..., min_length=10, max_length=15000000)
 
@@ -45,6 +79,7 @@ class InviteUserSchema(BaseModel):
 	email: SafeEmail
 	full_name: str = Field(..., min_length=2)
 	role: str = Field(..., min_length=2)
+	password: str = Field(..., min_length=6)
 
 
 class DeactivateUserSchema(BaseModel):
@@ -66,15 +101,19 @@ def register_bank(**kwargs):
 	if user == "Guest":
 		frappe.throw(_("Authentication required"), frappe.AuthenticationError)
 
+	if frappe.db.exists("User Permission", {"user": user, "allow": "A2C Participating Bank"}):
+		frappe.throw(_("User is already associated with an organization."))
+
 	bank_code = normalize_tin(kwargs.get("bank_code"))
 
-	if frappe.db.exists("A2C Participating Bank", bank_code):
+	existing_bank = frappe.db.exists("A2C Participating Bank", {"bank_code": bank_code})
+	if existing_bank:
 		frappe.get_doc(
 			{
 				"doctype": "ToDo",
 				"description": f"Duplicate bank registration attempt for TIN {bank_code} by {user}.",
 				"reference_type": "A2C Participating Bank",
-				"reference_name": bank_code,
+				"reference_name": existing_bank,
 				"allocated_to": "Administrator",
 				"status": "Open",
 			}
@@ -104,26 +143,17 @@ def register_bank(**kwargs):
 		)
 		bank.insert(ignore_permissions=True)
 
-		# 2. Assign Bank Admin Role
-		user_doc = frappe.get_doc("User", user)
-		if not any(d.role == "Bank Admin" for d in user_doc.roles):
-			user_doc.append("roles", {"role": "Bank Admin"})
-			user_doc.save(ignore_permissions=True)
-
-		# 3. Create User Permission
-		if not frappe.db.exists(
-			"User Permission", {"user": user, "allow": "A2C Participating Bank", "for_value": bank.name}
-		):
-			perm = frappe.get_doc(
-				{
-					"doctype": "User Permission",
-					"user": user,
-					"allow": "A2C Participating Bank",
-					"for_value": bank.name,
-					"is_default": 1,
-				}
-			)
-			perm.insert(ignore_permissions=True)
+		# 2. Create User Permission
+		perm = frappe.get_doc(
+			{
+				"doctype": "User Permission",
+				"user": user,
+				"allow": "A2C Participating Bank",
+				"for_value": bank.name,
+				"is_default": 1,
+			}
+		)
+		perm.insert(ignore_permissions=True)
 
 		frappe.db.commit()
 	except Exception as e:
@@ -131,7 +161,11 @@ def register_bank(**kwargs):
 		frappe.throw(_("Failed to register bank: {0}").format(str(e)))
 
 	return success_response(
-		data={"message": _("Bank registered successfully. Currently onboarding."), "bank_code": bank.name}
+		data={
+			"message": _("Bank registered successfully. Currently onboarding."),
+			"bank_code": bank.bank_code,
+			"bank_id": bank.name,
+		}
 	)
 
 
@@ -177,7 +211,16 @@ def upload_kyc_document(**kwargs):
 	if not bank:
 		frappe.throw(_("No bank associated with the current user."))
 
-	# File upload is handled by Frappe's file manager, we expect filedata in the request
+	import base64
+
+	try:
+		decoded = base64.b64decode(kwargs.get("filedata"), validate=True)
+	except Exception:
+		frappe.throw(_("Invalid file: content is not valid Base64."), frappe.ValidationError)
+
+	if not decoded.startswith(b"%PDF-"):
+		frappe.throw(_("Invalid file: only PDF documents are accepted."), frappe.ValidationError)
+
 	try:
 		file_doc = frappe.get_doc(
 			{
@@ -193,9 +236,7 @@ def upload_kyc_document(**kwargs):
 		)
 		file_doc.insert(ignore_permissions=True)
 	except Exception:
-		frappe.throw(
-			_("Invalid or corrupted file uploaded. Ensure the file is a valid Base64 encoded document.")
-		)
+		frappe.throw(_("Failed to save uploaded file."))
 
 	frappe.db.set_value("A2C Participating Bank", bank, "kyc_document", file_doc.file_url)
 
@@ -234,15 +275,15 @@ def update_bank_status(**kwargs):
 
 	user = frappe.session.user
 	user_doc = frappe.get_doc("User", user)
-	is_admin = any(d.role == "Bank Admin" for d in user_doc.roles)
+	is_admin = any(d.role == BANK_ADMIN_ROLE for d in user_doc.roles)
 
 	if not is_admin:
 		frappe.throw(_("Only Bank Admins can update bank status."), frappe.PermissionError)
 
-	if not frappe.db.exists("A2C Participating Bank", bank_code):
+	if not frappe.db.exists("A2C Participating Bank", {"bank_code": bank_code}):
 		frappe.throw(_("Bank {0} not found").format(bank_code), frappe.DoesNotExistError)
 
-	doc = frappe.get_doc("A2C Participating Bank", bank_code)
+	doc = frappe.get_doc("A2C Participating Bank", {"bank_code": bank_code})
 
 	if doc.status == new_status:
 		return success_response(data={"message": _("Status is already {0}").format(new_status)})
@@ -259,7 +300,9 @@ def update_bank_status(**kwargs):
 @frappe.whitelist()
 @validate_request(InviteUserSchema)
 @handle_api_errors
-def invite_user(email: str, full_name: str, role: str):
+def invite_user(email: str, full_name: str, role: str, password: str):
+	role = resolve_assignable_role(role, {BANK_ADMIN_ROLE, BANK_AGENT_ROLE})
+
 	user = frappe.session.user
 	bank = frappe.db.get_value(
 		"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
@@ -268,21 +311,21 @@ def invite_user(email: str, full_name: str, role: str):
 	if not bank:
 		frappe.throw(_("No bank associated with the current user."))
 
-	if not frappe.db.exists("User", email):
-		import random
-		import string
-
-		temp_password = "".join(random.choices(string.ascii_letters + string.digits, k=10))
-		new_user = frappe.get_doc(
-			{
-				"doctype": "User",
-				"email": email,
-				"first_name": full_name,
-				"send_welcome_email": 1,
-				"new_password": temp_password,
-			}
+	if frappe.db.exists("User", email):
+		is_in_this_bank = frappe.db.exists(
+			"User Permission", {"user": email, "allow": "A2C Participating Bank", "for_value": bank}
 		)
-		new_user.insert(ignore_permissions=True)
+		if is_in_this_bank:
+			return success_response(data={"message": _("User has already joined.")})
+
+		is_in_other_bank = frappe.db.exists(
+			"User Permission", {"user": email, "allow": "A2C Participating Bank"}
+		)
+		if is_in_other_bank:
+			# Fake success to prevent info leak
+			return success_response(data={"message": _("User invited successfully.")})
+	else:
+		create_user_account(email=email, full_name=full_name, password=password, phone_number="", role=role)
 
 	try:
 		user_doc = frappe.get_doc("User", email)
@@ -293,13 +336,16 @@ def invite_user(email: str, full_name: str, role: str):
 		if not frappe.db.exists(
 			"User Permission", {"user": email, "allow": "A2C Participating Bank", "for_value": bank}
 		):
+			has_default = frappe.db.exists(
+				"User Permission", {"user": email, "allow": "A2C Participating Bank", "is_default": 1}
+			)
 			perm = frappe.get_doc(
 				{
 					"doctype": "User Permission",
 					"user": email,
 					"allow": "A2C Participating Bank",
 					"for_value": bank,
-					"is_default": 1,
+					"is_default": 0 if has_default else 1,
 				}
 			)
 			perm.insert(ignore_permissions=True)
@@ -398,6 +444,7 @@ def update_user_profile(email: str, full_name: str | None = None, role: str | No
 		target_user.first_name = full_name
 
 	if role:
+		role = resolve_assignable_role(role, {BANK_ADMIN_ROLE, BANK_AGENT_ROLE})
 		# check if role is already assigned
 		if not any(d.role == role for d in target_user.roles):
 			target_user.append("roles", {"role": role})

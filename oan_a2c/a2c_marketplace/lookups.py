@@ -6,7 +6,10 @@ import frappe
 
 def refresh_product_lookups(doc, method=None):
 	"""Sync A2C Loan Product properties to A2C Loan Product Lookup"""
-	if not doc.name:
+	if isinstance(doc, str):
+		doc = frappe.get_doc("A2C Loan Product", doc)
+
+	if not doc or not getattr(doc, "name", None):
 		return
 
 	# Check if the lookup exists
@@ -26,6 +29,17 @@ def refresh_product_lookups(doc, method=None):
 	# Save, avoiding validation errors for standard fields if possible
 	lookup_doc.flags.ignore_permissions = True
 	lookup_doc.save(ignore_permissions=True)
+
+
+def delete_product_lookups(doc, method=None):
+	"""Remove the A2C Loan Product Lookup when its source product is deleted."""
+	doc_name = doc if isinstance(doc, str) else getattr(doc, "name", None)
+	if not doc_name:
+		return
+
+	lookup_name = frappe.db.exists("A2C Loan Product Lookup", {"loan_product": doc_name})
+	if lookup_name:
+		frappe.delete_doc("A2C Loan Product Lookup", lookup_name, ignore_permissions=True, force=True)
 
 
 def regenerate_lookups():

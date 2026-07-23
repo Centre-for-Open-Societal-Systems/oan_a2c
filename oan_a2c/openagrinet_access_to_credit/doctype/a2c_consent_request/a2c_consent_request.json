@@ -130,13 +130,7 @@
   {
    "create": 1,
    "read": 1,
-   "role": "Development Agent",
-   "write": 1
-  },
-  {
-   "create": 1,
-   "read": 1,
-   "role": "Bank Agent",
+   "role": "A2C Development Agent",
    "write": 1
   },
   {

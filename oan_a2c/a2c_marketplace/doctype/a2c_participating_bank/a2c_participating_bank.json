@@ -1,6 +1,6 @@
 {
  "actions": [],
- "autoname": "field:bank_code",
+ "autoname": "format:PB-{####}",
  "creation": "2026-07-20 00:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -151,7 +151,7 @@
  "modified_by": "Administrator",
  "module": "A2C Marketplace",
  "name": "A2C Participating Bank",
- "naming_rule": "By fieldname",
+ "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [
   {
@@ -184,7 +184,7 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Bank Admin",
+   "role": "A2C Bank Admin",
    "share": 1,
    "write": 1
   },
@@ -194,7 +194,7 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Bank Agent",
+   "role": "A2C Bank Agent",
    "share": 1
   }
  ],

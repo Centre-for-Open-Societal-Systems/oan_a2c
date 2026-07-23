@@ -58,7 +58,7 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Bank Admin",
+   "role": "A2C Bank Admin",
    "share": 1
   },
   {
@@ -67,16 +67,7 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Bank Agent",
-   "share": 1
-  },
-  {
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Bank Product Manager",
+   "role": "A2C Bank Agent",
    "share": 1
   },
   {

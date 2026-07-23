@@ -76,6 +76,11 @@ class UpdateLoanStepSchema(BaseModel):
 	step: int = Field(..., ge=1, le=4)
 
 
+class AssignLoanOfficerSchema(BaseModel):
+	application_id: str = Field(..., min_length=1)
+	loan_officer: str = Field(..., min_length=1)
+
+
 def _get_app(application_id):
 	if not frappe.db.exists("A2C Loan Application", application_id):
 		frappe.throw(_("Loan Application {0} not found").format(application_id), frappe.DoesNotExistError)
@@ -431,17 +436,17 @@ def get_all_loans(**kwargs):
 		or_filters.append(["first_name", "like", search_query_param])
 		or_filters.append(["last_name", "like", search_query_param])
 
-	if or_filters:
-		count_res = frappe.get_list(
-			"A2C Loan Application",
-			filters=filters,
-			or_filters=or_filters,
-			fields=[{"COUNT": "*"}],
-			ignore_permissions=False,
-		)
-		total_records = count_res[0].get("COUNT(*)") if count_res else 0
-	else:
-		total_records = frappe.db.count("A2C Loan Application", filters=filters)
+	# Count via get_list (not frappe.db.count) so the bank_scope_query hook is
+	# applied identically to the records query below — otherwise the total can
+	# report cross-bank rows that aren't in the returned page.
+	count_res = frappe.get_list(
+		"A2C Loan Application",
+		filters=filters,
+		or_filters=or_filters or None,
+		fields=[{"COUNT": "*"}],
+		ignore_permissions=False,
+	)
+	total_records = count_res[0].get("COUNT(*)") if count_res else 0
 
 	records = frappe.get_list(
 		"A2C Loan Application",
@@ -664,7 +669,11 @@ def create_loan_application(**kwargs):
 	# race conditions during concurrent API requests.
 	# Alternative unique constraints cannot be enforced on the database layer because some values
 	# (such as lead_id) are not guaranteed to be unique under database schemas without custom migration scripts.
-	frappe.db.sql("SELECT name FROM `tabA2C Loan Application` WHERE lead_id = %s FOR UPDATE", (lead_id,))
+	# Lock-only query (returns nothing to the caller); the permission-checked read
+	# is the frappe.get_list below. Locking across banks is safe. bank-scope-exempt
+	frappe.db.sql(
+		"SELECT name FROM `tabA2C Loan Application` WHERE lead_id = %s FOR UPDATE", (lead_id,)
+	)  # bank-scope-exempt
 	existing = frappe.get_list(
 		"A2C Loan Application",
 		filters={"lead_id": lead_id},
@@ -755,8 +764,15 @@ def update_loan_status(**kwargs):
 	application_id = kwargs.get("application_id")
 	status = kwargs.get("status")
 
-	frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
+	# Read (not write) is the gate here: Bank Agent is a read-only role on loan
+	# applications but is authorised to change *status* only. Authorisation for the
+	# transition itself is enforced by the workflow's per-role `allowed` gate below,
+	# and read is bank-scoped (bank_scope_doc), so an agent can only act on his own
+	# bank's loans. ignore_permissions lets the workflow save/submit despite the
+	# role lacking write.
+	frappe.has_permission("A2C Loan Application", "read", doc=application_id, throw=True)
 	doc = _get_app(application_id)
+	doc.flags.ignore_permissions = True
 
 	# Apply the status change through the A2C Loan Application Workflow. The workflow enforces
 	# legal transitions and per-role gating, and submits the doc (docstatus 1) on
@@ -789,4 +805,44 @@ def update_loan_step(**kwargs):
 	return success_response(
 		data={"application_id": doc.name, "current_step": doc.current_step},
 		message=f"Loan application step updated to {doc.current_step}",
+	)
+
+
+@frappe.whitelist(allow_guest=False, methods=["POST"])
+@validate_request(AssignLoanOfficerSchema)
+@handle_api_errors
+def assign_loan_officer(**kwargs):
+	"""
+	Assigns a loan officer to a loan application.
+	"""
+	application_id = kwargs.get("application_id")
+	loan_officer = kwargs.get("loan_officer")
+
+	frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
+
+	if not frappe.db.exists("User", {"email": loan_officer, "enabled": 1}):
+		if not frappe.db.exists("User", {"name": loan_officer, "enabled": 1}):
+			frappe.throw(
+				_("User '{0}' is not a valid active user").format(loan_officer), frappe.DoesNotExistError
+			)
+
+	doc = _get_app(application_id)
+	doc.loan_officer = loan_officer
+	doc.save(ignore_permissions=False)
+	# nosemgrep: frappe-manual-commit -- reviewed: persist officer assignment before returning
+	frappe.db.commit()
+
+	officer_name = (
+		frappe.db.get_value("User", {"email": loan_officer}, "full_name")
+		or frappe.db.get_value("User", loan_officer, "full_name")
+		or loan_officer
+	)
+
+	return success_response(
+		data={
+			"application_id": doc.name,
+			"loan_officer": doc.loan_officer,
+			"loan_officer_name": officer_name,
+		},
+		message="Loan officer assigned successfully.",
 	)

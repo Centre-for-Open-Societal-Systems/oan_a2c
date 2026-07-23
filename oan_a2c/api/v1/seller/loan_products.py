@@ -25,6 +25,7 @@ class CreateProductSchema(BaseModel):
 
 
 class UpdateProductSchema(BaseModel):
+	product_id: str
 	product_name: str | None = None
 	min_interest_rate: float | None = None
 	max_interest_rate: float | None = None
@@ -36,6 +37,7 @@ class UpdateProductSchema(BaseModel):
 
 
 class SetProductStatusSchema(BaseModel):
+	product_id: str
 	status: str = Field(..., pattern="^(Draft|Active|Archived)$")
 
 
@@ -122,76 +124,82 @@ def set_product_status(product_id: str, status: str):
 
 @frappe.whitelist()
 @handle_api_errors
-def list_products():
-	# frappe.get_all bypasses the bank_scope_query hook, so scope explicitly.
+def list_products(
+	status: str | None = None,
+	search: str | None = None,
+	category: str | None = None,
+	tag: str | None = None,
+	min_interest_rate: float | None = None,
+	max_interest_rate: float | None = None,
+	min_amount: float | None = None,
+	max_amount: float | None = None,
+	tenure_months: int | None = None,
+	limit: int = 20,
+	start: int = 0,
+):
+	base_filters = {}
+
+	if status:
+		base_filters["status"] = status
+
+	if search:
+		base_filters["product_name"] = ["like", f"%{search}%"]
+
+	if min_interest_rate is not None:
+		base_filters["min_interest_rate"] = [">=", float(min_interest_rate)]
+
+	if max_interest_rate is not None:
+		base_filters["max_interest_rate"] = ["<=", float(max_interest_rate)]
+
+	if min_amount is not None:
+		base_filters["min_amount"] = [">=", float(min_amount)]
+
+	if max_amount is not None:
+		base_filters["max_amount"] = ["<=", float(max_amount)]
+
+	if tenure_months is not None:
+		base_filters["tenure_months"] = int(tenure_months)
+
+	# If category or tag filter is passed, find matching product IDs in 1 query
+	if category or tag:
+		rel_filters = {}
+		if category:
+			rel_filters["term_type"] = "Category"
+			rel_filters["term_category"] = category
+		if tag:
+			rel_filters["term_type"] = "Tag"
+			rel_filters["term_tag"] = tag
+
+		matching_product_ids = frappe.get_all(
+			"A2C Term Relationship",
+			filters=rel_filters,
+			pluck="loan_product",
+		)
+		if not matching_product_ids:
+			return success_response(data={"products": [], "count": 0})
+		base_filters["name"] = ["in", matching_product_ids]
+
+	filters = bank_filters(base=base_filters)
+
+	# frappe.get_all bypasses the bank_scope_query hook, so scope explicitly via bank_filters().
 	products = frappe.get_all(
 		"A2C Loan Product",
-		filters=bank_filters(),
+		filters=filters,
 		fields=[
 			"name",
 			"product_name",
+			"slug",
 			"status",
 			"min_interest_rate",
 			"max_interest_rate",
 			"min_amount",
 			"max_amount",
 			"tenure_months",
+			"creation",
 		],
 		order_by="creation desc",
+		limit_page_length=limit,
+		limit_start=start,
 	)
-	return success_response(data={"products": products})
 
-
-@frappe.whitelist()
-@handle_api_errors
-def get_product(product_id: str):
-	if not frappe.has_permission("A2C Loan Product", "read", product_id):
-		frappe.throw(_("Not permitted"), frappe.PermissionError)
-
-	doc = frappe.get_doc("A2C Loan Product", product_id)
-
-	meta_dict = {m.meta_key: m.meta_value for m in doc.get("product_meta", [])}
-
-	# The sub-queries below are children of product_id, whose bank ownership was
-	# already verified by the has_permission check above, so they inherit that
-	# scoping. bank-scope-exempt
-	categories = frappe.get_all(
-		"A2C Term Relationship",
-		filters={"loan_product": product_id, "term_type": "Category"},
-		fields=["term_category"],
-	)  # bank-scope-exempt
-
-	tags = frappe.get_all(
-		"A2C Term Relationship", filters={"loan_product": product_id, "term_type": "Tag"}, fields=["term_tag"]
-	)  # bank-scope-exempt
-
-	attributes_raw = frappe.get_all(
-		"A2C Loan Product Attribute Lookup",
-		filters={"loan_product": product_id},
-		fields=["taxonomy", "term_id"],
-	)  # bank-scope-exempt
-
-	attributes_dict = {}
-	for attr in attributes_raw:
-		if attr.taxonomy not in attributes_dict:
-			attributes_dict[attr.taxonomy] = []
-		attributes_dict[attr.taxonomy].append(attr.term_id)
-
-	product_data = {
-		"id": doc.name,
-		"product_name": doc.product_name,
-		"bank": doc.bank,
-		"status": doc.status,
-		"min_interest_rate": doc.min_interest_rate,
-		"max_interest_rate": doc.max_interest_rate,
-		"min_amount": doc.min_amount,
-		"max_amount": doc.max_amount,
-		"tenure_months": doc.tenure_months,
-		"description": doc.description,
-		"meta": meta_dict,
-		"categories": [c.term_category for c in categories],
-		"tags": [t.term_tag for t in tags],
-		"attributes": attributes_dict,
-	}
-
-	return success_response(data={"product": product_data})
+	return success_response(data={"products": products, "count": len(products)})

@@ -10,7 +10,7 @@ Idempotent: safe to re-run.
 
 import frappe
 
-from oan_a2c.a2c_marketplace.permissions import MARKETPLACE_ADMIN_ROLE
+from oan_a2c.a2c_marketplace.roles import MARKETPLACE_ADMIN_ROLE
 
 
 def execute():
