@@ -144,31 +144,31 @@ has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d 
 
 doc_events = {
 	"A2C Loan Product": {
-		"on_update": "oan_a2c.a2c_marketplace.lookups.refresh_product_lookups",
-		"on_trash": "oan_a2c.a2c_marketplace.lookups.delete_product_lookups",
-	}
+		"after_insert": "oan_a2c.a2c_marketplace.stats_cache.on_product_change",
+		"on_update": [
+			"oan_a2c.a2c_marketplace.lookups.refresh_product_lookups",
+			"oan_a2c.a2c_marketplace.stats_cache.on_product_change",
+		],
+		"on_trash": [
+			"oan_a2c.a2c_marketplace.lookups.delete_product_lookups",
+			"oan_a2c.a2c_marketplace.stats_cache.on_product_change",
+		],
+	},
+	"A2C Loan Application": {
+		"after_insert": "oan_a2c.a2c_marketplace.stats_cache.on_application_change",
+		"on_update": "oan_a2c.a2c_marketplace.stats_cache.on_application_change",
+		"on_trash": "oan_a2c.a2c_marketplace.stats_cache.on_application_change",
+	},
 }
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"oan_a2c.tasks.all"
-# 	],
-# 	"daily": [
-# 		"oan_a2c.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"oan_a2c.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"oan_a2c.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"oan_a2c.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"hourly": [
+		"oan_a2c.a2c_marketplace.stats_cache.reconcile_all_banks",
+	],
+}
 
 # Testing
 # -------
@@ -265,7 +265,7 @@ fixtures = [
 				"name",
 				"in",
 				[
-					"A2C Marketplace Admin",
+					"A2C Administrator",
 					"A2C Bank Admin",
 					"A2C Bank Agent",
 					"A2C Development Agent",

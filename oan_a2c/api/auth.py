@@ -1,13 +1,12 @@
 import datetime
 import hashlib
-from typing import Optional
 
 import frappe
 import jwt
 from frappe import _
 from frappe.auth import LoginManager
 from frappe.core.doctype.user.user import update_password
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from oan_a2c.a2c_marketplace.roles import BANK_ROLES
 from oan_a2c.api.utils import SafeEmail, handle_api_errors, success_response, validate_request
@@ -71,8 +70,6 @@ def generate_refresh_token(usr: str, remember_me: bool = False) -> str:
 		}
 	)
 	token_doc.insert(ignore_permissions=True)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist refresh token before returning it
-	frappe.db.commit()
 	return raw_token
 
 
@@ -139,8 +136,6 @@ def forgot_password(email: str):
 
 			# Save key in user document to work with frappe's update_password
 			frappe.db.set_value("User", user.name, "reset_password_key", otp)
-			# nosemgrep: frappe-manual-commit -- reviewed: persist OTP before dispatching SMS/email
-			frappe.db.commit()
 
 			if user.mobile_no:
 				frappe.send_sms(
@@ -183,8 +178,6 @@ def reset_password(email: str, key: str, new_password: str):
 
 	# Clear the key after successful reset just in case
 	frappe.db.set_value("User", user, "reset_password_key", "")
-	# nosemgrep: frappe-manual-commit -- reviewed: clear used reset key before returning success
-	frappe.db.commit()
 
 	return success_response(message=_("Your password has been successfully updated. You may now login."))
 
@@ -236,9 +229,6 @@ def refresh(refresh_token: str):
 	new_access_token = generate_access_token(user_name, roles)
 	new_refresh_token = generate_refresh_token(user_name, bool(record["remember_me"]))
 
-	# nosemgrep: frappe-manual-commit -- reviewed: commit token rotation before returning new tokens
-	frappe.db.commit()
-
 	return success_response(data={"token": new_access_token, "refresh_token": new_refresh_token})
 
 
@@ -258,8 +248,6 @@ def logout(refresh_token: str):
 
 	if token_records:
 		frappe.delete_doc("A2C User Refresh Token", token_records[0]["name"], ignore_permissions=True)
-		# nosemgrep: frappe-manual-commit -- reviewed: persist token revocation on logout
-		frappe.db.commit()
 
 	return success_response(message=_("Logged out successfully."))
 

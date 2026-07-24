@@ -3,7 +3,9 @@
 
 import frappe
 from frappe.model.document import Document
+
 from oan_a2c.a2c_marketplace.lookups import refresh_product_lookups
+
 
 class A2CTermRelationship(Document):
 	def before_save(self):
@@ -21,7 +23,7 @@ class A2CTermRelationship(Document):
 			# Actually on_trash happens before deletion, so the lookup refresh might still see the term relationship
 			# We can use after_delete.
 			pass
-	
+
 	def after_delete(self):
 		if self.loan_product:
 			refresh_product_lookups(self.loan_product)

@@ -31,17 +31,17 @@ Both security prongs are registered globally in `oan_a2c/hooks.py`.
 ```python
 # Bank Scoped DocTypes
 BANK_SCOPED = [
-    "A2C Loan Product",
-    "A2C Loan Application",
-    # ... other bank-specific doctypes
+	"A2C Loan Product",
+	"A2C Loan Application",
+	# ... other bank-specific doctypes
 ]
 
 permission_query_conditions = {}
 has_permission = {}
 
 for doctype in BANK_SCOPED:
-    permission_query_conditions[doctype] = "oan_a2c.a2c_marketplace.permissions.bank_scope_query"
-    has_permission[doctype] = "oan_a2c.a2c_marketplace.permissions.bank_scope_doc"
+	permission_query_conditions[doctype] = "oan_a2c.a2c_marketplace.permissions.bank_scope_query"
+	has_permission[doctype] = "oan_a2c.a2c_marketplace.permissions.bank_scope_doc"
 ```
 
 Because these hooks are applied centrally, they guard both the newly structured `api/v1/seller/` APIs and the legacy `api/v1/loan_applications.py` APIs. 

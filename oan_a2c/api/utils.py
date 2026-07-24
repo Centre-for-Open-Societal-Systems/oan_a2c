@@ -1,11 +1,13 @@
 import inspect
 from functools import wraps
-from typing import Annotated, Optional
+from typing import Annotated
 
 import frappe
 from frappe import _
 from pydantic import BaseModel, BeforeValidator
 from pydantic import ValidationError as PydanticValidationError
+
+from oan_a2c.a2c_marketplace.permissions import BankNotOnboarded
 
 
 class _DummyException(Exception):
@@ -250,6 +252,15 @@ def handle_api_errors(func):
 				meta = res.get("meta")
 
 			return _envelope_success(data=data, message=message, pagination=pagination, meta=meta)
+		except BankNotOnboarded:
+			# Distinct from a plain 403: the user is authenticated and role-correct
+			# but their bank registration isn't complete, so guide them to finish it.
+			frappe.local.message_log = []
+			frappe.response["http_status_code"] = 403
+			return error_response(
+				"Your bank registration is not complete. Finish onboarding to access this resource.",
+				"BANK_NOT_ONBOARDED",
+			)
 		except frappe.PermissionError:
 			frappe.local.message_log = []
 			frappe.response["http_status_code"] = 403
@@ -320,6 +331,47 @@ def handle_api_errors(func):
 			return error_response("An unexpected error occurred", "INTERNAL_ERROR")
 
 	return wrapper
+
+
+def bank_scoped(require_bank=True):
+	"""Resolve the caller's bank scope, fail closed, and inject it as `bank`.
+
+	Must be the innermost decorator (below @handle_api_errors).
+
+	Resolution:
+	  - unbound admin -> bank=None (rejected if require_bank=True).
+	  - non-admin with a bank -> bank=<code>.
+	  - non-admin with no binding -> rejected (fail closed).
+	"""
+
+	def decorator(func):
+		@wraps(func)
+		def wrapper(*args, **kwargs):
+			from oan_a2c.a2c_marketplace.permissions import (
+				BankNotOnboarded,
+				get_user_bank,
+				is_bank_unbound,
+			)
+
+			# Never trust a client-supplied `bank`; we resolve it from the session.
+			kwargs.pop("bank", None)
+
+			if is_bank_unbound():
+				if require_bank:
+					# Not an onboarding problem: an unbound admin has no single bank
+					# to act as. Plain permission denial.
+					frappe.throw(_("Select a specific bank to perform this action."), frappe.PermissionError)
+				bank = None
+			else:
+				bank = get_user_bank()
+				if not bank:
+					frappe.throw(_("No bank is assigned to this user."), BankNotOnboarded)
+
+			return func(*args, bank=bank, **kwargs)
+
+		return wrapper
+
+	return decorator
 
 
 # --- Workflow helpers ------------------------------------------------------

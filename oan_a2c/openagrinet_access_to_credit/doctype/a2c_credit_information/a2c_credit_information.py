@@ -18,7 +18,7 @@ class A2CCreditInformation(Document):
 	def _validate_loan_amount(self):
 		try:
 			amount = float(self.loan_amount or 0)
-		except (ValueError, TypeError):
+		except ValueError, TypeError:
 			frappe.throw(_("Loan Amount must be a valid number"), frappe.ValidationError)
 
 		if amount <= 0:

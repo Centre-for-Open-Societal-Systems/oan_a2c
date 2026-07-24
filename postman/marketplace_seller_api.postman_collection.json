@@ -10,7 +10,7 @@
             "name": "Taxonomy Creation (Admin)",
             "item": [
                 {
-                    "name": "Admin Login",
+                    "name": "Login (Duplicate)",
                     "event": [
                         {
                             "listen": "test",
@@ -320,7 +320,7 @@
                     "response": []
                 },
                 {
-                    "name": "Login",
+                    "name": "Login (Duplicate)",
                     "event": [
                         {
                             "listen": "test",
@@ -1121,17 +1121,53 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_all_loans?page=1&page_size=20",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "method", "oan_a2c.api.v1.loan_applications.get_all_loans"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.get_all_loans"
+                            ],
                             "query": [
-                                {"key": "page", "value": "1"},
-                                {"key": "page_size", "value": "20"},
-                                {"key": "status", "value": "", "disabled": true},
-                                {"key": "loan_product", "value": "{{product_id}}", "disabled": true},
-                                {"key": "search_query", "value": "{{search_query}}", "disabled": true},
-                                {"key": "loan_officer", "value": "", "disabled": true},
-                                {"key": "from_date", "value": "", "disabled": true},
-                                {"key": "to_date", "value": "", "disabled": true}
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "page_size",
+                                    "value": "20"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "loan_product",
+                                    "value": "{{product_id}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "search_query",
+                                    "value": "{{search_query}}",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "loan_officer",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "from_date",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "to_date",
+                                    "value": "",
+                                    "disabled": true
+                                }
                             ]
                         }
                     },
@@ -1172,10 +1208,19 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id={{application_id}}",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "method", "oan_a2c.api.v1.loan_applications.get_full_profile"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.loan_applications.get_full_profile"
+                            ],
                             "query": [
-                                {"key": "application_id", "value": "{{application_id}}"}
+                                {
+                                    "key": "application_id",
+                                    "value": "{{application_id}}"
+                                }
                             ]
                         }
                     },

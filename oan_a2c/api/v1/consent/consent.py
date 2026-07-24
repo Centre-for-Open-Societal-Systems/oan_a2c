@@ -315,7 +315,6 @@ def request_otp(**kwargs):
 
 		doc.otp_transaction_id = transaction_id
 		doc.save(ignore_permissions=False)
-		frappe.db.commit()
 
 		# Preserve the Odoo session so verify_otp / submit_consent reuse it.
 		import requests
@@ -383,8 +382,6 @@ def verify_otp(**kwargs):
 			"otp_verified_at": now_datetime(),
 		},
 	)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist OTP-verified status before returning
-	frappe.db.commit()
 
 	return success_response(
 		data={
@@ -620,8 +617,6 @@ def submit_consent(**kwargs):
 				lead.save(ignore_permissions=False)
 			except Exception as e:
 				frappe.logger().warning(f"Could not save farmer name fields: {e}")
-
-		frappe.db.commit()
 
 	except ConsentNotApproved as e:
 		# Upstream (OpenG2P) declined the consent. Roll back the partial writes,

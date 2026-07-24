@@ -1,11 +1,9 @@
-from typing import Any
-
 import frappe
 from frappe import _
 from pydantic import BaseModel, Field
 
-from oan_a2c.a2c_marketplace.permissions import bank_filters, get_user_bank
-from oan_a2c.api.utils import handle_api_errors, success_response, validate_request
+from oan_a2c.a2c_marketplace.permissions import bank_filters
+from oan_a2c.api.utils import bank_scoped, handle_api_errors, success_response, validate_request
 
 
 class ProductMetaSchema(BaseModel):
@@ -44,6 +42,7 @@ class SetProductStatusSchema(BaseModel):
 @frappe.whitelist()
 @validate_request(CreateProductSchema)
 @handle_api_errors
+@bank_scoped()
 def create_product(
 	product_name: str,
 	min_interest_rate: float,
@@ -53,10 +52,9 @@ def create_product(
 	min_amount: float | None = None,
 	description: str | None = None,
 	product_meta: list | None = None,
+	bank: str | None = None,
 ):
-	bank = get_user_bank()
-	if not bank:
-		frappe.throw(_("User is not associated with any bank."), frappe.PermissionError)
+	frappe.has_permission("A2C Loan Product", "create", throw=True)
 
 	doc = frappe.new_doc("A2C Loan Product")
 	doc.product_name = product_name

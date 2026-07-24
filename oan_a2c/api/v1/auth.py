@@ -31,7 +31,7 @@ def create_user_account(
 	role: str | None = None,
 ):
 	if frappe.db.exists("User", email):
-		frappe.throw(_("User with this email already exists."))
+		return frappe.get_doc("User", email)
 
 	user_data = {
 		"doctype": "User",
@@ -47,10 +47,4 @@ def create_user_account(
 	user = frappe.get_doc(user_data)
 	user.insert(ignore_permissions=True)
 
-	# Clear the warning message Frappe automatically adds when a user has no roles
-	if hasattr(frappe.local, "message_log"):
-		frappe.local.message_log = []
-
-	# nosemgrep: frappe-manual-commit -- reviewed: persist user registration
-	frappe.db.commit()
 	return user

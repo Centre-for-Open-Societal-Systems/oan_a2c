@@ -1,12 +1,19 @@
 import frappe
 from frappe import _
 
-# Role names live in one place. Re-exported here so existing imports
-# (e.g. the create_marketplace_admin_role patch) keep working.
-from oan_a2c.a2c_marketplace.roles import (
-	BANK_UNBOUND_ROLES,
-	MARKETPLACE_ADMIN_ROLE,
-)
+# Role names live in one place (oan_a2c.a2c_marketplace.roles).
+from oan_a2c.a2c_marketplace.roles import BANK_UNBOUND_ROLES
+
+
+class BankNotOnboarded(frappe.PermissionError):
+	"""Raised when a bank-bound user has no A2C Participating Bank binding yet.
+
+	Subclasses PermissionError so it still fails closed everywhere a plain
+	PermissionError would (and stays a 403), but handle_api_errors catches it
+	first to return a distinct BANK_NOT_ONBOARDED code + onboarding hint instead
+	of an opaque "Permission denied". This is the "role but no org registered"
+	case, NOT a cross-bank access attempt.
+	"""
 
 
 def is_bank_unbound(user=None):
@@ -76,7 +83,7 @@ def bank_filters(user=None, base=None):
 			title="Bank scope: user without bank binding",
 			message=f"user={user} hit a bank-scoped query with no A2C Participating Bank User Permission.",
 		)
-		frappe.throw(_("No bank is assigned to this user."), frappe.PermissionError)
+		frappe.throw(_("No bank is assigned to this user."), BankNotOnboarded)
 
 	if is_list:
 		filters.append(["bank", "=", bank])

@@ -118,7 +118,6 @@ def register_bank(**kwargs):
 				"status": "Open",
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 		return success_response(
 			data={"message": _("Your registration attempt has been flagged for admin review.")}
 		)
@@ -154,8 +153,6 @@ def register_bank(**kwargs):
 			}
 		)
 		perm.insert(ignore_permissions=True)
-
-		frappe.db.commit()
 	except Exception as e:
 		frappe.db.rollback()
 		frappe.throw(_("Failed to register bank: {0}").format(str(e)))
@@ -349,8 +346,6 @@ def invite_user(email: str, full_name: str, role: str, password: str):
 				}
 			)
 			perm.insert(ignore_permissions=True)
-
-		frappe.db.commit()
 	except Exception as e:
 		frappe.db.rollback()
 		frappe.throw(_("Failed to invite user: {0}").format(str(e)))

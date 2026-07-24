@@ -2,7 +2,10 @@
 Single source of truth for oan_a2c role names and groupings.
 
 Tiers (highest to lowest privilege over bank data):
-  - A2C Marketplace Admin : platform admin, unbound by bank isolation (sees all banks)
+  - A2C Administrator     : platform admin, unbound by bank isolation (sees all banks).
+                            This is the app ROLE "A2C Administrator" (which already
+                            holds DocPerm across every doctype); distinct from Frappe's
+                            built-in `Administrator` USER, which bypasses via core.
   - Bank Admin            : manages one bank; scoped by its A2C Participating Bank
                             User Permission
   - Bank Agent            : operates within one bank; scoped likewise
@@ -26,7 +29,7 @@ never just an edit. Import these constants everywhere instead of hardcoding the
 strings, so the exact casing/spacing is defined in exactly one place.
 """
 
-MARKETPLACE_ADMIN_ROLE = "A2C Marketplace Admin"
+ADMIN_ROLE = "A2C Administrator"
 BANK_ADMIN_ROLE = "A2C Bank Admin"
 BANK_AGENT_ROLE = "A2C Bank Agent"
 DEVELOPMENT_AGENT_ROLE = "A2C Development Agent"
@@ -41,4 +44,4 @@ BANK_ROLES = (BANK_ADMIN_ROLE, BANK_AGENT_ROLE)
 # doctypes the role already has DocPerm for. Development Agent has DocPerm on
 # A2C Loan Application (its job) but none on the a2c_marketplace catalog/seller
 # doctypes, so being unbound never exposes the seller side — RBAC keeps that wall.
-BANK_UNBOUND_ROLES = frozenset({MARKETPLACE_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, "System Manager"})
+BANK_UNBOUND_ROLES = frozenset({ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, "System Manager"})

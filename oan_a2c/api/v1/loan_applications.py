@@ -206,8 +206,6 @@ def update_basic_profile(
 	if changed:
 		farmer_doc.save(ignore_permissions=False)
 		lead_doc.save(ignore_permissions=False)
-		# nosemgrep: frappe-manual-commit -- reviewed: commit paired profile + lead update atomically
-		frappe.db.commit()
 
 	return success_response(
 		data={
@@ -565,9 +563,9 @@ def upload_supporting_documents(**kwargs):
 			{"name": file_doc.name, "file_url": file_doc.file_url, "file_name": file_doc.file_name}
 		)
 
-	# nosemgrep: frappe-manual-commit -- reviewed: persist uploaded file records before returning URLs
-	frappe.db.commit()
-	return success_response(data=uploaded_files, message="Supporting documents uploaded successfully")
+	return success_response(
+		data={"uploaded_files": uploaded_files}, message="Supporting documents uploaded successfully"
+	)
 
 
 @frappe.whitelist(allow_guest=False)
@@ -647,10 +645,7 @@ def delete_supporting_document(**kwargs):
 		frappe.throw(_("File not found or not attached to this application"), frappe.DoesNotExistError)
 
 	frappe.delete_doc("File", file_id, ignore_permissions=False)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist file deletion before returning
-	frappe.db.commit()
-
-	return success_response(message="File deleted successfully")
+	return success_response(message=_("Document deleted successfully."))
 
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
@@ -727,8 +722,6 @@ def create_loan_application(**kwargs):
 	loan_app.status = "Draft"
 
 	loan_app.insert(ignore_permissions=False)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist new loan application before returning its id
-	frappe.db.commit()
 
 	# NOTE: the lead is intentionally NOT advanced here. Lead status transitions go through the
 	# A2C Lead Workflow (Active -> Verified -> Processed), driven by the frontend via
@@ -778,10 +771,7 @@ def update_loan_status(**kwargs):
 	# legal transitions and per-role gating, and submits the doc (docstatus 1) on
 	# Approve/Reject. Illegal/unauthorised targets raise ValidationError.
 	apply_status_transition(doc, status)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist workflow status transition before returning
-	frappe.db.commit()
-
-	return success_response(message=f"Loan application status updated to {status}")
+	return success_response(message=_("Loan status updated to {0}.").format(status))
 
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
@@ -799,9 +789,6 @@ def update_loan_step(**kwargs):
 
 	doc.current_step = step
 	doc.save(ignore_permissions=False)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist step change before returning
-	frappe.db.commit()
-
 	return success_response(
 		data={"application_id": doc.name, "current_step": doc.current_step},
 		message=f"Loan application step updated to {doc.current_step}",
@@ -829,8 +816,6 @@ def assign_loan_officer(**kwargs):
 	doc = _get_app(application_id)
 	doc.loan_officer = loan_officer
 	doc.save(ignore_permissions=False)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist officer assignment before returning
-	frappe.db.commit()
 
 	officer_name = (
 		frappe.db.get_value("User", {"email": loan_officer}, "full_name")

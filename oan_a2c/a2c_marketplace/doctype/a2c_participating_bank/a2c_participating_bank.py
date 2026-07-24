@@ -4,6 +4,7 @@
 import frappe
 from frappe.model.document import Document
 
+
 class A2CParticipatingBank(Document):
 	def on_update(self):
 		if self.status == "Active":
@@ -11,7 +12,7 @@ class A2CParticipatingBank(Document):
 				frappe.throw("KYC Document is required to activate the bank.")
 			if not self.gro_name or not self.ops_name:
 				frappe.throw("GRO Name and Ops Name are required to activate the bank.")
-		
+
 		# Handle Suspended / Active side effects on User records
 		# If suspended, disable users. If active, enable users.
 		if self.has_value_changed("status"):
@@ -21,7 +22,10 @@ class A2CParticipatingBank(Document):
 				self.set_users_enabled(1)
 
 	def set_users_enabled(self, enabled):
-		users = frappe.get_all("User Permission", filters={"allow": "A2C Participating Bank", "for_value": self.name}, fields=["user"])
+		users = frappe.get_all(
+			"User Permission",
+			filters={"allow": "A2C Participating Bank", "for_value": self.name},
+			fields=["user"],
+		)
 		for u in users:
 			frappe.db.set_value("User", u.user, "enabled", enabled)
-

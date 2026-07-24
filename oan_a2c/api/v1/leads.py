@@ -121,7 +121,7 @@ def get_leads(**kwargs):
 	Retrieves a paginated list of A2C Leads with multi-faceted search and filter configurations.
 
 	Security Specs:
-	  - Parametrizes all inputs to prevent SQL Injection.
+	        - Parametrizes all inputs to prevent SQL Injection.
 	"""
 	start = kwargs.get("start") or 0
 	page_length = kwargs.get("page_length") or 20
