@@ -42,7 +42,7 @@ class SetProductStatusSchema(BaseModel):
 @frappe.whitelist()
 @validate_request(CreateProductSchema)
 @handle_api_errors
-@bank_scoped()
+@bank_scoped
 def create_product(
 	product_name: str,
 	min_interest_rate: float,
@@ -158,24 +158,32 @@ def list_products(
 	if tenure_months is not None:
 		base_filters["tenure_months"] = int(tenure_months)
 
-	# If category or tag filter is passed, find matching product IDs in 1 query
-	if category or tag:
-		rel_filters = {}
-		if category:
-			rel_filters["term_type"] = "Category"
-			rel_filters["term_category"] = category
-		if tag:
-			rel_filters["term_type"] = "Tag"
-			rel_filters["term_tag"] = tag
+	# If category or tag filter is passed, find matching product IDs
+	matching_product_ids = None
 
-		matching_product_ids = frappe.get_all(
+	if category:
+		cat_ids = frappe.get_all(
 			"A2C Term Relationship",
-			filters=rel_filters,
+			filters={"term_type": "Category", "term_category": ["like", f"%{category}%"]},
 			pluck="loan_product",
 		)
+		matching_product_ids = set(cat_ids)
+
+	if tag:
+		tag_ids = frappe.get_all(
+			"A2C Term Relationship",
+			filters={"term_type": "Tag", "term_tag": ["like", f"%{tag}%"]},
+			pluck="loan_product",
+		)
+		if matching_product_ids is None:
+			matching_product_ids = set(tag_ids)
+		else:
+			matching_product_ids.intersection_update(tag_ids)
+
+	if category or tag:
 		if not matching_product_ids:
 			return success_response(data={"products": [], "count": 0})
-		base_filters["name"] = ["in", matching_product_ids]
+		base_filters["name"] = ["in", list(matching_product_ids)]
 
 	filters = bank_filters(base=base_filters)
 

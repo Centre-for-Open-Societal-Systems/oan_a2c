@@ -47,9 +47,9 @@ def get_stats_for_bank(bank: str) -> dict | None:
 	return result
 
 
-def _compute_from_db(bank: str | None) -> dict:
-	"""Query DB for stats. bank=None means no bank filter (admin/unscoped path)."""
-	filters = {"bank": bank} if bank is not None else {}
+def _compute_from_db(bank: str) -> dict:
+	"""Query DB for a single bank's stats. The all-banks view sums these per bank."""
+	filters = {"bank": bank}
 
 	product_counts = frappe.get_all(  # bank-scope-exempt: bank scoped explicitly via filters above
 		"A2C Loan Product",
@@ -89,6 +89,36 @@ def compute_and_set(bank: str) -> dict:
 	for counter, value in stats.items():
 		_set(bank, counter, value)
 	return stats
+
+
+def _all_banks_view() -> dict:
+	"""Admin (all-banks) view: platform totals plus a per-bank breakdown.
+
+	Every counter is additive, so the platform total is just the sum of the
+	per-bank values. This reuses the per-bank caches the incr/decr hooks already
+	keep consistent — no separate 'all banks' key to maintain. A cold bank falls
+	back to its own compute_and_set (a per-bank query), warming it as a side
+	effect. We deliberately never issue one cross-bank aggregate here.
+	"""
+	totals = dict.fromkeys(_COUNTERS, 0)
+	by_bank = []
+	for bank in frappe.get_all("A2C Participating Bank", pluck="name"):
+		stats = get_stats_for_bank(bank) or compute_and_set(bank)
+		by_bank.append({"bank": bank, **stats})
+		for counter in _COUNTERS:
+			totals[counter] += stats[counter]
+	return {"stats": totals, "by_bank": by_bank}
+
+
+def get_dashboard_stats(bank: str | None) -> dict:
+	"""Resolve the dashboard payload for a caller.
+
+	bank=None   => unbound admin: {"stats": <platform totals>, "by_bank": [...]}.
+	bank=<code> => that bank, cache-first: {"stats": <that bank's stats>}.
+	"""
+	if bank is None:
+		return _all_banks_view()
+	return {"stats": get_stats_for_bank(bank) or compute_and_set(bank)}
 
 
 def on_product_change(doc, event: str) -> None:

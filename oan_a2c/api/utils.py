@@ -2,12 +2,12 @@ import inspect
 from functools import wraps
 from typing import Annotated
 
-import frappe
-from frappe import _
+import frappe  # pyright: ignore[reportMissingImports]
+from frappe import _  # pyright: ignore[reportMissingImports]
 from pydantic import BaseModel, BeforeValidator
 from pydantic import ValidationError as PydanticValidationError
 
-from oan_a2c.a2c_marketplace.permissions import BankNotOnboarded
+from oan_a2c.a2c_marketplace.permissions import BankNotOnboarded  # pyright: ignore[reportMissingTypeStubs]
 
 
 class _DummyException(Exception):
@@ -151,7 +151,7 @@ def _envelope_success(data=None, message="Success", meta=None, pagination=None):
 	return res
 
 
-def error_response(message, code="GENERIC_ERROR", details=None):
+def error_response(message, code="GENERIC_ERROR", details=None):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
 	res = {
 		"status": "error",
 		"message": message,
