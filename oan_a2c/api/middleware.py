@@ -67,7 +67,13 @@ def validate_jwt_request(request=None):
 			raise JWTUnauthorized("Invalid or missing Key ID ('kid') in JWT header. Expected 'kid': 'v1'.")
 
 		# Decode and validate cryptographically
-		payload = jwt.decode(token, secret, algorithms=["HS256"])
+		payload = jwt.decode(
+			token,
+			secret,
+			algorithms=["HS256"],
+			issuer="oan_a2c_identity_gateway",
+			audience="oan_a2c_client",
+		)
 
 		# Verify the user is active/enabled (revocation check)
 		user_name = payload.get("sub")

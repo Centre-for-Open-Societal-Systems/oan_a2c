@@ -39,6 +39,10 @@ class SetProductStatusSchema(BaseModel):
 	status: str = Field(..., pattern="^(Draft|Active|Archived)$")
 
 
+class GetProductSchema(BaseModel):
+	product_id: str
+
+
 @frappe.whitelist()
 @validate_request(CreateProductSchema)
 @handle_api_errors
@@ -209,3 +213,63 @@ def list_products(
 	)
 
 	return success_response(data={"products": products, "count": len(products)})
+
+
+@frappe.whitelist()
+@validate_request(GetProductSchema)
+@handle_api_errors
+def get_product(product_id: str):
+	if not frappe.has_permission("A2C Loan Product", "read", product_id):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	doc = frappe.get_doc("A2C Loan Product", product_id)
+
+	product_meta = []
+	for meta in getattr(doc, "product_meta", []):
+		product_meta.append({"meta_key": meta.meta_key, "meta_value": meta.meta_value})
+
+	categories = frappe.get_all(
+		"A2C Term Relationship",
+		filters={"loan_product": product_id, "term_type": "Category"},
+		pluck="term_category",
+	)
+
+	tags = frappe.get_all(
+		"A2C Term Relationship",
+		filters={"loan_product": product_id, "term_type": "Tag"},
+		pluck="term_tag",
+	)
+
+	lookups = frappe.get_all(
+		"A2C Loan Product Attribute Lookup",
+		filters={"loan_product": product_id},
+		fields=["taxonomy", "term_id"],
+	)
+	attributes = {}
+	for lookup in lookups:
+		tax = lookup.taxonomy
+		if tax not in attributes:
+			attributes[tax] = []
+		attributes[tax].append(lookup.term_id)
+
+	product_data = {
+		"name": doc.name,
+		"product_name": doc.product_name,
+		"slug": doc.slug,
+		"status": doc.status,
+		"min_interest_rate": doc.min_interest_rate,
+		"max_interest_rate": doc.max_interest_rate,
+		"min_amount": doc.min_amount,
+		"max_amount": doc.max_amount,
+		"tenure_months": doc.tenure_months,
+		"description": doc.description,
+		"bank": doc.bank,
+		"creation": str(doc.creation) if doc.creation else None,
+		"modified": str(doc.modified) if doc.modified else None,
+		"product_meta": product_meta,
+		"categories": categories,
+		"tags": tags,
+		"attributes": attributes,
+	}
+
+	return success_response(data={"product": product_data})

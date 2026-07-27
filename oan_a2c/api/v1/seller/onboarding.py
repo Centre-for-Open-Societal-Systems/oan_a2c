@@ -2,10 +2,16 @@ import re
 
 import frappe
 from frappe import _
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, BANK_AGENT_ROLE
-from oan_a2c.api.utils import SafeEmail, handle_api_errors, success_response, validate_request
+from oan_a2c.api.utils import (
+	SafeEmail,
+	check_rate_limit,
+	handle_api_errors,
+	success_response,
+	validate_request,
+)
 from oan_a2c.api.v1.auth import RegisterUserSchema, create_user_account
 
 RegisterSellerSchema = RegisterUserSchema
@@ -31,6 +37,8 @@ def register_seller(email: str, full_name: str, password: str, phone_number: str
 	"""
 	Guest accessible: Creates a User with the A2C Bank Admin role.
 	"""
+	check_rate_limit(f"rl:register_seller:{getattr(frappe.local, 'request_ip', 'guest')}", limit=5, window=60)
+
 	create_user_account(
 		email=email,
 		full_name=full_name,
@@ -79,7 +87,14 @@ class InviteUserSchema(BaseModel):
 	email: SafeEmail
 	full_name: str = Field(..., min_length=2)
 	role: str = Field(..., min_length=2)
-	password: str = Field(..., min_length=6)
+	password: str = Field(..., min_length=8, max_length=64)
+
+	@field_validator("password")
+	@classmethod
+	def validate_pwd(cls, v: str) -> str:
+		if not any(c.isalpha() for c in v) or not any(c.isdigit() for c in v):
+			raise ValueError("Password must contain at least one letter and one number.")
+		return v
 
 
 class DeactivateUserSchema(BaseModel):
@@ -119,7 +134,11 @@ def register_bank(**kwargs):
 			}
 		).insert(ignore_permissions=True)
 		return success_response(
-			data={"message": _("Your registration attempt has been flagged for admin review.")}
+			data={
+				"message": _("Bank registered successfully. Currently onboarding."),
+				"bank_code": bank_code,
+				"bank_id": existing_bank,
+			}
 		)
 
 	# Create Bank, Role Profile, and User Permission in one transaction
@@ -243,6 +262,46 @@ def upload_kyc_document(**kwargs):
 
 
 # -----------------
+# 3c. get_bank_profile
+# -----------------
+@frappe.whitelist()
+@handle_api_errors
+def get_bank_profile():
+	user = frappe.session.user
+	bank = frappe.db.get_value(
+		"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
+	)
+
+	if not bank:
+		frappe.throw(_("No bank associated with the current user."))
+
+	doc = frappe.get_doc("A2C Participating Bank", bank)
+
+	return success_response(
+		data={
+			"bank_id": doc.name,
+			"bank_code": doc.bank_code,
+			"bank_name": doc.bank_name,
+			"entity_type": doc.entity_type,
+			"registered_street": doc.registered_street,
+			"registered_city": doc.registered_city,
+			"registered_country": doc.registered_country,
+			"registered_postal_code": doc.registered_postal_code,
+			"registered_email": doc.registered_email,
+			"registered_phone": doc.registered_phone,
+			"status": doc.status,
+			"gro_name": doc.gro_name,
+			"gro_mobile": doc.gro_mobile,
+			"ops_name": doc.ops_name,
+			"ops_mobile": doc.ops_mobile,
+			"kyc_document": doc.kyc_document,
+			"kyc_document_uploaded": bool(doc.kyc_document),
+			"org_grievance_updated": bool(doc.gro_name and doc.gro_mobile),
+		}
+	)
+
+
+# -----------------
 # 4a. get_bank_status
 # -----------------
 @frappe.whitelist()
@@ -276,6 +335,12 @@ def update_bank_status(**kwargs):
 
 	if not is_admin:
 		frappe.throw(_("Only Bank Admins can update bank status."), frappe.PermissionError)
+
+	user_bank = frappe.db.get_value(
+		"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
+	)
+	if not user_bank or user_bank != bank_code:
+		frappe.throw(_("You are not authorized to update status for this bank."), frappe.PermissionError)
 
 	if not frappe.db.exists("A2C Participating Bank", {"bank_code": bank_code}):
 		frappe.throw(_("Bank {0} not found").format(bank_code), frappe.DoesNotExistError)

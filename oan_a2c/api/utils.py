@@ -164,6 +164,26 @@ def error_response(message, code="GENERIC_ERROR", details=None):  # pyright: ign
 	return res
 
 
+def check_rate_limit(key: str, limit: int, window: int):
+	"""
+	Apply rate limits using Redis counter.
+	key    — unique per user+endpoint
+	limit  — max calls allowed in window
+	window — seconds
+	"""
+	cache = frappe.cache()
+	count = cache.get_value(key) or 0
+
+	if int(count) >= limit:
+		frappe.response.status_code = 429
+		frappe.throw(_("Rate limit exceeded. Try again later."), frappe.ValidationError)
+
+	pipeline = cache.pipeline()
+	pipeline.incr(key)
+	pipeline.expire(key, window)
+	pipeline.execute()
+
+
 def extract_message_from_str(val):
 	if val.startswith("{") and val.endswith("}"):
 		try:

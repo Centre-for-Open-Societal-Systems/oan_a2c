@@ -1,5 +1,8 @@
 import datetime
 import hashlib
+import secrets
+import string
+import time
 
 import frappe
 import jwt
@@ -9,7 +12,13 @@ from frappe.core.doctype.user.user import update_password
 from pydantic import BaseModel, Field
 
 from oan_a2c.a2c_marketplace.roles import BANK_ROLES
-from oan_a2c.api.utils import SafeEmail, handle_api_errors, success_response, validate_request
+from oan_a2c.api.utils import (
+	SafeEmail,
+	check_rate_limit,
+	handle_api_errors,
+	success_response,
+	validate_request,
+)
 
 
 class LoginSchema(BaseModel):
@@ -45,6 +54,7 @@ def generate_access_token(usr: str, roles: list) -> str:
 	payload = {
 		"sub": usr,
 		"iss": "oan_a2c_identity_gateway",
+		"aud": "oan_a2c_client",
 		"iat": now,
 		"exp": now + datetime.timedelta(minutes=15),
 		"roles": roles,
@@ -73,6 +83,50 @@ def generate_refresh_token(usr: str, remember_me: bool = False) -> str:
 	return raw_token
 
 
+def _get_user_bank_context(user_id: str) -> dict[str, str | None]:
+	"""Resolve bank binding and human-readable bank context for auth payloads."""
+	bank_ref = frappe.db.get_value(
+		"User Permission", {"user": user_id, "allow": "A2C Participating Bank"}, "for_value"
+	)
+	if not bank_ref:
+		frappe.logger().warning(f"User {user_id} has bank role but no bank binding.")
+		return {
+			"bank": None,
+			"bank_id": None,
+			"bank_code": None,
+			"bank_name": None,
+			"bank_status": None,
+		}
+
+	# for_value should be the bank docname; fallback to bank_code for legacy mappings.
+	bank_row = frappe.db.get_value(
+		"A2C Participating Bank", bank_ref, ["name", "bank_code", "bank_name", "status"], as_dict=True
+	) or frappe.db.get_value(
+		"A2C Participating Bank",
+		{"bank_code": bank_ref},
+		["name", "bank_code", "bank_name", "status"],
+		as_dict=True,
+	)
+
+	if not bank_row:
+		frappe.logger().warning(f"User {user_id} bank binding points to missing bank reference: {bank_ref}.")
+		return {
+			"bank": bank_ref,
+			"bank_id": None,
+			"bank_code": bank_ref,
+			"bank_name": bank_ref,
+			"bank_status": None,
+		}
+
+	return {
+		"bank": bank_row.bank_name,
+		"bank_id": bank_row.name,
+		"bank_code": bank_row.bank_code,
+		"bank_name": bank_row.bank_name,
+		"bank_status": bank_row.status,
+	}
+
+
 # nosemgrep: guest-whitelisted-method -- reviewed: public auth endpoint, validated + rate-limited
 @frappe.whitelist(allow_guest=True)
 @validate_request(LoginSchema)
@@ -83,6 +137,8 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 	Wraps Frappe's core LoginManager to ensure standard validations apply
 	(account lock, disabled user, etc.) without creating a server-side session.
 	"""
+	check_rate_limit(f"rl:login:{getattr(frappe.local, 'request_ip', 'guest')}", limit=10, window=60)
+
 	try:
 		login_manager = LoginManager()
 		# authenticate() validates credentials and raises AuthenticationError on failure.
@@ -101,19 +157,21 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 	refresh_token = generate_refresh_token(usr, remember_me)
 
 	has_bank_role = any(r in BANK_ROLES for r in roles)
-	bank = None
+	bank_context = {
+		"bank": None,
+		"bank_id": None,
+		"bank_code": None,
+		"bank_name": None,
+		"bank_status": None,
+	}
 	if has_bank_role:
-		bank = frappe.db.get_value(
-			"User Permission", {"user": usr, "allow": "A2C Participating Bank"}, "for_value"
-		)
-		if not bank:
-			frappe.logger().warning(f"User {usr} has bank role but no bank binding.")
+		bank_context = _get_user_bank_context(usr)
 
 	return success_response(
 		data={
 			"token": token,
 			"refresh_token": refresh_token,
-			"user": {"email": usr, "full_name": user.full_name, "roles": roles, "bank": bank},
+			"user": {"email": usr, "full_name": user.full_name, "roles": roles, **bank_context},
 		}
 	)
 
@@ -124,37 +182,27 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 @handle_api_errors
 def forgot_password(email: str):
 	"""
-	Generates a 6-digit OTP for password recovery. Sends via SMS if available, otherwise Email.
+	Generates a secure 6-digit OTP for password recovery with expiration.
+	(Simplified implementation: email/SMS delivery bypassed for now).
 	"""
-	import random
-	import string
+	check_rate_limit(f"rl:forgot_pwd:{getattr(frappe.local, 'request_ip', 'guest')}", limit=5, window=60)
 
+	otp = None
 	try:
-		user = frappe.db.get_value("User", {"email": email}, ["name", "mobile_no"], as_dict=True)
+		user = frappe.db.get_value("User", {"email": email}, "name")
 		if user:
-			otp = "".join(random.choices(string.digits, k=6))
-
-			# Save key in user document to work with frappe's update_password
-			frappe.db.set_value("User", user.name, "reset_password_key", otp)
-
-			if user.mobile_no:
-				frappe.send_sms(
-					[user.mobile_no], f"Your A2C password reset OTP is {otp}. Do not share this with anyone."
-				)
-			else:
-				frappe.sendmail(
-					recipients=[email],
-					subject="Password Reset OTP",
-					message=f"Your A2C password reset OTP is: <b>{otp}</b>. Do not share this with anyone.",
-				)
+			otp = "".join(secrets.choice(string.digits) for _ in range(6))
+			expiry = int(time.time()) + 900  # 15 minutes expiry
+			frappe.db.set_value("User", user, "reset_password_key", f"{otp}:{expiry}")
+			# SMS and Email sending bypassed for simple implementation per user instruction
 	except Exception:
 		frappe.logger().warning(
-			f"forgot_password: OTP reset flow raised (expected for unknown users, "
-			f"but investigate if frequent): {frappe.get_traceback(with_context=False)}"
+			f"forgot_password: OTP reset flow raised: {frappe.get_traceback(with_context=False)}"
 		)
 
 	return success_response(
-		message=_("If your email is registered, a password reset OTP has been sent via email or SMS.")
+		message=_("If your email is registered, a password reset OTP has been generated."),
+		data={"otp": otp} if otp else None,
 	)
 
 
@@ -166,18 +214,37 @@ def reset_password(email: str, key: str, new_password: str):
 	"""
 	Decoupled bridge: accepts the 6-digit OTP key and sets a new password.
 	"""
-	user = frappe.db.get_value("User", {"email": email, "reset_password_key": key}, "name")
+	check_rate_limit(f"rl:reset_pwd:{email}", limit=5, window=300)
 
+	stored_val = frappe.db.get_value("User", {"email": email}, "reset_password_key")
+	if not stored_val:
+		raise frappe.AuthenticationError(_("Invalid or expired reset OTP."))
+
+	user = frappe.db.get_value("User", {"email": email}, "name")
 	if not user:
 		raise frappe.AuthenticationError(_("Invalid or expired reset OTP."))
 
-	# user= must be passed explicitly. In a stateless (guest) context, omitting it
-	# causes Frappe to default to frappe.session.user which is "Guest", not the
-	# target account — resulting in a silent no-op or a permission error.
-	update_password(new_password=new_password, logout_all_sessions=True, key=key, user=user)
+	valid = False
+	if ":" in str(stored_val):
+		stored_otp, expiry_str = str(stored_val).split(":", 1)
+		try:
+			if int(time.time()) <= int(expiry_str) and secrets.compare_digest(stored_otp, key):
+				valid = True
+		except ValueError:
+			pass
+	else:
+		if secrets.compare_digest(str(stored_val), key):
+			valid = True
 
-	# Clear the key after successful reset just in case
-	frappe.db.set_value("User", user, "reset_password_key", "")
+	if not valid:
+		raise frappe.AuthenticationError(_("Invalid or expired reset OTP."))
+
+	# Temporarily set reset_password_key to just the key so Frappe's native check passes
+	frappe.db.set_value("User", user, "reset_password_key", key)
+	try:
+		update_password(new_password=new_password, logout_all_sessions=True, key=key, user=user)
+	finally:
+		frappe.db.set_value("User", user, "reset_password_key", "")
 
 	return success_response(message=_("Your password has been successfully updated. You may now login."))
 
@@ -190,6 +257,8 @@ def refresh(refresh_token: str):
 	"""
 	Validates the refresh token, performs rotation, and returns a new access & refresh token.
 	"""
+	check_rate_limit(f"rl:refresh:{getattr(frappe.local, 'request_ip', 'guest')}", limit=30, window=60)
+
 	token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
 
 	token_records = frappe.get_all(
@@ -265,14 +334,16 @@ def get_me():
 	roles = [d.role for d in user.roles]
 
 	has_bank_role = any(r in BANK_ROLES for r in roles)
-	bank = None
+	bank_context = {
+		"bank": None,
+		"bank_id": None,
+		"bank_code": None,
+		"bank_name": None,
+		"bank_status": None,
+	}
 	if has_bank_role:
-		bank = frappe.db.get_value(
-			"User Permission", {"user": frappe.session.user, "allow": "A2C Participating Bank"}, "for_value"
-		)
-		if not bank:
-			frappe.logger().warning(f"User {frappe.session.user} has bank role but no bank binding.")
+		bank_context = _get_user_bank_context(frappe.session.user)
 
 	return success_response(
-		data={"email": user.email, "full_name": user.full_name, "roles": roles, "bank": bank}
+		data={"email": user.email, "full_name": user.full_name, "roles": roles, **bank_context}
 	)

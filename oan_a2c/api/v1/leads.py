@@ -398,14 +398,21 @@ def get_lead_summary():
 	frappe.has_permission("A2C Lead", "read", throw=True)
 
 	allowed_statuses = ("Active", "Verified", "Processed", "Granted", "Rejected", "Dormant")
-	counts_by_status = {}
+	counts_by_status = {st: 0 for st in allowed_statuses}
 	total_count = 0
 
-	for status in allowed_statuses:
-		cnt_res = frappe.get_list("A2C Lead", filters={"status": status}, fields=[{"COUNT": "*"}])
-		count = cnt_res[0].get("COUNT(*)") if cnt_res else 0
-		counts_by_status[status] = count
-		total_count += count
+	grouped = frappe.get_list(
+		"A2C Lead",
+		filters={"status": ["in", list(allowed_statuses)]},
+		fields=["status", "count(*) as count"],
+		group_by="status",
+	)
+	for row in grouped:
+		st = row.get("status")
+		cnt = row.get("count", 0)
+		if st in counts_by_status:
+			counts_by_status[st] = cnt
+			total_count += cnt
 
 	# Assignment split: a lead is "assigned" when assigned_to is set, else "unassigned".
 	assigned_res = frappe.get_list(
@@ -624,8 +631,26 @@ def get_assignable_users(**kwargs):
 			pagination={"start": start_idx, "page_length": page_len, "total_count": 0, "has_next": False},
 		)
 
-	# TODO: Implement tenant/bank isolation context checks if scoped assignment requirements are introduced in the future.
-	# TODO: Create or use a dedicated Bank Agent mapping/relation table for get and assignable tasks in the future.
+	# Implement tenant/bank isolation: filter users to caller's bank if applicable
+	user_bank = frappe.db.get_value(
+		"User Permission", {"user": frappe.session.user, "allow": "A2C Participating Bank"}, "for_value"
+	)
+	if user_bank:
+		bank_users = frappe.get_all(
+			"User Permission",
+			filters={"allow": "A2C Participating Bank", "for_value": user_bank},
+			pluck="user",
+			ignore_permissions=True,
+		)
+		role_users = list(set(role_users).intersection(set(bank_users)))
+
+		if not role_users:
+			return success_response(
+				data=[],
+				message="Assignable users retrieved successfully",
+				pagination={"start": start_idx, "page_length": page_len, "total_count": 0, "has_next": False},
+			)
+
 	# Construct DB query filters
 	user_filters = {"name": ["in", list(set(role_users))], "enabled": 1}
 

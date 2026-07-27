@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Optional, Union
 
 import frappe
@@ -212,7 +213,14 @@ class OpenG2PConsentClient:
 		if new_cookies:
 			frappe.cache().set_value("openg2p_portal_session_cookies", new_cookies, expires_in_sec=1800)
 
-	def _call_rpc(self, endpoint, method, params):
+	def _call_rpc(self, endpoint, method, params, attempt=0):
+		if frappe.cache().get_value("cb:openg2p") == "open":
+			frappe.throw(
+				_(
+					"OpenG2P service is temporarily unavailable due to high error rates. Please try again later."
+				)
+			)
+
 		url = f"{self.base_url}{endpoint}"
 		payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
 		try:
@@ -256,7 +264,7 @@ class OpenG2PConsentClient:
 					)
 				):
 					self._refresh_portal_session()
-					return self._call_rpc(endpoint, method, params)
+					return self._call_rpc(endpoint, method, params, attempt=attempt)
 
 				frappe.log_error(f"OpenG2P RPC error on {endpoint}: {msg}", "OpenG2P Error")
 				frappe.throw(_("OpenG2P request could not be completed. Please try again later."))
@@ -269,9 +277,20 @@ class OpenG2PConsentClient:
 				)
 				frappe.throw(_("OpenG2P request could not be completed. Please try again later."))
 
+			# Reset circuit breaker failure count on success
+			frappe.cache().delete_value("cb:openg2p_fails")
 			return result
 
 		except requests.exceptions.RequestException as e:
+			if attempt < 2:
+				time.sleep(0.5 * (2**attempt))
+				return self._call_rpc(endpoint, method, params, attempt=attempt + 1)
+
+			fails = int(frappe.cache().get_value("cb:openg2p_fails") or 0) + 1
+			frappe.cache().set_value("cb:openg2p_fails", fails, expires_in_sec=60)
+			if fails >= 3:
+				frappe.cache().set_value("cb:openg2p", "open", expires_in_sec=60)
+
 			txn_id = (params or {}).get("fayda_otp_transaction_id") or self.portal_session_id
 			frappe.log_error(
 				f"OpenG2P connection error on {endpoint} (transaction_id={txn_id}): {e}",

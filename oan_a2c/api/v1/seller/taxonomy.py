@@ -51,6 +51,13 @@ def get_tags():
 
 
 @frappe.whitelist()
+@handle_api_errors
+def get_attributes():
+	terms = frappe.get_all("A2C Term", fields=["name as term_id", "term_name", "slug"])
+	return success_response(data={"attributes": terms})
+
+
+@frappe.whitelist()
 @validate_request(SetTermsSchema)
 @handle_api_errors
 def set_product_categories(product_id: str, term_ids: list):

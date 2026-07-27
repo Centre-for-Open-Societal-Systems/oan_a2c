@@ -1,11 +1,9 @@
-import json
-from functools import wraps
-from typing import Literal, Optional
+from typing import Literal
 
 import frappe
 from frappe import _
 from frappe.utils import cint, flt
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from oan_a2c.api.utils import (
 	SafeDate,
@@ -402,10 +400,10 @@ def get_all_loans(**kwargs):
 			filters["loan_type"] = ["in", valid_loan_types]
 
 	if location:
-		filters["location"] = ("like", f"%{location}%")
+		filters["location"] = ("like", f"{location}%")
 
 	if phone_number:
-		filters["phone_number"] = ("like", f"%{phone_number}%")
+		filters["phone_number"] = ("like", f"{phone_number}%")
 
 	# Filter by assigned Loan Officer (User). Single user, comma-separated users, or the literal
 	# "unassigned" for loans with no officer (matching the unassigned tab in get_loan_summary).
@@ -427,7 +425,7 @@ def get_all_loans(**kwargs):
 
 	or_filters = []
 	if search_query:
-		search_query_param = f"%{search_query}%"
+		search_query_param = f"{search_query}%"
 		or_filters.append(["name", "like", search_query_param])
 		or_filters.append(["phone_number", "like", search_query_param])
 		or_filters.append(["farmer_id", "like", search_query_param])

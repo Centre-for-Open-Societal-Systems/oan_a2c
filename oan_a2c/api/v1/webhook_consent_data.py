@@ -69,13 +69,31 @@ def download_cert_photo_to_file(url, lead_id):
 		return url
 
 	try:
+		import ipaddress
 		import os
+		import socket
 		from urllib.parse import urlparse
 
 		import requests
 		from frappe.utils.file_manager import save_file
 
+		parsed = urlparse(url)
+		if not parsed.hostname:
+			return url
+		try:
+			ip_str = socket.gethostbyname(parsed.hostname)
+			ip = ipaddress.ip_address(ip_str)
+			if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+				frappe.logger().warning(
+					f"SSRF blocked: cert photo URL {url} resolved to internal IP {ip_str}"
+				)
+				return url
+		except Exception as e:
+			frappe.logger().warning(f"SSRF check failed for hostname {parsed.hostname}: {e}")
+			return url
+
 		resp = requests.get(url, timeout=15)
+
 		resp.raise_for_status()
 
 		fname = os.path.basename(urlparse(url).path) or "certificate.jpg"
@@ -99,10 +117,12 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 	"""
 	# Set user context based on A2C Consent Request owner (Option 1 & 2)
 	owner = frappe.db.get_value("A2C Consent Request", consent_doc_name, "owner")
-	# TODO: This fallback to "Administrator" will be changed to fail/raise an exception if owner is not present
-	user_to_set = owner if owner and frappe.db.exists("User", owner) else "Administrator"
+	if not owner or not frappe.db.exists("User", owner):
+		raise frappe.PermissionError(
+			f"Cannot process consent data: Consent Request {consent_doc_name} lacks a valid owner user."
+		)
 	# nosemgrep: frappe-setuser -- reviewed: background worker sets context to the consent request owner
-	frappe.set_user(user_to_set)
+	frappe.set_user(owner)
 
 	# Bound before the try so it's always safe to reference in the except block,
 	# even if the failure happens before the lead link is resolved below.
