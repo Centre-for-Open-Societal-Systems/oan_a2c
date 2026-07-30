@@ -149,6 +149,11 @@
    "role": "A2C Administrator",
    "share": 1,
    "write": 1
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "role": "A2C Development Agent"
   }
  ],
  "sort_field": "modified",

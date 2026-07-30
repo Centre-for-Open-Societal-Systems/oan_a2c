@@ -1,6 +1,6 @@
 {
  "actions": [],
- "autoname": "format:{loan_product}-{term}",
+ "autoname": "format:{loan_product}-{taxonomy}-{term_id}",
  "creation": "2026-07-20 00:00:00.000000",
  "doctype": "DocType",
  "engine": "InnoDB",

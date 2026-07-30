@@ -4,8 +4,10 @@ import frappe
 from frappe import _
 from pydantic import BaseModel, Field, field_validator
 
+from oan_a2c.a2c_marketplace.permissions import is_bank_unbound, require_bank_role
 from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, BANK_AGENT_ROLE
 from oan_a2c.api.utils import (
+	RequiredPhone,
 	SafeEmail,
 	check_rate_limit,
 	handle_api_errors,
@@ -54,24 +56,70 @@ class RegisterBankSchema(BaseModel):
 	bank_code: str = Field(..., min_length=2)
 	entity_type: str = Field(...)
 	registered_street: str = Field(..., min_length=2)
+	registered_kebele_village: str | None = None
+	registered_woreda_district: str | None = None
 	registered_city: str = Field(..., min_length=2)
 	registered_country: str = Field(..., min_length=2)
 	registered_postal_code: str = Field(..., min_length=2)
 	registered_email: SafeEmail
-	registered_phone: str = Field(..., min_length=2)
+	registered_phone: RequiredPhone
+	website: str | None = None
+
+
+class UpdateBankProfileSchema(BaseModel):
+	bank_name: str | None = Field(None, min_length=2)
+	brand_name: str | None = None
+	website: str | None = None
+	registered_street: str | None = Field(None, min_length=2)
+	registered_kebele_village: str | None = None
+	registered_woreda_district: str | None = None
+	registered_city: str | None = Field(None, min_length=2)
+	registered_country: str | None = Field(None, min_length=2)
+	registered_postal_code: str | None = Field(None, min_length=2)
+	registered_email: SafeEmail | None = None
+	registered_phone: RequiredPhone | None = None
+	logo: str | None = None
 
 
 class SaveOrgContactsSchema(BaseModel):
 	gro_name: str
-	gro_mobile: str
+	gro_mobile: RequiredPhone
 	ops_name: str
-	ops_mobile: str
+	ops_mobile: RequiredPhone
 
 
 class UploadKycSchema(BaseModel):
-	filename: str = Field(..., min_length=4, max_length=30, pattern=r"^.+\.pdf$")
+	filename: str = Field(..., min_length=4, max_length=255, pattern=r"^.+\.pdf$")
 	# Max length approx 15MB for base64
 	filedata: str = Field(..., min_length=10, max_length=15000000)
+
+
+class UploadImageSchema(BaseModel):
+	filename: str = Field(..., min_length=4, max_length=100, pattern=r"^.+\.(?i)(png|jpe?g|webp)$")
+	# Max length approx 5MB for base64
+	filedata: str = Field(..., min_length=10, max_length=7000000)
+
+	@field_validator("filedata")
+	@classmethod
+	def validate_image_data(cls, v: str) -> str:
+		import base64
+
+		try:
+			decoded = base64.b64decode(v, validate=True)
+		except Exception:
+			raise ValueError("Content is not valid Base64.")
+
+		if len(decoded) > 5 * 1024 * 1024:
+			raise ValueError("File size exceeds 5MB limit.")
+
+		is_png = decoded.startswith(b"\x89PNG\r\n\x1a\n")
+		is_jpeg = decoded.startswith(b"\xff\xd8")
+		is_webp = decoded.startswith(b"RIFF") and len(decoded) >= 12 and decoded[8:12] == b"WEBP"
+
+		if not (is_png or is_jpeg or is_webp):
+			raise ValueError("File content is not a valid PNG, JPEG, or WebP image.")
+
+		return v
 
 
 class ActivateBankSchema(BaseModel):
@@ -79,7 +127,7 @@ class ActivateBankSchema(BaseModel):
 
 
 class UpdateBankStatusSchema(BaseModel):
-	bank_code: str = Field(..., min_length=2)
+	bank_code: str | None = None
 	new_status: str = Field(..., pattern="^(Onboarding|Active|Suspended)$")
 
 
@@ -97,8 +145,9 @@ class InviteUserSchema(BaseModel):
 		return v
 
 
-class DeactivateUserSchema(BaseModel):
+class SetUserStatusSchema(BaseModel):
 	email: SafeEmail
+	enabled: bool
 
 
 # -----------------
@@ -151,11 +200,14 @@ def register_bank(**kwargs):
 				"bank_name": kwargs.get("bank_name"),
 				"entity_type": kwargs.get("entity_type"),
 				"registered_street": kwargs.get("registered_street"),
+				"registered_kebele_village": kwargs.get("registered_kebele_village"),
+				"registered_woreda_district": kwargs.get("registered_woreda_district"),
 				"registered_city": kwargs.get("registered_city"),
 				"registered_country": kwargs.get("registered_country"),
 				"registered_postal_code": kwargs.get("registered_postal_code"),
 				"registered_email": kwargs.get("registered_email"),
 				"registered_phone": kwargs.get("registered_phone"),
+				"website": kwargs.get("website"),
 				"status": "Onboarding",
 			}
 		)
@@ -216,8 +268,9 @@ def save_org_contacts(**kwargs):
 # 3b. upload_kyc_document
 # -----------------
 @frappe.whitelist()
-@handle_api_errors
 @validate_request(UploadKycSchema)
+@handle_api_errors
+@require_bank_role(BANK_ADMIN_ROLE)
 def upload_kyc_document(**kwargs):
 	user = frappe.session.user
 	bank = frappe.db.get_value(
@@ -262,6 +315,36 @@ def upload_kyc_document(**kwargs):
 
 
 # -----------------
+# 3d. upload_image
+# -----------------
+@frappe.whitelist()
+@handle_api_errors
+@validate_request(UploadImageSchema)
+def upload_image(**kwargs):
+	user = frappe.session.user
+	if user == "Guest":
+		frappe.throw(_("Authentication required"), frappe.AuthenticationError)
+
+	try:
+		file_doc = frappe.get_doc(
+			{
+				"doctype": "File",
+				"file_name": kwargs.get("filename"),
+				"content": kwargs.get("filedata"),
+				"decode": 1,
+				"is_private": 0,
+			}
+		)
+		file_doc.insert(ignore_permissions=True)
+	except Exception:
+		frappe.throw(_("Failed to save uploaded image."))
+
+	return success_response(
+		data={"message": _("Image uploaded successfully."), "file_url": file_doc.file_url}
+	)
+
+
+# -----------------
 # 3c. get_bank_profile
 # -----------------
 @frappe.whitelist()
@@ -277,50 +360,94 @@ def get_bank_profile():
 
 	doc = frappe.get_doc("A2C Participating Bank", bank)
 
-	return success_response(
-		data={
-			"bank_id": doc.name,
-			"bank_code": doc.bank_code,
-			"bank_name": doc.bank_name,
-			"entity_type": doc.entity_type,
-			"registered_street": doc.registered_street,
-			"registered_city": doc.registered_city,
-			"registered_country": doc.registered_country,
-			"registered_postal_code": doc.registered_postal_code,
-			"registered_email": doc.registered_email,
-			"registered_phone": doc.registered_phone,
-			"status": doc.status,
-			"gro_name": doc.gro_name,
-			"gro_mobile": doc.gro_mobile,
-			"ops_name": doc.ops_name,
-			"ops_mobile": doc.ops_mobile,
-			"kyc_document": doc.kyc_document,
-			"kyc_document_uploaded": bool(doc.kyc_document),
-			"org_grievance_updated": bool(doc.gro_name and doc.gro_mobile),
-		}
-	)
+	data = {
+		"bank_id": doc.name,
+		"bank_code": doc.bank_code,
+		"bank_name": doc.bank_name,
+		"brand_name": doc.brand_name,
+		"entity_type": doc.entity_type,
+		"logo": doc.logo,
+		"registered_street": doc.registered_street,
+		"registered_kebele_village": doc.registered_kebele_village,
+		"registered_woreda_district": doc.registered_woreda_district,
+		"registered_city": doc.registered_city,
+		"registered_country": doc.registered_country,
+		"registered_postal_code": doc.registered_postal_code,
+		"registered_email": doc.registered_email,
+		"registered_phone": doc.registered_phone,
+		"website": doc.website,
+		"status": doc.status,
+	}
+
+	# KYC (compliance) and GRO/ops contacts are Bank Admin only.
+	# Agents get the basic bank profile without them.
+	user_doc = frappe.get_doc("User", user)
+	if any(d.role == BANK_ADMIN_ROLE for d in user_doc.roles):
+		data.update(
+			{
+				"gro_name": doc.gro_name,
+				"gro_mobile": doc.gro_mobile,
+				"ops_name": doc.ops_name,
+				"ops_mobile": doc.ops_mobile,
+				"kyc_document": doc.kyc_document,
+				"kyc_document_uploaded": bool(doc.kyc_document),
+				"org_grievance_updated": bool(doc.gro_name and doc.gro_mobile),
+			}
+		)
+
+	return success_response(data=data)
 
 
 # -----------------
-# 4a. get_bank_status
+# 3c-2. update_bank_profile
 # -----------------
 @frappe.whitelist()
+@validate_request(UpdateBankProfileSchema)
 @handle_api_errors
-def get_bank_status():
+def update_bank_profile(**kwargs):
 	user = frappe.session.user
 	bank = frappe.db.get_value(
 		"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
 	)
-
 	if not bank:
 		frappe.throw(_("No bank associated with the current user."))
 
-	status = frappe.db.get_value("A2C Participating Bank", bank, "status")
-	return success_response(data={"status": status})
+	user_doc = frappe.get_doc("User", user)
+	if not any(d.role == BANK_ADMIN_ROLE for d in user_doc.roles):
+		frappe.throw(_("Only Bank Admins can update the organization profile."), frappe.PermissionError)
+
+	doc = frappe.get_doc("A2C Participating Bank", bank)
+
+	editable_fields = [
+		"bank_name",
+		"brand_name",
+		"website",
+		"registered_street",
+		"registered_kebele_village",
+		"registered_woreda_district",
+		"registered_city",
+		"registered_country",
+		"registered_postal_code",
+		"registered_email",
+		"registered_phone",
+		"logo",
+	]
+
+	for field in editable_fields:
+		if field in kwargs and kwargs.get(field) is not None:
+			new_val = kwargs.get(field)
+			if field == "logo" and doc.logo and doc.logo != new_val:
+				old_file = frappe.db.get_value("File", {"file_url": doc.logo}, "name")
+				if old_file:
+					frappe.delete_doc("File", old_file, ignore_permissions=True, force=True)
+			setattr(doc, field, new_val)
+
+	doc.save(ignore_permissions=True)
+	return success_response(data={"message": _("Organization profile updated successfully.")})
 
 
 # -----------------
-# 4b. update_bank_status
+# 4. update_bank_status
 # -----------------
 @frappe.whitelist()
 @handle_api_errors
@@ -330,22 +457,25 @@ def update_bank_status(**kwargs):
 	new_status = kwargs.get("new_status")
 
 	user = frappe.session.user
-	user_doc = frappe.get_doc("User", user)
-	is_admin = any(d.role == BANK_ADMIN_ROLE for d in user_doc.roles)
 
-	if not is_admin:
-		frappe.throw(_("Only Bank Admins can update bank status."), frappe.PermissionError)
+	if is_bank_unbound(user):
+		if not bank_code:
+			frappe.throw(_("bank_code is required for administrators."), frappe.ValidationError)
+		bank_id = frappe.db.get_value("A2C Participating Bank", {"bank_code": bank_code}, "name")
+		if not bank_id:
+			frappe.throw(_("Bank {0} not found").format(bank_code), frappe.DoesNotExistError)
+	else:
+		user_doc = frappe.get_doc("User", user)
+		if not any(d.role == BANK_ADMIN_ROLE for d in user_doc.roles):
+			frappe.throw(_("Only Bank Admins can update bank status."), frappe.PermissionError)
 
-	user_bank = frappe.db.get_value(
-		"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
-	)
-	if not user_bank or user_bank != bank_code:
-		frappe.throw(_("You are not authorized to update status for this bank."), frappe.PermissionError)
+		bank_id = frappe.db.get_value(
+			"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
+		)
+		if not bank_id:
+			frappe.throw(_("No bank associated with the current user."), frappe.PermissionError)
 
-	if not frappe.db.exists("A2C Participating Bank", {"bank_code": bank_code}):
-		frappe.throw(_("Bank {0} not found").format(bank_code), frappe.DoesNotExistError)
-
-	doc = frappe.get_doc("A2C Participating Bank", {"bank_code": bank_code})
+	doc = frappe.get_doc("A2C Participating Bank", bank_id)
 
 	if doc.status == new_status:
 		return success_response(data={"message": _("Status is already {0}").format(new_status)})
@@ -362,6 +492,7 @@ def update_bank_status(**kwargs):
 @frappe.whitelist()
 @validate_request(InviteUserSchema)
 @handle_api_errors
+@require_bank_role(BANK_ADMIN_ROLE)
 def invite_user(email: str, full_name: str, role: str, password: str):
 	role = resolve_assignable_role(role, {BANK_ADMIN_ROLE, BANK_AGENT_ROLE})
 
@@ -419,12 +550,13 @@ def invite_user(email: str, full_name: str, role: str, password: str):
 
 
 # -----------------
-# 6. deactivate_user
+# 6. set_user_status
 # -----------------
 @frappe.whitelist()
-@validate_request(DeactivateUserSchema)
+@validate_request(SetUserStatusSchema)
 @handle_api_errors
-def deactivate_user(email: str):
+@require_bank_role(BANK_ADMIN_ROLE)
+def set_user_status(email: str, enabled: bool):
 	user = frappe.session.user
 	bank = frappe.db.get_value(
 		"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
@@ -433,15 +565,18 @@ def deactivate_user(email: str):
 	if not bank:
 		frappe.throw(_("No bank associated with the current user."))
 
+	if email == user:
+		frappe.throw(_("You cannot change your own account status."), frappe.ValidationError)
+
 	target_bank = frappe.db.get_value(
 		"User Permission", {"user": email, "allow": "A2C Participating Bank"}, "for_value"
 	)
 	if target_bank != bank:
-		frappe.throw(_("Not permitted to deactivate a user from another bank."))
+		frappe.throw(_("Not permitted to update a user from another bank."))
 
-	frappe.db.set_value("User", email, "enabled", 0)
+	frappe.db.set_value("User", email, "enabled", 1 if enabled else 0)
 
-	return success_response(data={"message": _("User deactivated successfully.")})
+	return success_response(data={"message": _("User status updated successfully.")})
 
 
 class UpdateUserProfileSchema(BaseModel):
@@ -455,6 +590,7 @@ class UpdateUserProfileSchema(BaseModel):
 # -----------------
 @frappe.whitelist()
 @handle_api_errors
+@require_bank_role(BANK_ADMIN_ROLE)
 def list_users():
 	user = frappe.session.user
 	bank = frappe.db.get_value(
@@ -468,11 +604,24 @@ def list_users():
 	permissions = frappe.get_all(
 		"User Permission", filters={"allow": "A2C Participating Bank", "for_value": bank}, fields=["user"]
 	)
-	bank_users = [p.user for p in permissions]
+	bank_users = [p.user for p in permissions if p.user != user]
 
 	users = frappe.get_all(
-		"User", filters={"name": ("in", bank_users)}, fields=["name", "email", "first_name", "enabled"]
+		"User",
+		filters={"name": ("in", bank_users)},
+		fields=["name", "email", "first_name", "enabled", "last_active"],
 	)
+
+	roles = frappe.get_all(
+		"Has Role",
+		filters={"parent": ("in", bank_users), "role": ("in", (BANK_ADMIN_ROLE, BANK_AGENT_ROLE))},
+		fields=["parent", "role"],
+	)
+
+	user_role_map = {r.parent: r.role for r in roles}
+
+	for u in users:
+		u["role"] = user_role_map.get(u.name)
 
 	return success_response(data={"users": users})
 
@@ -483,6 +632,7 @@ def list_users():
 @frappe.whitelist()
 @validate_request(UpdateUserProfileSchema)
 @handle_api_errors
+@require_bank_role(BANK_ADMIN_ROLE)
 def update_user_profile(email: str, full_name: str | None = None, role: str | None = None):
 	user = frappe.session.user
 	bank = frappe.db.get_value(

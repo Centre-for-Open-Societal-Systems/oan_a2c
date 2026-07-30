@@ -525,7 +525,7 @@
                     ]
                 },
                 {
-                    "name": "Get Bank Status",
+                    "name": "Get Bank Profile",
                     "request": {
                         "method": "GET",
                         "header": [
@@ -536,15 +536,109 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.get_bank_status",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.get_bank_profile",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.seller.onboarding.get_bank_status"
+                                "oan_a2c.api.v1.seller.onboarding.get_bank_profile"
                             ]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Update Bank Profile",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.update_bank_profile",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.seller.onboarding.update_bank_profile"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"bank_name\": \"{{bank_name}}\",\n    \"brand_name\": \"Updated Brand\",\n    \"website\": \"https://example.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Upload Bank Image",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.upload_image",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.seller.onboarding.upload_image"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"filename\": \"logo.png\",\n    \"filedata\": \"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
                         }
                     },
                     "response": [],
@@ -706,6 +800,44 @@
                                     "        }",
                                     "    }",
                                     "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Attributes",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.taxonomy.get_attributes",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.seller.taxonomy.get_attributes"
+                            ]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
                                 ],
                                 "type": "text/javascript"
                             }
@@ -1053,6 +1185,53 @@
                                     "        pm.collectionVariables.set(\"product_id\", products[0].name || products[0].product_id);",
                                     "    }",
                                     "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Product",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{jwt_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.loan_products.get_product",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "method",
+                                "oan_a2c.api.v1.seller.loan_products.get_product"
+                            ]
+                        },
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"product_id\": \"{{product_id}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test(\"Status code is 200\", function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});"
                                 ],
                                 "type": "text/javascript"
                             }
@@ -1438,7 +1617,7 @@
                     ]
                 },
                 {
-                    "name": "Deactivate User",
+                    "name": "Set User Status",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -1449,19 +1628,19 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.deactivate_user",
+                            "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.set_user_status",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "method",
-                                "oan_a2c.api.v1.seller.onboarding.deactivate_user"
+                                "oan_a2c.api.v1.seller.onboarding.set_user_status"
                             ]
                         },
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"email\": \"{{deactivate_user_email}}\"\n}",
+                            "raw": "{\n    \"email\": \"{{deactivate_user_email}}\",\n    \"enabled\": false\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"

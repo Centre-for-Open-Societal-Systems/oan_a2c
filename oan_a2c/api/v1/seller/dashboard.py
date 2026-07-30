@@ -1,7 +1,8 @@
 import frappe
 
+from oan_a2c.a2c_marketplace.permissions import bank_scoped
 from oan_a2c.a2c_marketplace.stats_cache import get_dashboard_stats
-from oan_a2c.api.utils import bank_scoped, handle_api_errors, success_response
+from oan_a2c.api.utils import handle_api_errors, success_response
 
 
 @frappe.whitelist()

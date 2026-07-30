@@ -5,8 +5,11 @@ import unittest
 from oan_a2c.hooks import BANK_SCOPED
 
 # List-returning query calls that BYPASS the permission_query_conditions hook
-# (bank_scope_query). Any of these against a bank-scoped DocType must have its
-# filters routed through permissions.bank_filters(), which fails closed.
+# (bank_scope_query) AND DocPerm. On a bank-scoped DocType these are banned
+# outright: use frappe.get_list, which runs both the bank_scope_query hook and
+# DocPerm, so bank isolation and read-permission can't be forgotten. Genuinely
+# trusted access (background jobs, hooks, already-authorized lookups) opts out
+# with a `# bank-scope-exempt` comment and a reason.
 BYPASS_LIST_CALLS = {
 	"frappe.get_all",
 	"frappe.db.get_all",
@@ -41,11 +44,6 @@ def _first_doctype(call):
 	return None
 
 
-def _is_bank_filters(node):
-	"""True if node is a call to bank_filters(...)."""
-	return isinstance(node, ast.Call) and (_dotted_name(node.func) or "").endswith("bank_filters")
-
-
 def _static_sql_text(node):
 	"""
 	Best-effort extraction of the literal text of a raw-SQL first argument.
@@ -68,7 +66,16 @@ def _static_sql_text(node):
 
 
 class TestBankScopeEnforcement(unittest.TestCase):
-	def test_bank_scoped_list_queries_use_bank_filters(self):
+	def test_bank_scoped_list_queries_use_get_list(self):
+		"""Ban permission-bypassing list calls (get_all / db.get_all / db.get_list)
+		on bank-scoped DocTypes. They skip BOTH the bank_scope_query hook and
+		DocPerm, so a forgotten guard leaks cross-bank rows (and, when the caller is
+		bank-unbound, every bank's rows) -- exactly the list_products regression.
+
+		The fix is to use frappe.get_list, which enforces both automatically. Only
+		genuinely trusted, session-less, or already-authorized access opts out with a
+		trailing `# bank-scope-exempt` comment stating why.
+		"""
 		app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 		bank_scoped = set(BANK_SCOPED)
 		violations = []
@@ -89,16 +96,6 @@ class TestBankScopeEnforcement(unittest.TestCase):
 					continue
 				lines = source.splitlines()
 
-				# Names bound directly from a bank_filters(...) call, e.g.
-				# `filters = bank_filters(...)`, so callers can pass the variable.
-				scoped_names = {
-					t.id
-					for node in ast.walk(tree)
-					if isinstance(node, ast.Assign) and _is_bank_filters(node.value)
-					for t in node.targets
-					if isinstance(t, ast.Name)
-				}
-
 				for node in ast.walk(tree):
 					if not isinstance(node, ast.Call):
 						continue
@@ -107,23 +104,22 @@ class TestBankScopeEnforcement(unittest.TestCase):
 					if _first_doctype(node) not in bank_scoped:
 						continue
 
-					# Exempted inline?
-					span = lines[node.lineno - 1 : (node.end_lineno or node.lineno)]
+					# Exempted? Accept the marker on the call span or on the line
+					# immediately above (comment-above-call is a common style).
+					start = node.lineno - 1
+					span = lines[max(0, start - 1) : (node.end_lineno or node.lineno)]
 					if any(EXEMPT_MARKER in ln for ln in span):
 						continue
 
-					filt = next((kw.value for kw in node.keywords if kw.arg == "filters"), None)
-					ok = _is_bank_filters(filt) or (isinstance(filt, ast.Name) and filt.id in scoped_names)
-					if not ok:
-						rel = os.path.relpath(filepath, app_dir)
-						violations.append(f"{rel}:{node.lineno} {_dotted_name(node.func)}")
+					rel = os.path.relpath(filepath, app_dir)
+					violations.append(f"{rel}:{node.lineno} {_dotted_name(node.func)}")
 
 		if violations:
 			self.fail(
-				"These queries hit a bank-scoped DocType but do not scope their "
-				"`filters` through permissions.bank_filters() (which bypasses the "
-				"bank_scope_query hook). Route filters through bank_filters(), or add "
-				f"a `{EXEMPT_MARKER}` comment with a reason:\n" + "\n".join(violations)
+				"These calls hit a bank-scoped DocType with a permission-bypassing "
+				"query (get_all / db.get_all / db.get_list), which skips both the "
+				"bank_scope_query hook and DocPerm. Use frappe.get_list instead, or "
+				f"add a `{EXEMPT_MARKER}` comment with a reason:\n" + "\n".join(violations)
 			)
 
 	def test_raw_sql_on_bank_scoped_tables_mentions_bank(self):

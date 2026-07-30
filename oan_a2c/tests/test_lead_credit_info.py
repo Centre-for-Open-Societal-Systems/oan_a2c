@@ -124,12 +124,3 @@ class TestLeadCreditInfo(unittest.TestCase):
 		first = res["data"][0]
 		self.assertEqual(first["loan_type"], "Land loan")
 		self.assertEqual(float(first["loan_amount"]), 150000.00)
-
-	def test_5_get_lead_metadata_includes_loan_types(self):
-		"""Verifies get_lead_metadata endpoint exposes the options configured for loan_type Select field."""
-		res = get_lead_metadata()
-		self.assertEqual(res["status"], "success")
-		self.assertTrue("loan_types" in res["data"])
-		self.assertIn("Input loan (seeds, agrochemicals)", res["data"]["loan_types"])
-		self.assertIn("Agricultural term loan", res["data"]["loan_types"])
-		self.assertIn("Smallholder farmer direct loan", res["data"]["loan_types"])

@@ -159,6 +159,11 @@ doc_events = {
 		"on_update": "oan_a2c.a2c_marketplace.stats_cache.on_application_change",
 		"on_trash": "oan_a2c.a2c_marketplace.stats_cache.on_application_change",
 	},
+	"A2C Credit Information": {
+		"after_insert": "oan_a2c.openagrinet_access_to_credit.doctype.a2c_credit_information.a2c_credit_information.sync_lead_loan_amount",
+		"on_update": "oan_a2c.openagrinet_access_to_credit.doctype.a2c_credit_information.a2c_credit_information.sync_lead_loan_amount",
+		"on_trash": "oan_a2c.openagrinet_access_to_credit.doctype.a2c_credit_information.a2c_credit_information.sync_lead_loan_amount",
+	},
 }
 
 # Scheduled Tasks

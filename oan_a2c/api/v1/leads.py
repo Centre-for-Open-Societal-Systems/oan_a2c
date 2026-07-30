@@ -11,10 +11,11 @@ from typing import Literal, Optional
 import frappe
 from frappe import _
 from frappe.utils import sanitize_html, strip_html
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from oan_a2c.a2c_marketplace.roles import BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
 from oan_a2c.api.utils import (
+	RequiredPhone,
 	SafeDate,
 	SafeEmail,
 	apply_status_transition,
@@ -37,10 +38,12 @@ class GetLeadsSchema(BaseModel):
 	end_date: SafeDate = None
 	min_loan_amount: float | None = None
 	max_loan_amount: float | None = None
+	sort_by: Literal["loan_amount", "creation"] | None = None
+	sort_order: Literal["asc", "desc"] | None = None
 
 
 class CreateLeadSchema(BaseModel):
-	phone_number: str = Field(..., min_length=1)
+	phone_number: RequiredPhone
 	first_name: str | None = None
 	last_name: str | None = None
 	email: SafeEmail = None
@@ -50,10 +53,16 @@ class CreateLeadSchema(BaseModel):
 
 class AddLeadCreditInfoSchema(BaseModel):
 	lead_id: str = Field(..., min_length=1)
-	loan_type: str = Field(..., min_length=1)
+	loan_type: str | None = Field(default=None, min_length=1)
 	loan_amount: float = Field(..., gt=0, le=999999999999.0)
 	purpose_message: str = Field(..., min_length=1)
 	loan_product: str | None = None
+
+	@model_validator(mode="after")
+	def require_type_or_product(self):
+		if not self.loan_type and not self.loan_product:
+			raise ValueError("Either loan_type or loan_product is required.")
+		return self
 
 
 class LeadIDSchema(BaseModel):
@@ -135,6 +144,13 @@ def get_leads(**kwargs):
 	min_loan_amount = kwargs.get("min_loan_amount")
 	max_loan_amount = kwargs.get("max_loan_amount")
 
+	# Sorting: sort_by is Literal-constrained to safe columns (both native to
+	# A2C Lead -- loan_amount is denormalized from Credit Information), so it can't
+	# inject into order_by. Defaults preserve the prior "newest first" behavior.
+	sort_by = kwargs.get("sort_by") or "creation"
+	sort_order = "asc" if kwargs.get("sort_order") == "asc" else "desc"
+	order_by = f"{sort_by} {sort_order}"
+
 	# 1. Enforce Role-Based Access Control
 	frappe.has_permission("A2C Lead", "read", throw=True)
 
@@ -159,17 +175,17 @@ def get_leads(**kwargs):
 	# Apply Assigned Agent Filter (single user, comma-separated users, or the literal
 	# "unassigned" to return leads with no agent). User values are not constrained to an
 	# allowlist here; an unknown user simply yields no matches.
+	# Assignment tab filter: exactly three options, matching get_lead_summary's
+	# tab_counts -- "all" (no filter), "my" (assigned to caller), "unassigned"
+	# (no assignee). Any other value is ignored (treated as "all").
 	if assigned_to:
-		agents = [a.strip() for a in str(assigned_to).split(",") if a.strip()]
-		if any(a.lower() == "unassigned" for a in agents):
-			named = [a for a in agents if a.lower() != "unassigned"]
-			if named:
-				# "unassigned" OR one of the named agents
-				filters.append(["assigned_to", "in", [*named, ""]])
-			else:
-				filters.append(["assigned_to", "in", ["", None]])
-		elif agents:
-			filters.append(["assigned_to", "in", agents])
+		tab = str(assigned_to).strip().lower()
+		if tab == "my":
+			filters.append(["assigned_to", "=", frappe.session.user])
+		elif tab == "unassigned":
+			filters.append(["assigned_to", "in", ["", None]])
+		elif tab != "all":
+			filters.append(["assigned_to", "=", assigned_to])
 
 	# Apply Creation Date Range Filter
 	if start_date and end_date:
@@ -184,14 +200,8 @@ def get_leads(**kwargs):
 	# in one subquery so a lead must satisfy all supplied credit criteria.
 	valid_loan_types = []
 	if loan_type:
-		allowed_loan_types = tuple(
-			o.strip()
-			for o in (frappe.get_meta("A2C Credit Information").get_field("loan_type").options or "").split(
-				"\n"
-			)
-			if o.strip()
-		)
-		valid_loan_types = parse_multi_value(loan_type, allowed_loan_types)
+		# loan_type is free-text (derived from product category), so accept any value.
+		valid_loan_types = parse_multi_value(loan_type)
 
 	if min_loan_amount is not None or max_loan_amount is not None or valid_loan_types:
 		credit_filters = {}
@@ -249,7 +259,7 @@ def get_leads(**kwargs):
 		or_filters=or_filters or None,
 		limit_start=start,
 		page_length=page_length,
-		order_by="creation desc",
+		order_by=order_by,
 	)
 
 	# Fetch linked loan_type and loan_amount from Credit Information for each lead in a single query (resolving N+1 query issue)
@@ -360,6 +370,10 @@ def create_lead(**kwargs):
 	lead.lead_source = lead_source
 	lead.external_id = external_id
 	lead.status = "Active"
+	# A lead belongs to whoever created it: auto-assign to the creator so it shows
+	# up as "my lead" and (per the edit rule) only they can edit it.
+	lead.assigned_to = frappe.session.user
+	lead.assigned_date = frappe.utils.nowdate()
 	lead.insert(ignore_permissions=False)
 
 	audit_event = frappe.new_doc("A2C Lead Audit Event")
@@ -404,28 +418,38 @@ def get_lead_summary():
 	grouped = frappe.get_list(
 		"A2C Lead",
 		filters={"status": ["in", list(allowed_statuses)]},
-		fields=["status", "count(*) as count"],
+		fields=["status", {"COUNT": "*"}],
 		group_by="status",
 	)
 	for row in grouped:
 		st = row.get("status")
-		cnt = row.get("count", 0)
+		cnt = row.get("COUNT(*)", 0)
 		if st in counts_by_status:
 			counts_by_status[st] = cnt
 			total_count += cnt
 
-	# Assignment split: a lead is "assigned" when assigned_to is set, else "unassigned".
-	assigned_res = frappe.get_list(
-		"A2C Lead", filters={"assigned_to": ["is", "set"]}, fields=[{"COUNT": "*"}]
+	# Assignment split, mirroring get_loan_summary's tab_counts: "my" = leads
+	# assigned to the caller, "unassigned" = leads with no assignee.
+	user = frappe.session.user
+	my_res = frappe.get_list(
+		"A2C Lead",
+		filters={"status": ["in", list(allowed_statuses)], "assigned_to": user},
+		fields=[{"COUNT": "*"}],
 	)
-	assigned_count = assigned_res[0].get("COUNT(*)") if assigned_res else 0
-	unassigned_count = total_count - assigned_count
+	my_count = my_res[0].get("COUNT(*)") if my_res else 0
+
+	unassigned_res = frappe.get_list(
+		"A2C Lead",
+		filters={"status": ["in", list(allowed_statuses)], "assigned_to": ["in", ["", None]]},
+		fields=[{"COUNT": "*"}],
+	)
+	unassigned_count = unassigned_res[0].get("COUNT(*)") if unassigned_res else 0
 
 	return success_response(
 		data={
 			"total": total_count,
 			"by_status": counts_by_status,
-			"tab_counts": {"all": total_count, "assigned": assigned_count, "unassigned": unassigned_count},
+			"tab_counts": {"all": total_count, "my": my_count, "unassigned": unassigned_count},
 		},
 		message="Lead summary retrieved successfully",
 	)
@@ -456,11 +480,7 @@ def get_lead_metadata():
 	statuses = status_field.options.split("\n") if status_field else []
 	sources = source_field.options.split("\n") if source_field else []
 
-	credit_meta = frappe.get_meta("A2C Credit Information")
-	loan_type_field = credit_meta.get_field("loan_type")
-	loan_types = loan_type_field.options.split("\n") if loan_type_field else []
-
-	data = {"statuses": statuses, "sources": sources, "loan_types": loan_types}
+	data = {"statuses": statuses, "sources": sources}
 	frappe.cache().set_value(cache_key, data, expires_in_sec=3600)
 
 	return success_response(data=data, message="Lead metadata retrieved successfully")
@@ -494,15 +514,32 @@ def add_lead_credit_info(**kwargs):
 	if not frappe.db.exists("A2C Lead", lead_id):
 		frappe.throw(_("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
 
-	# Validate loan_type Select field input
-	meta = frappe.get_meta("A2C Credit Information")
-	loan_type_field = meta.get_field("loan_type")
-	allowed_types = loan_type_field.options.split("\n") if loan_type_field else []
-	if loan_type not in allowed_types:
-		frappe.throw(_("Invalid loan type: {0}").format(loan_type), frappe.ValidationError)
+	# When a product is supplied, its category IS the loan type; derive it and
+	# ignore any client-supplied loan_type. Otherwise fall back to loan_type.
+	if loan_product:
+		if not frappe.db.exists("A2C Loan Product", loan_product):
+			frappe.throw(_("Loan Product {0} not found").format(loan_product), frappe.DoesNotExistError)
 
-	if loan_product and not frappe.db.exists("A2C Loan Product", loan_product):
-		frappe.throw(_("Loan Product {0} not found").format(loan_product), frappe.DoesNotExistError)
+		category = frappe.db.get_value(
+			"A2C Term Relationship",
+			{"loan_product": loan_product, "term_type": "Category"},
+			"term_category",
+		)
+		if not category:
+			frappe.throw(
+				_("Loan Product {0} has no category to derive a loan type from.").format(loan_product),
+				frappe.ValidationError,
+			)
+
+		# term_category stores the taxonomy term ID; resolve to the human-readable
+		# term name, which is what we store as the loan_type.
+		term = frappe.db.get_value("A2C Term Category", category, "term")
+		loan_type = frappe.db.get_value("A2C Term", term, "term_name") if term else None
+		if not loan_type:
+			frappe.throw(
+				_("Could not resolve a loan type from the product's category."),
+				frappe.ValidationError,
+			)
 
 	credit_info = frappe.new_doc("A2C Credit Information")
 	credit_info.lead = lead_id

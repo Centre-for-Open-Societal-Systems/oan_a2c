@@ -57,7 +57,7 @@ def _compute_from_db(bank: str) -> dict:
 		fields=["status", {"COUNT": "name", "as": "count"}],
 		group_by="status",
 	)
-	total_products = sum(item.count for item in product_counts)
+	total_products = sum(item.count for item in product_counts if item.status != "Archived")
 	active_products = sum(item.count for item in product_counts if item.status == "Active")
 
 	app_counts = frappe.get_all(  # bank-scope-exempt: bank scoped explicitly via filters above
@@ -127,7 +127,8 @@ def on_product_change(doc, event: str) -> None:
 		return
 
 	if event == "after_insert":
-		_incr(bank, "total_products")
+		if doc.status != "Archived":
+			_incr(bank, "total_products")
 		if doc.status == "Active":
 			_incr(bank, "active_products")
 
@@ -136,13 +137,19 @@ def on_product_change(doc, event: str) -> None:
 		if before is None:
 			return  # after_insert already handled this
 		if before.status != doc.status:
+			if before.status != "Archived" and doc.status == "Archived":
+				_decr(bank, "total_products")
+			elif before.status == "Archived" and doc.status != "Archived":
+				_incr(bank, "total_products")
+
 			if before.status == "Active":
 				_decr(bank, "active_products")
 			if doc.status == "Active":
 				_incr(bank, "active_products")
 
 	elif event == "on_trash":
-		_decr(bank, "total_products")
+		if doc.status != "Archived":
+			_decr(bank, "total_products")
 		if doc.status == "Active":
 			_decr(bank, "active_products")
 

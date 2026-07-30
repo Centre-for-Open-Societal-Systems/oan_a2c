@@ -119,8 +119,55 @@ def validate_email_string(v):
 	return v
 
 
+def validate_phone_string(v):
+	"""Validate and normalize a phone number.
+
+	Single source of truth for phone validation across every API schema. Accepts
+	both international (`+251912345678`) and local (`0912345678`) formats, and
+	tolerates spaces/dashes/parens in the input (common when users paste). The
+	rule is on the digit count, not the punctuation:
+
+	  - strip everything except digits and a single leading '+'
+	  - require 10-15 digits
+	  - a leading 0 (local format) is allowed
+
+	Returns the normalized value (separators removed, '+' preserved if present).
+	Passes through None/empty so it composes with optional fields; required-ness
+	is enforced by the RequiredPhone variant.
+	"""
+	if v is None or v == "":
+		return v
+	import re
+
+	raw = str(v).strip()
+	has_plus = raw.startswith("+")
+	digits = re.sub(r"\D", "", raw)
+
+	if not (10 <= len(digits) <= 15):
+		raise ValueError("Phone number must contain between 10 and 15 digits.")
+	# First significant digit can't be 0 for an international number; a local
+	# number may legitimately start with 0 (e.g. 0912345678).
+	if has_plus and digits.startswith("0"):
+		raise ValueError("An international (+) phone number cannot start with 0.")
+
+	return f"+{digits}" if has_plus else digits
+
+
+def validate_required_phone_string(v):
+	"""Like validate_phone_string but rejects a missing/empty value.
+
+	Use for phone fields that are mandatory (e.g. lead / onboarding create),
+	so the same format rule applies and absence is a validation error, not a pass.
+	"""
+	if v is None or str(v).strip() == "":
+		raise ValueError("Phone number is required.")
+	return validate_phone_string(v)
+
+
 SafeDate = Annotated[str | None, BeforeValidator(validate_date_string)]
 SafeEmail = Annotated[str | None, BeforeValidator(validate_email_string)]
+SafePhone = Annotated[str | None, BeforeValidator(validate_phone_string)]
+RequiredPhone = Annotated[str, BeforeValidator(validate_required_phone_string)]
 
 
 def success_response(data=None, message="Success", meta=None, pagination=None):
@@ -351,47 +398,6 @@ def handle_api_errors(func):
 			return error_response("An unexpected error occurred", "INTERNAL_ERROR")
 
 	return wrapper
-
-
-def bank_scoped(require_bank=True):
-	"""Resolve the caller's bank scope, fail closed, and inject it as `bank`.
-
-	Must be the innermost decorator (below @handle_api_errors).
-
-	Resolution:
-	  - unbound admin -> bank=None (rejected if require_bank=True).
-	  - non-admin with a bank -> bank=<code>.
-	  - non-admin with no binding -> rejected (fail closed).
-	"""
-
-	def decorator(func):
-		@wraps(func)
-		def wrapper(*args, **kwargs):
-			from oan_a2c.a2c_marketplace.permissions import (
-				BankNotOnboarded,
-				get_user_bank,
-				is_bank_unbound,
-			)
-
-			# Never trust a client-supplied `bank`; we resolve it from the session.
-			kwargs.pop("bank", None)
-
-			if is_bank_unbound():
-				if require_bank:
-					# Not an onboarding problem: an unbound admin has no single bank
-					# to act as. Plain permission denial.
-					frappe.throw(_("Select a specific bank to perform this action."), frappe.PermissionError)
-				bank = None
-			else:
-				bank = get_user_bank()
-				if not bank:
-					frappe.throw(_("No bank is assigned to this user."), BankNotOnboarded)
-
-			return func(*args, bank=bank, **kwargs)
-
-		return wrapper
-
-	return decorator
 
 
 # --- Workflow helpers ------------------------------------------------------

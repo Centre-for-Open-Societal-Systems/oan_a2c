@@ -52,6 +52,18 @@ class GetAllLoansSchema(BaseModel):
 	page_size: int | None = Field(None, ge=1, le=100)
 	lead_id: str | None = None
 	search_query: str | None = None
+	sort_by: Literal["loan_amount", "creation"] | None = None
+	sort_order: Literal["asc", "desc"] | None = None
+
+
+class BrowseProductsSchema(BaseModel):
+	search: str | None = None
+	bank: str | None = None
+	loan_product: str | None = None
+	min_amount: float | None = None
+	max_amount: float | None = None
+	limit: int = Field(20, ge=1, le=100)
+	start: int = Field(0, ge=0)
 
 
 class DownloadSupportingDocumentSchema(BaseModel):
@@ -244,6 +256,8 @@ def get_full_profile(**kwargs):
 		"farmer_id": doc.farmer_id,
 		"consent_id": doc.consent_id,
 		"loan_type": doc.loan_type,
+		"loan_product": doc.loan_product,
+		"loan_product_name": doc.loan_product_name,
 		"loan_amount": float(doc.loan_amount) if doc.loan_amount else 0.0,
 		"loan_reason": doc.loan_reason,
 		"status": doc.status,
@@ -347,6 +361,75 @@ def get_loan_metadata():
 
 
 @frappe.whitelist(allow_guest=False)
+@validate_request(BrowseProductsSchema)
+@handle_api_errors
+def browse_products(**kwargs):
+	"""Browse Active loan products to attach one to a farmer's application.
+
+	This is the Development Agent's product-discovery path. The seller endpoint
+	(seller/loan_products.list_products) is for a bank managing its own catalog and
+	shows only that bank's products (incl. Drafts); a Development Agent has no write
+	access there. Here we read A2C Loan Product via get_list, which applies both
+	DocPerm (Dev Agent has read) and the bank_scope_query hook:
+
+	  - Development Agent is bank-unbound -> sees Active products across ALL banks.
+	  - A bank user hitting this still sees only their own bank (hook scopes them).
+
+	Only Active products are returned -- Drafts/Archived are not offerable to farmers.
+	"""
+	frappe.has_permission("A2C Loan Product", "read", throw=True)
+
+	filters = {"status": "Active"}
+	if kwargs.get("bank"):
+		filters["bank"] = kwargs["bank"]
+	if kwargs.get("loan_product"):
+		filters["name"] = kwargs["loan_product"]
+	if kwargs.get("search"):
+		filters["product_name"] = ["like", f"%{kwargs['search']}%"]
+	if kwargs.get("min_amount") is not None:
+		filters["min_amount"] = [">=", float(kwargs["min_amount"])]
+	if kwargs.get("max_amount") is not None:
+		filters["max_amount"] = ["<=", float(kwargs["max_amount"])]
+
+	limit = kwargs["limit"]
+	start = kwargs["start"]
+
+	products = frappe.get_list(
+		"A2C Loan Product",
+		filters=filters,
+		fields=[
+			"name",
+			"product_name",
+			"slug",
+			"bank",
+			"min_interest_rate",
+			"max_interest_rate",
+			"min_amount",
+			"max_amount",
+			"tenure_months",
+		],
+		order_by="product_name asc",
+		limit_page_length=limit,
+		limit_start=start,
+	)
+
+	total = len(frappe.get_list("A2C Loan Product", filters=filters, pluck="name", limit_page_length=0))
+	pagination = {
+		"page": (start // limit) + 1,
+		"limit": limit,
+		"total": total,
+		"total_pages": -(-total // limit),
+		"has_next": start + limit < total,
+	}
+
+	return success_response(
+		data={"products": products},
+		message="Products retrieved successfully",
+		pagination=pagination,
+	)
+
+
+@frappe.whitelist(allow_guest=False)
 @validate_request(GetAllLoansSchema)
 @handle_api_errors
 def get_all_loans(**kwargs):
@@ -369,6 +452,12 @@ def get_all_loans(**kwargs):
 	page_size = kwargs.get("page_size") or 20
 	lead_id = kwargs.get("lead_id")
 	search_query = kwargs.get("search_query")
+
+	# Sorting: sort_by is Literal-constrained to safe columns, so it can't inject
+	# into order_by. Defaults preserve the prior "newest first" behavior.
+	sort_by = kwargs.get("sort_by") or "creation"
+	sort_order = "asc" if kwargs.get("sort_order") == "asc" else "desc"
+	order_by = f"{sort_by} {sort_order}"
 
 	offset = (page - 1) * page_size
 
@@ -405,16 +494,15 @@ def get_all_loans(**kwargs):
 	if phone_number:
 		filters["phone_number"] = ("like", f"{phone_number}%")
 
-	# Filter by assigned Loan Officer (User). Single user, comma-separated users, or the literal
-	# "unassigned" for loans with no officer (matching the unassigned tab in get_loan_summary).
-	# Not allowlist-validated; an unknown user simply yields no matches.
+	# Assignment tab filter: exactly three options, matching get_loan_summary's
+	# tab_counts -- "all" (no filter), "my" (loans where the caller is the officer),
+	# "unassigned" (no officer). Any other value is ignored (treated as "all").
 	if loan_officer:
-		officers = [o.strip() for o in str(loan_officer).split(",") if o.strip()]
-		if any(o.lower() == "unassigned" for o in officers):
-			named = [o for o in officers if o.lower() != "unassigned"]
-			filters["loan_officer"] = ["in", [*named, ""] if named else ["", None]]
-		elif officers:
-			filters["loan_officer"] = ["in", officers]
+		tab = str(loan_officer).strip().lower()
+		if tab == "my":
+			filters["loan_officer"] = frappe.session.user
+		elif tab == "unassigned":
+			filters["loan_officer"] = ["in", ["", None]]
 
 	if from_date and to_date:
 		filters["creation"] = ("between", [from_date, f"{to_date} 23:59:59"])
@@ -455,11 +543,13 @@ def get_all_loans(**kwargs):
 			"lead_id",
 			"loan_amount",
 			"loan_type",
+			"loan_product",
+			"loan_product_name",
 			"location",
 			"phone_number",
 			"creation",
 		],
-		order_by="creation DESC",
+		order_by=order_by,
 		limit_start=offset,
 		page_length=page_size,
 		ignore_permissions=False,
@@ -690,7 +780,7 @@ def create_loan_application(**kwargs):
 	credit_infos = frappe.get_list(
 		"A2C Credit Information",
 		filters={"lead": lead_id},
-		fields=["loan_type", "loan_amount", "purpose_message"],
+		fields=["loan_type", "loan_amount", "purpose_message", "loan_product"],
 		order_by="creation desc",
 		limit=1,
 		ignore_permissions=False,
@@ -704,6 +794,24 @@ def create_loan_application(**kwargs):
 			frappe.ValidationError,
 		)
 
+	credit_info = credit_infos[0]
+
+	# bank is mandatory on the loan application and is derived from the chosen
+	# product. Without a product we cannot attribute the application to a bank.
+	loan_product = credit_info.get("loan_product")
+	if not loan_product:
+		frappe.throw(
+			_("Credit Information for this lead has no loan product, so the bank cannot be determined."),
+			frappe.ValidationError,
+		)
+
+	# bank-scope-exempt — reading the product's own bank to stamp the application; not a cross-bank query.
+	bank = frappe.db.get_value("A2C Loan Product", loan_product, "bank")
+	if not bank:
+		frappe.throw(
+			_("Loan Product {0} is not linked to a bank.").format(loan_product), frappe.ValidationError
+		)
+
 	loan_app = frappe.new_doc("A2C Loan Application")
 	loan_app.lead_id = lead_id
 	loan_app.farmer_profile = farmer_profile.name
@@ -714,9 +822,13 @@ def create_loan_application(**kwargs):
 		if field.fieldname not in fields_to_ignore and loan_app.meta.has_field(field.fieldname):
 			loan_app.set(field.fieldname, farmer_profile.get(field.fieldname))
 
-	loan_app.loan_type = credit_infos[0].loan_type
-	loan_app.loan_amount = flt(credit_infos[0].loan_amount)
-	loan_app.loan_reason = credit_infos[0].purpose_message
+	loan_app.loan_type = credit_info.loan_type
+	loan_app.loan_amount = flt(credit_info.loan_amount)
+	loan_app.requested_amount = flt(credit_info.loan_amount)
+	loan_app.loan_reason = credit_info.purpose_message
+	loan_app.loan_product = loan_product
+	loan_app.loan_product_name = frappe.db.get_value("A2C Loan Product", loan_product, "product_name")
+	loan_app.bank = bank
 	loan_app.status = "Draft"
 
 	loan_app.insert(ignore_permissions=False)

@@ -1,6 +1,6 @@
 {
  "actions": [],
- "autoname": "format:LEAD-{YYYY}-{#####}",
+ "autoname": "format:LD-{####}",
  "creation": "2026-05-19 00:00:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
@@ -15,6 +15,7 @@
   "status",
   "assigned_to",
   "assigned_date",
+  "loan_amount",
   "section_notes",
   "call_notes",
   "farmer_profile"
@@ -94,6 +95,14 @@
    "fieldtype": "Date",
    "label": "Assigned Date",
    "read_only": 1
+  },
+  {
+   "fieldname": "loan_amount",
+   "fieldtype": "Currency",
+   "label": "Loan Amount",
+   "description": "Denormalized from the lead's A2C Credit Information for sorting/filtering. Kept in sync by doc hooks; do not edit directly.",
+   "read_only": 1,
+   "search_index": 1
   },
   {
    "fieldname": "section_notes",

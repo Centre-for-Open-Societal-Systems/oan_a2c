@@ -34,9 +34,8 @@
   },
   {
    "fieldname": "loan_type",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "label": "Loan Type",
-   "options": "Input loan (seeds, agrochemicals)\nAgricultural term loan\nSmallholder short-term loan\nLand loan\nFarm equipment loan\nSmallholder farmer direct loan",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1

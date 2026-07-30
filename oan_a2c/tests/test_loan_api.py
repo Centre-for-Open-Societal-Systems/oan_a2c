@@ -99,6 +99,8 @@ class TestLoansV1API(unittest.TestCase):
 				"last_name": "Test",
 				"phone_number": "+251999888777",
 				"loan_amount": 5000,
+				"requested_amount": 5000,
+				"bank": "Test Bank",
 				"loan_type": "Input Loan",
 				"status": "Draft",
 				"location": "Addis Ababa",
@@ -365,7 +367,7 @@ class TestLoansV1API(unittest.TestCase):
 		# 2. Delete supporting document
 		res_del = delete_supporting_document(application_id=self.app_id, file_id=file_id)
 		self.assertEqual(res_del["status"], "success")
-		self.assertEqual(res_del["message"], "File deleted successfully")
+		self.assertEqual(res_del["message"], "Document deleted successfully.")
 
 		# 3. Check if file is actually deleted
 		self.assertFalse(frappe.db.exists("File", file_id))
@@ -451,7 +453,38 @@ class TestLoansV1API(unittest.TestCase):
 		farmer.total_farmland_size_as_landowner = 15.5
 		farmer.save(ignore_permissions=True)
 
-		# 3. Create Credit Info
+		# 3. Ensure a test bank + loan product exist so create_loan_application can resolve the bank
+		test_bank = frappe.db.get_value("A2C Participating Bank", {"bank_code": "TEST_LOAN_API_BANK"}, "name")
+		if not test_bank:
+			bank_doc = frappe.get_doc(
+				{
+					"doctype": "A2C Participating Bank",
+					"bank_name": "Test Loan API Bank",
+					"bank_code": "TEST_LOAN_API_BANK",
+					"status": "Active",
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True, ignore_links=True)
+			test_bank = bank_doc.name
+
+		test_product = frappe.db.get_value(
+			"A2C Loan Product", {"bank": test_bank, "status": "Active"}, "name"
+		)
+		if not test_product:
+			prod_doc = frappe.get_doc(
+				{
+					"doctype": "A2C Loan Product",
+					"product_name": "Test Loan API Product",
+					"bank": test_bank,
+					"min_interest_rate": 5,
+					"max_amount": 100000,
+					"tenure_months": 12,
+					"status": "Active",
+				}
+			).insert(ignore_permissions=True)
+			test_product = prod_doc.name
+		frappe.db.commit()
+
+		# 3. Create Credit Info with loan_product so bank can be resolved
 		credit_info = frappe.get_doc(
 			{
 				"doctype": "A2C Credit Information",
@@ -459,6 +492,7 @@ class TestLoansV1API(unittest.TestCase):
 				"loan_type": "Input loan (seeds, agrochemicals)",
 				"loan_amount": 12000,
 				"purpose_message": "Test loan purpose",
+				"loan_product": test_product,
 			}
 		)
 		credit_info.insert(ignore_permissions=True)

@@ -1,3 +1,5 @@
+import functools
+
 import frappe
 from frappe import _
 
@@ -45,6 +47,32 @@ def get_user_bank(user=None):
 	return None
 
 
+def get_bank_members(bank, roles=None):
+	"""Inverse of get_user_bank: users bound to `bank`, optionally filtered by role.
+
+	get_user_bank answers "which bank does this user belong to?"; notifications need
+	the other direction — "which users belong to this bank?". Both read the same
+	source of truth: User Permission where allow="A2C Participating Bank" (here
+	filtered by for_value=bank instead of by user).
+
+	When `roles` is given (e.g. BANK_ROLES), members are narrowed to those holding at
+	least one of those roles, so a stale User Permission on a user who no longer has a
+	bank role does not receive notifications.
+	"""
+	if not bank:
+		return []
+
+	users = frappe.get_all(
+		"User Permission",
+		filters={"allow": "A2C Participating Bank", "for_value": bank},
+		pluck="user",
+	)
+	if roles:
+		role_set = set(roles)
+		users = [u for u in users if role_set.intersection(frappe.get_roles(u))]
+	return users
+
+
 def bank_filters(user=None, base=None):
 	"""
 	Return a filters dict scoped to the caller's bank, for use with
@@ -90,6 +118,59 @@ def bank_filters(user=None, base=None):
 	else:
 		filters["bank"] = bank
 	return filters
+
+
+def require_bank_role(role: str):
+	"""Decorator that enforces the caller holds `role`. Must sit below @handle_api_errors."""
+
+	def decorator(fn):
+		@functools.wraps(fn)
+		def wrapper(*args, **kwargs):
+			user_doc = frappe.get_doc("User", frappe.session.user)
+			if not any(d.role == role for d in user_doc.roles):
+				frappe.throw(_("Only {0}s can perform this action.").format(role), frappe.PermissionError)
+			return fn(*args, **kwargs)
+
+		return wrapper
+
+	return decorator
+
+
+def bank_scoped(func=None, *, require_bank=True):
+	"""Resolve the caller's bank scope, fail closed, and inject it as `bank`.
+
+	Must be the innermost decorator (below @handle_api_errors).
+
+	Resolution:
+	  - unbound admin -> bank=None (rejected if require_bank=True).
+	  - non-admin with a bank -> bank=<code>.
+	  - non-admin with no binding -> rejected (fail closed).
+	"""
+
+	def decorator(f):
+		@functools.wraps(f)
+		def wrapper(*args, **kwargs):
+			# Never trust a client-supplied `bank`; we resolve it from the session.
+			kwargs.pop("bank", None)
+
+			if is_bank_unbound():
+				if require_bank:
+					# Not an onboarding problem: an unbound admin has no single bank
+					# to act as. Plain permission denial.
+					frappe.throw(_("Select a specific bank to perform this action."), frappe.PermissionError)
+				bank = None
+			else:
+				bank = get_user_bank()
+				if not bank:
+					frappe.throw(_("No bank is assigned to this user."), BankNotOnboarded)
+
+			return f(*args, bank=bank, **kwargs)
+
+		return wrapper
+
+	if func is not None:
+		return decorator(func)
+	return decorator
 
 
 def bank_scope_query(user):

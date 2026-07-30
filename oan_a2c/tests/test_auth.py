@@ -107,7 +107,13 @@ class TestAuthAPI(unittest.TestCase):
 		self.assertIn("token", response.get("data", {}))
 
 		token = response["data"]["token"]
-		payload = jwt.decode(token, frappe.conf.encryption_key, algorithms=["HS256"])
+		payload = jwt.decode(
+			token,
+			frappe.conf.encryption_key,
+			algorithms=["HS256"],
+			audience="oan_a2c_client",
+			issuer="oan_a2c_identity_gateway",
+		)
 		self.assertEqual(payload["sub"], self.test_email)
 		self.assertEqual(payload["iss"], "oan_a2c_identity_gateway")
 
@@ -125,6 +131,8 @@ class TestAuthAPI(unittest.TestCase):
 	def test_3_middleware_valid_jwt(self):
 		payload = {
 			"sub": self.test_email,
+			"iss": "oan_a2c_identity_gateway",
+			"aud": "oan_a2c_client",
 			"exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
 		}
 		token = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v1"})
@@ -204,6 +212,8 @@ class TestAuthAPI(unittest.TestCase):
 		payload = {
 			"sub": self.test_email,
 			"exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
+			"iss": "oan_a2c_identity_gateway",
+			"aud": "oan_a2c_client",
 		}
 		token = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v1"})
 		frappe.local.request = frappe._dict({"path": "/api/method/oan_a2c.api.v1.get_leads"})

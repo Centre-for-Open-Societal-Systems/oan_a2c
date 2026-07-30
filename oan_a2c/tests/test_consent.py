@@ -159,18 +159,29 @@ class TestConsentAPI(unittest.TestCase):
 			"data": {"consent_id": "MOCK-G2P-CONS-001", "consent_creation_request_id": "MOCK-G2P-CONS-001"},
 		}
 
+		frappe.clear_messages()
 		submit_response = submit_consent(
 			lead_id="TEST-LEAD-CONSENT",
 			consent_request=consent_name,
 			consent_type="specific",
 			consent_reason_id=1,
-			consent_form_filename="signed_consent.txt",
-			consent_form_base64="dGVzdCBjb250ZW50",
+			consent_form_filename="signed_consent.pdf",
+			consent_form_base64="JVBERi0xLjQKJcOkw7zDtsOfCjIgMCBvYmoKPDwvTGVuZ3RoIDMgMCBSL0ZpbHRlci9GbGF0ZURlY29kZT4+CnN0cmVhbQp4nDPQM1Qo5ypUMFAwALJMLU31jBQsTAz1LBSKk_NTizjzS_NKYtPzKgDs8Qh4CmVuZHN0cmVhbQplbmRvYmoKCjMgMCBvYmoKNTEKZW5kb2JqCgo0IDAgb2JqCjw8L1R5cGUvUGFnZS9NZWRpYUJveFswIDAgNTk1LjI4IDg0MS44OV0vUGFyZW50IDUgMCBSL1Jlc291cmNlczw8L1Byb2NTZXRbL1BERiAvVGV4dCAvSW1hZ2VCIC9JbWFnZUMgL0ltYWdlSV0+Pi9Db250ZW50cyAyIDAgUj4+CmVuZG9iagoKNSAwIG9iago8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1s0IDAgUl0+PgplbmRvYmoKCjYgMCBvYmoKPDwvVHlwZS9DYXRhbG9nL1BhZ2VzIDUgMCBSPj4KZW5kb2JqCgoxIDAgb2JqCjw8L1Byb2R1Y2VyKGNhaXJvIDEuMTYuMCAoaHR0cHM6Ly9jYWlyb2dyYXBoaWNzLm9yZykpL0NyZWF0b3IoWEV2aW5jZSBEb2N1bWVudCBWaWV3ZXIgMy4zNi4wKS9DcmVhdGlvbkRhdGUoRDoyMDIwMTExNzExMTIwM1opPj4KZW5kb2JqCgp4cmVmCjAgNwowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDA0MDYgMDAwMDAgbiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMTM4IDAwMDAwIG4gCjAwMDAwMDAxNTkgMDAwMDAgbiAKMDAwMDAwMDI5NCAwMDAwMCBuIAowMDAwMDAwMzUyIDAwMDAwIG4gCnRyYWlsZXIKPDwvU2l6ZSA3L1Jvb3QgNiAwIFIvSW5mbyAxIDAgUj4+CnN0YXJ0eHJlZgo1NDIKJSVFT0YK",
 			allowed_data_field_ids=[1, 2],
 			validity_months=12,
 		)
 
-		self.assertEqual(submit_response.get("status"), "success")
+		try:
+			self.assertEqual(submit_response.get("status"), "success")
+		except AssertionError:
+			error_logs = frappe.get_all(
+				"Error Log", fields=["method", "error"], order_by="creation desc", limit=1
+			)
+			if error_logs:
+				print("\n--- LATEST FRAPPE ERROR LOG ---")
+				print(error_logs[0].error)
+				print("-------------------------------\n")
+			raise
 		self.assertEqual(submit_response.get("data", {}).get("status"), "Approved")
 		self.assertEqual(submit_response.get("data", {}).get("openg2p_consent_id"), "MOCK-G2P-CONS-001")
 		self.assertIsNotNone(submit_response.get("data", {}).get("consent_receipt"))

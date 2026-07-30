@@ -33,6 +33,8 @@ def execute():
 			frappe.db.delete("Custom DocPerm", {"role": role_name})
 			frappe.db.delete("DocPerm", {"role": role_name})
 			frappe.db.sql("DELETE FROM `tabWorkflow Transition` WHERE allowed = %s", role_name)
-			frappe.db.sql("DELETE FROM `tabWorkflow Document State` WHERE allow = %s", role_name)
-			frappe.db.sql("DELETE FROM `tabRole Profile Role` WHERE role = %s", role_name)
-			frappe.delete_doc("Role", role_name, force=True, ignore_permissions=True, ignore_doctypes=True)
+			frappe.db.sql("DELETE FROM `tabWorkflow Document State` WHERE allow_edit = %s", role_name)
+			frappe.db.sql(
+				"DELETE FROM `tabHas Role` WHERE role = %s AND parenttype = 'Role Profile'", role_name
+			)
+			frappe.delete_doc("Role", role_name, force=True, ignore_permissions=True)

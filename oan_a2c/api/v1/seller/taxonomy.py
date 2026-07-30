@@ -79,8 +79,10 @@ def set_product_categories(product_id: str, term_ids: list):
 
 	product = frappe.get_doc("A2C Loan Product", product_id)
 
-	# Fetch existing category relationships for this product (1 query)
-	existing_rels = frappe.get_all(
+	# Fetch existing category relationships for this product (1 query).
+	# get_list applies the A2C Term Relationship bank scope; product_id is already
+	# write-authorized above.
+	existing_rels = frappe.get_list(
 		"A2C Term Relationship",
 		filters={"loan_product": product_id, "term_type": "Category"},
 		fields=["name", "term_category"],
@@ -129,8 +131,9 @@ def set_product_tags(product_id: str, term_ids: list):
 
 	product = frappe.get_doc("A2C Loan Product", product_id)
 
-	# Fetch existing tag relationships for this product (1 query)
-	existing_rels = frappe.get_all(
+	# Fetch existing tag relationships for this product (1 query).
+	# get_list applies the bank scope; product_id is already write-authorized above.
+	existing_rels = frappe.get_list(
 		"A2C Term Relationship",
 		filters={"loan_product": product_id, "term_type": "Tag"},
 		fields=["name", "term_tag"],

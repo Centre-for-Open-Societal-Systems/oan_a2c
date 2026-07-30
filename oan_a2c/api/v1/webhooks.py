@@ -2,7 +2,12 @@ import frappe
 from frappe import _
 from frappe.utils import sanitize_html
 
-from oan_a2c.api.utils import handle_api_errors, notify_lead_event, success_response
+from oan_a2c.api.utils import (
+	handle_api_errors,
+	notify_lead_event,
+	success_response,
+	validate_phone_string,
+)
 
 
 @frappe.whitelist(allow_guest=False)
@@ -31,6 +36,14 @@ def lead_inbound(
 
 	if not phone_number:
 		frappe.throw(_("phone_number is required"), frappe.MandatoryError)
+
+	# Same strict format rule as the user-facing create paths (10-15 digits,
+	# optional + country code). Telco input is external, so validate before we
+	# persist it onto a lead.
+	try:
+		phone_number = validate_phone_string(phone_number)
+	except ValueError as e:
+		frappe.throw(_(str(e)), frappe.ValidationError)
 
 	# Validate and sanitize lead_source against permitted Select choices
 	allowed_sources = ("Missed Call", "IVR", "SMS", "Agent Entry")

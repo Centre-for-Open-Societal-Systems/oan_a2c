@@ -11,14 +11,54 @@ from frappe.auth import LoginManager
 from frappe.core.doctype.user.user import update_password
 from pydantic import BaseModel, Field
 
-from oan_a2c.a2c_marketplace.roles import BANK_ROLES
+from oan_a2c.a2c_marketplace.roles import (
+	ADMIN_ROLE,
+	BANK_ADMIN_ROLE,
+	BANK_AGENT_ROLE,
+	BANK_ROLES,
+	DEVELOPMENT_AGENT_ROLE,
+	FARMER_ROLE,
+)
 from oan_a2c.api.utils import (
 	SafeEmail,
 	check_rate_limit,
 	handle_api_errors,
 	success_response,
+	validate_phone_string,
 	validate_request,
 )
+
+
+def _resolve_login_id(usr: str) -> str:
+	"""Allow logging in with a phone number as well as an email.
+
+	If `usr` contains no '@', treat it as a phone number: normalize it the same
+	way stored numbers are normalized and look up the matching User by mobile_no
+	(falling back to the phone field). Returns the user's email/name so the rest of
+	the flow (LoginManager, JWT subject) stays email-based. If nothing resolves,
+	return the input unchanged so authentication fails normally (no user enumeration
+	hint -- a wrong phone yields the same "incorrect credentials" as a wrong email).
+	"""
+	if not usr or "@" in usr:
+		return usr
+
+	try:
+		normalized = validate_phone_string(usr)
+	except ValueError:
+		# Not a valid phone and not an email -> let auth fail on the raw value.
+		return usr
+
+	# Match against both the normalized value and the raw digits, since historical
+	# rows may predate phone normalization.
+	import re
+
+	digits = re.sub(r"\D", "", str(usr))
+	for field in ("mobile_no", "phone"):
+		for candidate in (normalized, usr, digits):
+			match = frappe.db.get_value("User", {field: candidate, "enabled": 1}, "name")
+			if match:
+				return match
+	return usr
 
 
 class LoginSchema(BaseModel):
@@ -45,6 +85,34 @@ class LogoutSchema(BaseModel):
 	refresh_token: str = Field(..., min_length=1)
 
 
+class UpdateProfileSchema(BaseModel):
+	full_name: str | None = Field(default=None, min_length=1)
+	phone_number: str | None = Field(default=None)
+	language: str | None = Field(default=None)
+	user_image: str | None = Field(default=None)
+
+
+def _classify_user_type(roles: list[str]) -> str:
+	"""Map a user's role list to a single portal kind string.
+
+	Priority mirrors BANK_UNBOUND_ROLES in roles.py: bank-scoped roles are
+	checked first so a user who holds both Bank Admin and Administrator is
+	treated as bank_admin (the more specific, narrower identity).
+	"""
+	role_set = set(roles)
+	if BANK_ADMIN_ROLE in role_set:
+		return "bank_admin"
+	if BANK_AGENT_ROLE in role_set:
+		return "bank_agent"
+	if DEVELOPMENT_AGENT_ROLE in role_set:
+		return "dev_agent"
+	if ADMIN_ROLE in role_set:
+		return "marketplace"
+	if FARMER_ROLE in role_set:
+		return "farmer"
+	return "unknown"
+
+
 def generate_access_token(usr: str, roles: list) -> str:
 	secret = frappe.conf.get("encryption_key")
 	if not secret:
@@ -58,6 +126,7 @@ def generate_access_token(usr: str, roles: list) -> str:
 		"iat": now,
 		"exp": now + datetime.timedelta(minutes=15),
 		"roles": roles,
+		"user_type": _classify_user_type(roles),
 	}
 	return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": "v1"})
 
@@ -139,6 +208,9 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 	"""
 	check_rate_limit(f"rl:login:{getattr(frappe.local, 'request_ip', 'guest')}", limit=10, window=60)
 
+	# Accept either an email or a phone number as the login id.
+	usr = _resolve_login_id(usr)
+
 	try:
 		login_manager = LoginManager()
 		# authenticate() validates credentials and raises AuthenticationError on failure.
@@ -171,7 +243,13 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 		data={
 			"token": token,
 			"refresh_token": refresh_token,
-			"user": {"email": usr, "full_name": user.full_name, "roles": roles, **bank_context},
+			"user": {
+				"email": usr,
+				"full_name": user.full_name,
+				"roles": roles,
+				"user_type": _classify_user_type(roles),
+				**bank_context,
+			},
 		}
 	)
 
@@ -345,5 +423,119 @@ def get_me():
 		bank_context = _get_user_bank_context(frappe.session.user)
 
 	return success_response(
-		data={"email": user.email, "full_name": user.full_name, "roles": roles, **bank_context}
+		data={
+			"email": user.email,
+			"full_name": user.full_name,
+			"roles": roles,
+			"user_type": _classify_user_type(roles),
+			**bank_context,
+		}
 	)
+
+
+@frappe.whitelist()
+@handle_api_errors
+def get_user_profile():
+	"""
+	Returns detailed profile information for the profile screen,
+	keeping the main get_me endpoint lightweight.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.AuthenticationError)
+
+	user = frappe.get_doc("User", frappe.session.user)
+	roles = [d.role for d in user.roles]
+
+	has_bank_role = any(r in BANK_ROLES for r in roles)
+	bank_context = {
+		"bank_name": None,
+	}
+	if has_bank_role:
+		bank_context = _get_user_bank_context(frappe.session.user)
+
+	def _get_user_role_label(user_roles):
+		role_set = set(user_roles)
+		if BANK_ADMIN_ROLE in role_set:
+			return "Bank Admin"
+		if BANK_AGENT_ROLE in role_set:
+			return "Bank Agent"
+		if DEVELOPMENT_AGENT_ROLE in role_set:
+			return "Development Agent"
+		if ADMIN_ROLE in role_set:
+			return "Marketplace Admin"
+		if FARMER_ROLE in role_set:
+			return "Farmer"
+		return user_roles[0] if user_roles else "User"
+
+	user_role_label = _get_user_role_label(roles)
+	organization = bank_context.get("bank_name") or "OpenAgriNet"
+	employee_id = getattr(user, "employee_id", None) or getattr(user, "employee", None) or user.name
+
+	member_since = ""
+	if getattr(user, "creation", None):
+		try:
+			member_since = user.creation.strftime("%B %Y")
+		except Exception:
+			pass
+
+	return success_response(
+		data={
+			"personal_information": {
+				"user_image": getattr(user, "user_image", None),
+				"full_name": user.full_name,
+				"email_address": user.email,
+				"phone_number": getattr(user, "mobile_no", None) or getattr(user, "phone", None),
+				"language": getattr(user, "language", None) or "English",
+			},
+			"account_information": {
+				"user_role": user_role_label,
+				"organization": organization,
+				"employee_id": employee_id,
+				"member_since": member_since,
+			},
+		}
+	)
+
+
+@frappe.whitelist()
+@validate_request(UpdateProfileSchema)
+@handle_api_errors
+def update_profile(
+	full_name: str | None = None,
+	phone_number: str | None = None,
+	language: str | None = None,
+	user_image: str | None = None,
+):
+	"""
+	Updates the authenticated user's profile details.
+
+	Note on Image Uploads: The client should first upload the image via Frappe's standard
+	POST /api/method/upload_file endpoint and pass the resulting file URL here as `user_image`.
+	"""
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.AuthenticationError)
+
+	user = frappe.get_doc("User", frappe.session.user)
+
+	if full_name is not None:
+		user.first_name = full_name.strip()
+		user.last_name = ""
+	if phone_number is not None:
+		user.mobile_no = phone_number.strip()
+	if language is not None:
+		user.language = language.strip()
+	if user_image is not None:
+		user_image = user_image.strip()
+		if user.user_image and user.user_image != user_image:
+			old_file = frappe.db.get_value("File", {"file_url": user.user_image}, "name")
+			if old_file:
+				frappe.delete_doc("File", old_file, ignore_permissions=True, force=True)
+		user.user_image = user_image
+
+	# Note on ignore_permissions: We use this because giving users global "Write"
+	# access to the User DocType is a security risk. By ignoring permissions here,
+	# we securely allow users to update ONLY their own specific whitelisted profile
+	# fields (name, phone, language, photo) without granting them raw table permissions.
+	user.save(ignore_permissions=True)
+
+	return get_user_profile()

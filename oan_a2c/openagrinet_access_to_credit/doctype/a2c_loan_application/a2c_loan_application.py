@@ -5,11 +5,46 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 
+from oan_a2c.a2c_marketplace.permissions import get_bank_members
+from oan_a2c.a2c_marketplace.roles import BANK_ROLES
+from oan_a2c.api.v1.notifications import notify_users
+
 
 class A2CLoanApplication(Document):
+	def _bank_recipients(self):
+		"""Bank Admins + Agents of this application's bank (actor excluded downstream)."""
+		return get_bank_members(self.bank, roles=BANK_ROLES)
+
+	def after_insert(self):
+		"""Notify the bank's team that a new application has landed."""
+		label = self.lead_id or self.name
+		notify_users(
+			self._bank_recipients(),
+			subject="New loan application submitted",
+			message=f"New loan application submitted for {label} ({self.loan_product or 'no product'})",
+			doctype="A2C Loan Application",
+			docname=self.name,
+		)
+
+	def on_update(self):
+		"""Notify the bank's team when the application status changes."""
+		if self.is_new() or not self.has_value_changed("status"):
+			return
+		actor = frappe.session.user
+		notify_users(
+			self._bank_recipients(),
+			subject=f"Loan application {self.name} is now {self.status}",
+			message=(
+				f"Loan Application {self.name} for {self.lead_id or self.name} "
+				f"has been {self.status} by {actor}"
+			),
+			doctype="A2C Loan Application",
+			docname=self.name,
+		)
+
 	def validate(self):
-		if self.loan_amount and self.loan_amount < 0:
-			frappe.throw(_("Loan Amount cannot be negative"))
+		if self.requested_amount and self.requested_amount < 0:
+			frappe.throw(_("Requested Amount cannot be negative"))
 		if self.phone_number and not self.phone_number.isdigit() and not self.phone_number.startswith("+"):
 			frappe.throw(_("Phone Number must contain only digits or start with +"))
 

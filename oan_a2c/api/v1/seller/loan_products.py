@@ -2,8 +2,8 @@ import frappe
 from frappe import _
 from pydantic import BaseModel, Field
 
-from oan_a2c.a2c_marketplace.permissions import bank_filters
-from oan_a2c.api.utils import bank_scoped, handle_api_errors, success_response, validate_request
+from oan_a2c.a2c_marketplace.permissions import bank_scoped
+from oan_a2c.api.utils import handle_api_errors, success_response, validate_request
 
 
 class ProductMetaSchema(BaseModel):
@@ -47,28 +47,20 @@ class GetProductSchema(BaseModel):
 @validate_request(CreateProductSchema)
 @handle_api_errors
 @bank_scoped
-def create_product(
-	product_name: str,
-	min_interest_rate: float,
-	max_amount: float,
-	tenure_months: int,
-	max_interest_rate: float | None = None,
-	min_amount: float | None = None,
-	description: str | None = None,
-	product_meta: list | None = None,
-	bank: str | None = None,
-):
+def create_product(**kwargs):
 	frappe.has_permission("A2C Loan Product", "create", throw=True)
 
+	product_meta = kwargs.get("product_meta")
+
 	doc = frappe.new_doc("A2C Loan Product")
-	doc.product_name = product_name
-	doc.bank = bank
-	doc.min_interest_rate = min_interest_rate
-	doc.max_interest_rate = max_interest_rate
-	doc.min_amount = min_amount
-	doc.max_amount = max_amount
-	doc.tenure_months = tenure_months
-	doc.description = description
+	doc.product_name = kwargs.get("product_name")
+	doc.bank = kwargs.get("bank")
+	doc.min_interest_rate = kwargs.get("min_interest_rate")
+	doc.max_interest_rate = kwargs.get("max_interest_rate")
+	doc.min_amount = kwargs.get("min_amount")
+	doc.max_amount = kwargs.get("max_amount")
+	doc.tenure_months = kwargs.get("tenure_months")
+	doc.description = kwargs.get("description")
 	doc.status = "Draft"
 
 	if product_meta:
@@ -82,7 +74,8 @@ def create_product(
 @frappe.whitelist()
 @validate_request(UpdateProductSchema)
 @handle_api_errors
-def update_product(product_id: str, **kwargs):
+def update_product(**kwargs):
+	product_id = kwargs.get("product_id")
 	if not frappe.has_permission("A2C Loan Product", "write", product_id):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
@@ -113,7 +106,9 @@ def update_product(product_id: str, **kwargs):
 @frappe.whitelist()
 @validate_request(SetProductStatusSchema)
 @handle_api_errors
-def set_product_status(product_id: str, status: str):
+def set_product_status(**kwargs):
+	product_id = kwargs.get("product_id")
+	status = kwargs.get("status")
 	if not frappe.has_permission("A2C Loan Product", "write", product_id):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
@@ -136,8 +131,8 @@ def list_products(
 	min_amount: float | None = None,
 	max_amount: float | None = None,
 	tenure_months: int | None = None,
-	limit: int = 20,
-	start: int = 0,
+	page: int = 1,
+	page_size: int = 20,
 ):
 	base_filters = {}
 
@@ -166,7 +161,9 @@ def list_products(
 	matching_product_ids = None
 
 	if category:
-		cat_ids = frappe.get_all(
+		# get_list applies the A2C Term Relationship bank scope (it is bank-scoped),
+		# so a caller cannot enumerate another bank's taxonomy via category search.
+		cat_ids = frappe.get_list(
 			"A2C Term Relationship",
 			filters={"term_type": "Category", "term_category": ["like", f"%{category}%"]},
 			pluck="loan_product",
@@ -174,7 +171,7 @@ def list_products(
 		matching_product_ids = set(cat_ids)
 
 	if tag:
-		tag_ids = frappe.get_all(
+		tag_ids = frappe.get_list(
 			"A2C Term Relationship",
 			filters={"term_type": "Tag", "term_tag": ["like", f"%{tag}%"]},
 			pluck="loan_product",
@@ -186,15 +183,33 @@ def list_products(
 
 	if category or tag:
 		if not matching_product_ids:
-			return success_response(data={"products": [], "count": 0})
+			pagination = {
+				"page": page,
+				"page_size": page_size,
+				"total": 0,
+				"total_pages": 0,
+				"has_next": False,
+			}
+			return success_response(data={"products": []}, pagination=pagination)
 		base_filters["name"] = ["in", list(matching_product_ids)]
 
-	filters = bank_filters(base=base_filters)
+	offset = (page - 1) * page_size
 
-	# frappe.get_all bypasses the bank_scope_query hook, so scope explicitly via bank_filters().
-	products = frappe.get_all(
+	# Total count for pagination (get_list enforces DocPerm + bank scope).
+	count_res = frappe.get_list(
 		"A2C Loan Product",
-		filters=filters,
+		filters=base_filters,
+		fields=[{"COUNT": "*"}],
+	)
+	total_records = count_res[0].get("COUNT(*)") if count_res else 0
+
+	# get_list (not get_all) enforces DocPerm AND runs the bank_scope_query hook,
+	# so callers without read permission (e.g. Development Agent, which has no
+	# DocPerm on the seller catalog) get zero rows, and bank isolation is applied
+	# automatically -- no manual bank_filters() to forget.
+	products = frappe.get_list(
+		"A2C Loan Product",
+		filters=base_filters,
 		fields=[
 			"name",
 			"product_name",
@@ -208,17 +223,55 @@ def list_products(
 			"creation",
 		],
 		order_by="creation desc",
-		limit_page_length=limit,
-		limit_start=start,
+		limit_page_length=page_size,
+		limit_start=offset,
 	)
 
-	return success_response(data={"products": products, "count": len(products)})
+	if products:
+		product_names = [p["name"] for p in products]
+
+		# Batch fetch categories for each product (get_list applies the bank scope).
+		cat_rows = frappe.get_list(
+			"A2C Term Relationship",
+			filters={"loan_product": ["in", product_names], "term_type": "Category"},
+			fields=["loan_product", "term_category"],
+		)
+		categories_map = {}
+		for row in cat_rows:
+			categories_map.setdefault(row.loan_product, []).append(row.term_category)
+
+		# Batch fetch application counts. get_list enforces DocPerm + bank scope.
+		app_counts = frappe.get_list(
+			"A2C Loan Application",
+			filters={"loan_product": ["in", product_names]},
+			fields=["loan_product", {"COUNT": "*"}],
+			group_by="loan_product",
+		)
+		counts_map = {row.loan_product: row.get("COUNT(*)") for row in app_counts}
+
+		for p in products:
+			p["categories"] = categories_map.get(p["name"], [])
+			p["applications_count"] = counts_map.get(p["name"], 0)
+
+	total_pages = -(-total_records // page_size)
+	has_next = offset + page_size < total_records
+
+	pagination = {
+		"page": page,
+		"page_size": page_size,
+		"total": total_records,
+		"total_pages": total_pages,
+		"has_next": has_next,
+	}
+
+	return success_response(data={"products": products}, pagination=pagination)
 
 
 @frappe.whitelist()
 @validate_request(GetProductSchema)
 @handle_api_errors
-def get_product(product_id: str):
+def get_product(**kwargs):
+	product_id = kwargs.get("product_id")
 	if not frappe.has_permission("A2C Loan Product", "read", product_id):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
@@ -228,19 +281,21 @@ def get_product(product_id: str):
 	for meta in getattr(doc, "product_meta", []):
 		product_meta.append({"meta_key": meta.meta_key, "meta_value": meta.meta_value})
 
-	categories = frappe.get_all(
+	# get_list applies the bank scope on these bank-scoped taxonomy doctypes;
+	# product_id was already authorized via has_permission above.
+	categories = frappe.get_list(
 		"A2C Term Relationship",
 		filters={"loan_product": product_id, "term_type": "Category"},
 		pluck="term_category",
 	)
 
-	tags = frappe.get_all(
+	tags = frappe.get_list(
 		"A2C Term Relationship",
 		filters={"loan_product": product_id, "term_type": "Tag"},
 		pluck="term_tag",
 	)
 
-	lookups = frappe.get_all(
+	lookups = frappe.get_list(
 		"A2C Loan Product Attribute Lookup",
 		filters={"loan_product": product_id},
 		fields=["taxonomy", "term_id"],

@@ -617,11 +617,14 @@ Registers a new participating bank entity and binds the authenticated caller as 
 | **`bank_code`** | string | Yes | — | Min length 2 characters. Non-alphanumeric characters are stripped, converted to uppercase (used as TIN) |
 | **`entity_type`** | string | Yes | — | Legal entity type of the bank |
 | **`registered_street`** | string | Yes | — | Min length 2 characters |
+| `registered_kebele_village` | string | No | null | Kebele or village |
+| `registered_woreda_district` | string | No | null | Woreda or district |
 | **`registered_city`** | string | Yes | — | Min length 2 characters |
 | **`registered_country`** | string | Yes | — | Min length 2 characters |
 | **`registered_postal_code`** | string | Yes | — | Min length 2 characters |
 | **`registered_email`** | string | Yes | — | Valid email address format |
 | **`registered_phone`** | string | Yes | — | Min length 2 characters |
+| `website` | string | No | null | Website URL |
 
 **Success Response (HTTP 200):**
 ```json
@@ -721,11 +724,14 @@ Retrieves the full seller organization profile for the caller's mapped bank, inc
     "bank_name": "Example Bank",
     "entity_type": "Bank",
     "registered_street": "Bole Road",
+    "registered_kebele_village": "Kebele 01",
+    "registered_woreda_district": "Bole",
     "registered_city": "Addis Ababa",
     "registered_country": "Ethiopia",
     "registered_postal_code": "1000",
     "registered_email": "ops@examplebank.com",
     "registered_phone": "+251900000000",
+    "website": "https://examplebank.com",
     "status": "Onboarding",
     "gro_name": "GRO Contact",
     "gro_mobile": "+251911111111",
@@ -751,8 +757,45 @@ Retrieves the full seller organization profile for the caller's mapped bank, inc
 
 ---
 
+### 6.5b `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_profile`
+Updates the organization details and branding profile of the caller's bank.
+
+**Authentication & Permissions:** Requires JWT Bearer token. Caller must have an assigned bank binding and possess the `A2C Bank Admin` role.
+**Parameters (JSON Body):**
+| Param | Type | Required | Default | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| `bank_name` | string | No | null | Min length 2 characters (Legal Name) |
+| `brand_name` | string | No | null | Display Name |
+| `website` | string | No | null | Website URL |
+| `registered_street` | string | No | null | Min length 2 characters |
+| `registered_kebele_village` | string | No | null | |
+| `registered_woreda_district` | string | No | null | |
+| `registered_city` | string | No | null | Min length 2 characters |
+| `registered_country` | string | No | null | Min length 2 characters |
+| `registered_postal_code` | string | No | null | Min length 2 characters |
+| `registered_email` | string | No | null | Valid email address format |
+| `registered_phone` | string | No | null | Min length 2 characters |
+| `logo` | string | No | null | File URL from image upload API |
+
+**Success Response (HTTP 200):**
+```json
+{
+  "status": "success",
+  "message": "Organization profile updated successfully.",
+  "data": {
+    "message": "Organization profile updated successfully."
+  }
+}
+```
+**Error Cases:**
+- **400 `VALIDATION_ERROR`**: Invalid email, or field length out of bounds.
+- **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user.
+- **403 `PERMISSION_DENIED`**: Target user is not an `A2C Bank Admin` or caller lacks bank binding.
+- **500 `INTERNAL_ERROR`**: Database save failure.
+
+---
+
 ### 6.6 `GET /api/method/oan_a2c.api.v1.seller.onboarding.get_bank_status`
-Retrieves the current onboarding status of the caller's bank.
 
 **Authentication & Permissions:** Requires JWT Bearer token. Caller must have an assigned bank binding.
 **Parameters:** None.
@@ -772,7 +815,6 @@ Retrieves the current onboarding status of the caller's bank.
 - **500 `INTERNAL_ERROR`**: Database lookup failure.
 
 ---
-
 ### 6.7 `POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status`
 Updates the onboarding status of a specified bank. Restricted to Bank Admins.
 
@@ -834,29 +876,30 @@ Invites a new team member to the caller's bank. Creates the User account if it d
 
 ---
 
-### 6.9 `POST /api/method/oan_a2c.api.v1.seller.onboarding.deactivate_user`
-Deactivates (`enabled = 0`) a user belonging to the caller's bank.
+### 6.9 `POST /api/method/oan_a2c.api.v1.seller.onboarding.set_user_status`
+Activates or deactivates a user belonging to the caller's bank by updating their `enabled` status.
 
 **Authentication & Permissions:** Requires JWT Bearer token. Caller must have an assigned bank binding.
 **Parameters (JSON Body):**
 | Param | Type | Required | Default | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| **`email`** | string | Yes | — | Email of the target user to deactivate |
+| **`email`** | string | Yes | — | Email of the target user |
+| **`enabled`** | boolean | Yes | — | `true` to activate, `false` to deactivate |
 
 **Success Response (HTTP 200):**
 ```json
 {
   "status": "success",
-  "message": "User deactivated successfully.",
+  "message": "User status updated successfully.",
   "data": {
-    "message": "User deactivated successfully."
+    "message": "User status updated successfully."
   }
 }
 ```
 **Error Cases:**
-- **400 `VALIDATION_ERROR`**: Invalid email format or caller has no bank binding (`No bank associated with the current user.`).
+- **400 `VALIDATION_ERROR`**: Invalid email format, missing `enabled` field, or caller has no bank binding (`No bank associated with the current user.`).
 - **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user.
-- **403 `PERMISSION_DENIED`**: Target user belongs to a different bank (`Not permitted to deactivate a user from another bank.`).
+- **403 `PERMISSION_DENIED`**: Target user belongs to a different bank (`Not permitted to update a user from another bank.`).
 - **500 `INTERNAL_ERROR`**: Database update failure.
 
 ---
@@ -877,7 +920,9 @@ Lists all team members (users) associated with the caller's bank.
         "name": "agent@bank.com",
         "email": "agent@bank.com",
         "first_name": "Tigist Bekele",
-        "enabled": 1
+        "enabled": 1,
+        "last_active": "2024-05-18 10:30:00",
+        "role": "A2C Bank Agent"
       }
     ]
   }
@@ -917,6 +962,35 @@ Updates the profile (`full_name`, `role`) of a user belonging to the caller's ba
 - **403 `PERMISSION_DENIED`**: Target user belongs to a different bank (`Not permitted to update a user from another bank.`).
 - **404 `NOT_FOUND`**: Target `email` does not exist in `User`.
 - **500 `INTERNAL_ERROR`**: Database save failure.
+
+---
+
+### 6.12 `POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_image`
+Uploads a Base64-encoded image (e.g., bank logo or product image) and returns its URL.
+
+**Authentication & Permissions:** Requires JWT Bearer token.
+**Parameters (JSON Body):**
+| Param | Type | Required | Default | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **`filename`** | string | Yes | — | Min 4, max 100 chars. Must match regex pattern for images (png, jpg, jpeg, webp) |
+| **`filedata`** | string | Yes | — | Base64-encoded image string. Min 10, max 7,000,000 chars (~5MB limit) |
+
+**Success Response (HTTP 200):**
+```json
+{
+  "status": "success",
+  "message": "Image uploaded successfully.",
+  "data": {
+    "message": "Image uploaded successfully.",
+    "file_url": "/files/bank-logo.png"
+  }
+}
+```
+**Error Cases:**
+- **400 `VALIDATION_ERROR`**: Filename does not match allowed image extensions or string length out of bounds.
+- **400 `VALIDATION_ERROR`**: Base64 decoding fails (`Invalid file: content is not valid Base64.`).
+- **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user.
+- **500 `INTERNAL_ERROR`**: File creation or database save failure (`Failed to save uploaded image.`).
 
 ---
 
@@ -1079,3 +1153,56 @@ Returns the authenticated caller's profile details including roles and associate
 **Error Cases:**
 - **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user (`Guest`).
 - **500 `INTERNAL_ERROR`**: Database lookup failure.
+
+---
+
+### 7.7 `GET /api/method/oan_a2c.api.auth.get_user_profile`
+Returns detailed profile information for the authenticated user, designed specifically for the "My Profile" screen.
+
+**Authentication & Permissions:** Requires JWT Bearer token.
+**Parameters:** None.
+**Success Response (HTTP 200):**
+```json
+{
+  "status": "success",
+  "message": "Success",
+  "data": {
+    "personal_information": {
+      "user_image": "/private/files/avatar.png",
+      "full_name": "Abebe Kebede",
+      "email_address": "admin@bank.com",
+      "phone_number": "+251911111111",
+      "language": "English"
+    },
+    "account_information": {
+      "user_role": "Bank Admin",
+      "organization": "Example Bank",
+      "employee_id": "EMP-001",
+      "member_since": "July 2026"
+    }
+  }
+}
+```
+**Error Cases:**
+- **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user.
+
+---
+
+### 7.8 `POST /api/method/oan_a2c.api.auth.update_profile`
+Updates the personal profile details of the authenticated user.
+
+**Authentication & Permissions:** Requires JWT Bearer token.
+**Parameters (JSON Body):**
+| Param | Type | Required | Default | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| `full_name` | string | No | null | The user's full name |
+| `phone_number` | string | No | null | The user's mobile number |
+| `language` | string | No | null | Preferred language code (e.g., "English") |
+| `user_image` | string | No | null | URL from the `upload_image` endpoint |
+
+**Success Response (HTTP 200):**
+*Returns the fully updated profile object identical to `7.7 get_user_profile`.*
+
+**Error Cases:**
+- **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user.
+- **500 `INTERNAL_ERROR`**: Database save failure.

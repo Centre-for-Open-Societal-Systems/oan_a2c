@@ -33,6 +33,7 @@ ADMIN_ROLE = "A2C Administrator"
 BANK_ADMIN_ROLE = "A2C Bank Admin"
 BANK_AGENT_ROLE = "A2C Bank Agent"
 DEVELOPMENT_AGENT_ROLE = "A2C Development Agent"
+FARMER_ROLE = "A2C Farmer"
 
 # Bank-scoped roles (belong to exactly one A2C Participating Bank).
 BANK_ROLES = (BANK_ADMIN_ROLE, BANK_AGENT_ROLE)
