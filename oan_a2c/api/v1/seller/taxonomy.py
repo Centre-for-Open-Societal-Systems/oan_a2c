@@ -1,33 +1,33 @@
 import frappe
 from frappe import _
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from oan_a2c.api.utils import handle_api_errors, success_response, validate_request
 
 
 class SetTermsSchema(BaseModel):
-	product_id: str
+	product_id: str = Field(..., min_length=1, max_length=140)
 	term_ids: list[str]
 
 
 class SetAttributesSchema(BaseModel):
-	product_id: str
+	product_id: str = Field(..., min_length=1, max_length=140)
 	attributes: dict[str, list[str]]
 
 
 class CreateCategorySchema(BaseModel):
-	term_name: str
-	description: str | None = None
-	parent_category: str | None = None
+	term_name: str = Field(..., min_length=1, max_length=140)
+	description: str | None = Field(None, max_length=2000)
+	parent_category: str | None = Field(None, max_length=140)
 
 
 class CreateTagSchema(BaseModel):
-	term_name: str
-	description: str | None = None
+	term_name: str = Field(..., min_length=1, max_length=140)
+	description: str | None = Field(None, max_length=2000)
 
 
 class CreateTermSchema(BaseModel):
-	term_name: str
+	term_name: str = Field(..., min_length=1, max_length=140)
 
 
 @frappe.whitelist()
@@ -53,7 +53,9 @@ def get_tags():
 @frappe.whitelist()
 @handle_api_errors
 def get_attributes():
-	terms = frappe.get_all("A2C Term", fields=["name as term_id", "term_name", "slug"])
+	claimed = frappe.get_all("A2C Term Category", pluck="term") + frappe.get_all("A2C Term Tag", pluck="term")
+	filters = [["name", "not in", claimed]] if claimed else []
+	terms = frappe.get_all("A2C Term", filters=filters, fields=["name as term_id", "term_name", "slug"])
 	return success_response(data={"attributes": terms})
 
 

@@ -355,7 +355,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		raise e
 
 
-def validate_and_enqueue_consent(data, enforce_permission=True):
+def validate_and_enqueue_consent(data, enforce_permission=True, sync=False):
 	"""
 	Internal: validate an OpenG2P consent payload and enqueue background
 	processing. Returns the resolved A2C Consent Request name.
@@ -363,6 +363,9 @@ def validate_and_enqueue_consent(data, enforce_permission=True):
 	Callable in-process (e.g. from the WebSub hub endpoint) without going
 	through HTTP auth. When called from the authenticated receiver, pass
 	enforce_permission=True so the caller's write permission is checked.
+
+	Pass sync=True to run process_consent_data inline instead of enqueuing
+	(used by the direct-response path where the payload arrives in-request).
 	"""
 	try:
 		validated_data = ReceiveConsentDataSchema.model_validate(data)
@@ -394,15 +397,21 @@ def validate_and_enqueue_consent(data, enforce_permission=True):
 	if enforce_permission:
 		frappe.has_permission("A2C Consent Request", "write", doc=consent_doc_name, throw=True)
 
-	# Enqueue the processing job to prevent blocking the OpenG2P system
-	frappe.enqueue(
-		method=process_consent_data,
-		queue="default",
-		data=data,
-		consent_doc_name=consent_doc_name,
-		consent_request_id=str(consent_id),
-		job_name=f"process_consent_{consent_id}",
-	)
+	if sync:
+		process_consent_data(
+			data=data,
+			consent_doc_name=consent_doc_name,
+			consent_request_id=str(consent_id),
+		)
+	else:
+		frappe.enqueue(
+			method=process_consent_data,
+			queue="default",
+			data=data,
+			consent_doc_name=consent_doc_name,
+			consent_request_id=str(consent_id),
+			job_name=f"process_consent_{consent_id}",
+		)
 
 	return consent_doc_name
 

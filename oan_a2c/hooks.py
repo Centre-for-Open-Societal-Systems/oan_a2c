@@ -136,6 +136,11 @@ BANK_SCOPED = [
 ]
 
 permission_query_conditions = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_query" for d in BANK_SCOPED}
+# A2C Loan Application adds a lifecycle gate on top of bank scoping: bank users
+# never see Draft applications (the Development Agent's stage). See permissions.py.
+permission_query_conditions["A2C Loan Application"] = (
+	"oan_a2c.a2c_marketplace.permissions.loan_application_scope_query"
+)
 has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d in BANK_SCOPED}
 
 # Document Events

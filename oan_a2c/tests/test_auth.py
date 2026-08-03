@@ -177,7 +177,6 @@ class TestAuthAPI(unittest.TestCase):
 			"/api/method/oan_a2c.api.auth.login",
 			"/api/method/oan_a2c.api.auth.forgot_password",
 			"/api/method/oan_a2c.api.auth.reset_password",
-			"/api/method/oan_a2c.api.v1.websub_subscriber.callback",
 		]:
 			frappe.local.request = frappe._dict({"path": path})
 			self._mock_headers = {}  # No token

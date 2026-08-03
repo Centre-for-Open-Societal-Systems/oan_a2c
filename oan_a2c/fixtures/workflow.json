@@ -130,9 +130,31 @@
     "workflow_builder_id": null
    },
    {
+    "action": "Grant",
+    "allow_self_approval": 1,
+    "allowed": "A2C Bank Admin",
+    "condition": null,
+    "next_state": "Granted",
+    "send_email_to_creator": 0,
+    "state": "Processed",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
     "action": "Reject",
     "allow_self_approval": 1,
     "allowed": "A2C Bank Agent",
+    "condition": null,
+    "next_state": "Rejected",
+    "send_email_to_creator": 0,
+    "state": "Processed",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
+    "action": "Reject",
+    "allow_self_approval": 1,
+    "allowed": "A2C Bank Admin",
     "condition": null,
     "next_state": "Rejected",
     "send_email_to_creator": 0,
@@ -292,9 +314,31 @@
     "workflow_builder_id": null
    },
    {
+    "action": "Approve",
+    "allow_self_approval": 1,
+    "allowed": "A2C Bank Admin",
+    "condition": null,
+    "next_state": "Approved",
+    "send_email_to_creator": 0,
+    "state": "Processing",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
     "action": "Reject",
     "allow_self_approval": 1,
     "allowed": "A2C Bank Agent",
+    "condition": null,
+    "next_state": "Rejected",
+    "send_email_to_creator": 0,
+    "state": "Processing",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
+    "action": "Reject",
+    "allow_self_approval": 1,
+    "allowed": "A2C Bank Admin",
     "condition": null,
     "next_state": "Rejected",
     "send_email_to_creator": 0,

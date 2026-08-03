@@ -7,7 +7,10 @@ from frappe import _  # pyright: ignore[reportMissingImports]
 from pydantic import BaseModel, BeforeValidator
 from pydantic import ValidationError as PydanticValidationError
 
-from oan_a2c.a2c_marketplace.permissions import BankNotOnboarded  # pyright: ignore[reportMissingTypeStubs]
+from oan_a2c.a2c_marketplace.permissions import (  # pyright: ignore[reportMissingTypeStubs]
+	BankNotActive,
+	BankNotOnboarded,
+)
 
 
 class _DummyException(Exception):
@@ -232,7 +235,7 @@ def check_rate_limit(key: str, limit: int, window: int):
 
 
 def extract_message_from_str(val):
-	if val.startswith("{") and val.endswith("}"):
+	if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
 		try:
 			import ast
 			import json
@@ -242,12 +245,17 @@ def extract_message_from_str(val):
 			except Exception:
 				parsed = ast.literal_eval(val)
 			if isinstance(parsed, dict) and "message" in parsed:
-				return str(parsed["message"])
+				val = str(parsed["message"])
 		except Exception:
 			# Best-effort extraction only; unparseable input falls through to the
 			# raw value. Debug level so it's available when troubleshooting but
 			# doesn't add noise (this fires on any non-dict-shaped string).
 			frappe.logger().debug("Could not parse message payload; returning raw value")
+
+	if isinstance(val, str) and "<" in val and ">" in val:
+		import re
+
+		val = re.sub(r"<[^>]+>", "", val).strip()
 	return val
 
 
@@ -327,6 +335,16 @@ def handle_api_errors(func):
 			return error_response(
 				"Your bank registration is not complete. Finish onboarding to access this resource.",
 				"BANK_NOT_ONBOARDED",
+			)
+		except BankNotActive as e:
+			# Distinct from a plain 403: the user's bank exists but isn't Active yet
+			# (In Review/Suspended), so tell them to complete KYC / await approval
+			# rather than returning an opaque "Permission denied".
+			frappe.local.message_log = []
+			frappe.response["http_status_code"] = 403
+			return error_response(
+				str(e) or "Your bank is not active yet. Complete onboarding to manage products.",
+				"BANK_NOT_ACTIVE",
 			)
 		except frappe.PermissionError:
 			frappe.local.message_log = []

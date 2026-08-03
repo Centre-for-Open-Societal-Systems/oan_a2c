@@ -7,6 +7,7 @@ _COUNTERS = (
 	"pending_applications",
 	"approved_applications",
 	"total_approved_amount",
+	"pending_products",
 )
 _PENDING_STATUSES = {"Submitted", "Under Review"}
 
@@ -59,6 +60,7 @@ def _compute_from_db(bank: str) -> dict:
 	)
 	total_products = sum(item.count for item in product_counts if item.status != "Archived")
 	active_products = sum(item.count for item in product_counts if item.status == "Active")
+	pending_products = sum(item.count for item in product_counts if item.status == "Draft")
 
 	app_counts = frappe.get_all(  # bank-scope-exempt: bank scoped explicitly via filters above
 		"A2C Loan Application",
@@ -76,6 +78,7 @@ def _compute_from_db(bank: str) -> dict:
 	return {
 		"total_products": total_products,
 		"active_products": active_products,
+		"pending_products": pending_products,
 		"total_applications": total_applications,
 		"pending_applications": pending_applications,
 		"approved_applications": approved_applications,
@@ -131,6 +134,8 @@ def on_product_change(doc, event: str) -> None:
 			_incr(bank, "total_products")
 		if doc.status == "Active":
 			_incr(bank, "active_products")
+		elif doc.status == "Draft":
+			_incr(bank, "pending_products")
 
 	elif event == "on_update":
 		before = doc.get_doc_before_save()
@@ -144,14 +149,21 @@ def on_product_change(doc, event: str) -> None:
 
 			if before.status == "Active":
 				_decr(bank, "active_products")
+			elif before.status == "Draft":
+				_decr(bank, "pending_products")
+
 			if doc.status == "Active":
 				_incr(bank, "active_products")
+			elif doc.status == "Draft":
+				_incr(bank, "pending_products")
 
 	elif event == "on_trash":
 		if doc.status != "Archived":
 			_decr(bank, "total_products")
 		if doc.status == "Active":
 			_decr(bank, "active_products")
+		elif doc.status == "Draft":
+			_decr(bank, "pending_products")
 
 
 def on_application_change(doc, event: str) -> None:

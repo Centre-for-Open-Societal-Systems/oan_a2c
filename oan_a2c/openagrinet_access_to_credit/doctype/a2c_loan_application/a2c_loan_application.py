@@ -43,6 +43,11 @@ class A2CLoanApplication(Document):
 		)
 
 	def validate(self):
+		if self.is_new() and self.lead_id:
+			lead_status = frappe.db.get_value("A2C Lead", self.lead_id, "status")
+			if lead_status not in ["Verified", "Processed"]:
+				frappe.throw(_("A Loan Application can only be created for a Verified or Processed Lead."))
+
 		if self.requested_amount and self.requested_amount < 0:
 			frappe.throw(_("Requested Amount cannot be negative"))
 		if self.phone_number and not self.phone_number.isdigit() and not self.phone_number.startswith("+"):
@@ -58,6 +63,11 @@ class A2CLoanApplication(Document):
 			if self.current_step and self.current_step != db_step:
 				if self.current_step > db_step + 1:
 					frappe.throw(_("Invalid step transition. You cannot skip steps."), frappe.ValidationError)
+
+		if self.loan_product and not self.loan_product_name:
+			self.loan_product_name = frappe.db.get_value(
+				"A2C Loan Product", self.loan_product, "product_name"
+			)
 
 		self._sync_bank_from_product()
 

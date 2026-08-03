@@ -13,6 +13,29 @@ def _make_lead_verifiable(lead_id):
 	the lead. Idempotent so it can be called from setUp without piling up records.
 	"""
 	if not frappe.db.exists("A2C Credit Information", {"lead": lead_id}):
+		prod = frappe.db.get_value("A2C Loan Product", {}, "name")
+		if not prod:
+			bank = frappe.db.get_value("A2C Bank Profile", {}, "name")
+			if not bank:
+				bank = (
+					frappe.get_doc(
+						{"doctype": "A2C Bank Profile", "bank_name": "Test Bank", "bank_code": "TB123"}
+					)
+					.insert(ignore_permissions=True)
+					.name
+				)
+			prod = (
+				frappe.get_doc(
+					{
+						"doctype": "A2C Loan Product",
+						"product_name": "Test Product",
+						"bank": bank,
+						"status": "Active",
+					}
+				)
+				.insert(ignore_permissions=True)
+				.name
+			)
 		frappe.get_doc(
 			{
 				"doctype": "A2C Credit Information",
@@ -20,6 +43,7 @@ def _make_lead_verifiable(lead_id):
 				"loan_type": "Input loan (seeds, agrochemicals)",
 				"loan_amount": 5000.0,
 				"purpose_message": "Verification prerequisite",
+				"loan_product": prod,
 			}
 		).insert(ignore_permissions=True)
 	if not frappe.db.exists("A2C Consent Request", {"lead": lead_id, "status": "Approved"}):

@@ -1,7 +1,7 @@
 {
  "actions": [],
  "autoname": "format:PB-{####}",
- "creation": "2026-07-20 00:00:00.000000",
+ "creation": "2026-07-20 00:00:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -22,7 +22,10 @@
   "registered_postal_code",
   "kyc_document",
   "gro_name",
-  "gro_mobile"
+  "gro_mobile",
+  "commission_rate",
+  "ops_name",
+  "ops_mobile"
  ],
  "fields": [
   {
@@ -57,14 +60,13 @@
    "label": "Website"
   },
   {
-   "default": "Onboarding",
+   "default": "In Review",
    "fieldname": "status",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Onboarding\nActive\nSuspended",
-   "read_only": 1
+   "options": "In Review\nActive\nSuspended"
   },
   {
    "fieldname": "registered_email",
@@ -147,7 +149,7 @@
   }
  ],
  "links": [],
- "modified": "2026-07-20 00:00:00.000000",
+ "modified": "2026-07-31 12:06:42.048439",
  "modified_by": "Administrator",
  "module": "A2C Marketplace",
  "name": "A2C Participating Bank",
@@ -198,6 +200,7 @@
    "share": 1
   }
  ],
+ "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []

@@ -29,6 +29,7 @@
    "fieldtype": "Link",
    "label": "Loan Product",
    "options": "A2C Loan Product",
+   "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1
   },

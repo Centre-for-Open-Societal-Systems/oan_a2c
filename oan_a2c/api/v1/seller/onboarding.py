@@ -5,86 +5,86 @@ from frappe import _
 from pydantic import BaseModel, Field, field_validator
 
 from oan_a2c.a2c_marketplace.permissions import is_bank_unbound, require_bank_role
-from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, BANK_AGENT_ROLE
+from oan_a2c.a2c_marketplace.roles import (
+	ADMIN_ROLE,
+	BANK_ADMIN_ROLE,
+	BANK_AGENT_ROLE,
+	DEVELOPMENT_AGENT_ROLE,
+	FARMER_ROLE,
+)
 from oan_a2c.api.utils import (
 	RequiredPhone,
 	SafeEmail,
-	check_rate_limit,
 	handle_api_errors,
 	success_response,
 	validate_request,
 )
-from oan_a2c.api.v1.auth import RegisterUserSchema, create_user_account
+from oan_a2c.api.v1.auth import create_user_account
 
-RegisterSellerSchema = RegisterUserSchema
+ROLE_LEVELS: dict[str, int] = {
+	ADMIN_ROLE: 1,
+	"System Manager": 1,
+	BANK_ADMIN_ROLE: 2,
+	BANK_AGENT_ROLE: 3,
+	DEVELOPMENT_AGENT_ROLE: 3,
+	FARMER_ROLE: 4,
+}
+_ALL_A2C_ROLES = frozenset(ROLE_LEVELS)
+
+
+def _get_user_level(user: str) -> int:
+	levels = [ROLE_LEVELS[r] for r in frappe.get_roles(user) if r in ROLE_LEVELS]
+	return min(levels) if levels else 99
 
 
 def resolve_assignable_role(role: str, allowed: set[str]) -> str:
 	"""Validate a client-supplied role against an allowlist, or reject it.
 
 	Canonical `Role` names only (from a2c_marketplace.roles). This is the ONLY
-	gate on the client-supplied `role` in invite_user/update_user_profile — never
-	append a raw client string to User.roles, or a caller can hand themselves
-	System Manager / A2C Administrator, or resurrect a retired plain-named role.
+	gate on the client-supplied `role` in invite_user — never append a raw client
+	string to User.roles, or a caller can hand themselves System Manager /
+	A2C Administrator, or resurrect a retired plain-named role. (update_user does
+	its own level-based role check; see ROLE_LEVELS.)
 	"""
 	if role not in allowed:
 		frappe.throw(_("Invalid role."), frappe.ValidationError)
 	return role
 
 
-@frappe.whitelist(allow_guest=True)
-@validate_request(RegisterSellerSchema)
-@handle_api_errors
-def register_seller(email: str, full_name: str, password: str, phone_number: str):
-	"""
-	Guest accessible: Creates a User with the A2C Bank Admin role.
-	"""
-	check_rate_limit(f"rl:register_seller:{getattr(frappe.local, 'request_ip', 'guest')}", limit=5, window=60)
-
-	create_user_account(
-		email=email,
-		full_name=full_name,
-		password=password,
-		phone_number=phone_number,
-		role=BANK_ADMIN_ROLE,
-	)
-	return success_response(data={"message": _("Seller registered successfully. You may now login.")})
-
-
 class RegisterBankSchema(BaseModel):
-	bank_name: str = Field(..., min_length=2)
-	bank_code: str = Field(..., min_length=2)
-	entity_type: str = Field(...)
-	registered_street: str = Field(..., min_length=2)
-	registered_kebele_village: str | None = None
-	registered_woreda_district: str | None = None
-	registered_city: str = Field(..., min_length=2)
-	registered_country: str = Field(..., min_length=2)
-	registered_postal_code: str = Field(..., min_length=2)
+	bank_name: str = Field(..., min_length=2, max_length=140)
+	bank_code: str = Field(..., min_length=2, max_length=140)
+	entity_type: str = Field(..., min_length=2, max_length=140)
+	registered_street: str = Field(..., min_length=2, max_length=255)
+	registered_kebele_village: str | None = Field(None, max_length=140)
+	registered_woreda_district: str | None = Field(None, max_length=140)
+	registered_city: str = Field(..., min_length=2, max_length=140)
+	registered_country: str = Field(..., min_length=2, max_length=140)
+	registered_postal_code: str = Field(..., min_length=2, max_length=20)
 	registered_email: SafeEmail
 	registered_phone: RequiredPhone
-	website: str | None = None
+	website: str | None = Field(None, max_length=255)
 
 
 class UpdateBankProfileSchema(BaseModel):
-	bank_name: str | None = Field(None, min_length=2)
-	brand_name: str | None = None
-	website: str | None = None
-	registered_street: str | None = Field(None, min_length=2)
-	registered_kebele_village: str | None = None
-	registered_woreda_district: str | None = None
-	registered_city: str | None = Field(None, min_length=2)
-	registered_country: str | None = Field(None, min_length=2)
-	registered_postal_code: str | None = Field(None, min_length=2)
+	bank_name: str | None = Field(None, max_length=140)
+	brand_name: str | None = Field(None, max_length=140)
+	website: str | None = Field(None, max_length=255)
+	registered_street: str | None = Field(None, max_length=255)
+	registered_kebele_village: str | None = Field(None, max_length=140)
+	registered_woreda_district: str | None = Field(None, max_length=140)
+	registered_city: str | None = Field(None, max_length=140)
+	registered_country: str | None = Field(None, max_length=140)
+	registered_postal_code: str | None = Field(None, max_length=20)
 	registered_email: SafeEmail | None = None
 	registered_phone: RequiredPhone | None = None
-	logo: str | None = None
+	logo: str | None = Field(None, max_length=255)
 
 
 class SaveOrgContactsSchema(BaseModel):
-	gro_name: str
+	gro_name: str = Field(..., min_length=1, max_length=140)
 	gro_mobile: RequiredPhone
-	ops_name: str
+	ops_name: str = Field(..., min_length=1, max_length=140)
 	ops_mobile: RequiredPhone
 
 
@@ -128,13 +128,13 @@ class ActivateBankSchema(BaseModel):
 
 class UpdateBankStatusSchema(BaseModel):
 	bank_code: str | None = None
-	new_status: str = Field(..., pattern="^(Onboarding|Active|Suspended)$")
+	new_status: str = Field(..., pattern="^(In Review|Active|Suspended)$")
 
 
 class InviteUserSchema(BaseModel):
 	email: SafeEmail
-	full_name: str = Field(..., min_length=2)
-	role: str = Field(..., min_length=2)
+	full_name: str = Field(..., min_length=2, max_length=140)
+	role: str = Field(..., min_length=2, max_length=140)
 	password: str = Field(..., min_length=8, max_length=64)
 
 	@field_validator("password")
@@ -143,11 +143,6 @@ class InviteUserSchema(BaseModel):
 		if not any(c.isalpha() for c in v) or not any(c.isdigit() for c in v):
 			raise ValueError("Password must contain at least one letter and one number.")
 		return v
-
-
-class SetUserStatusSchema(BaseModel):
-	email: SafeEmail
-	enabled: bool
 
 
 # -----------------
@@ -184,7 +179,7 @@ def register_bank(**kwargs):
 		).insert(ignore_permissions=True)
 		return success_response(
 			data={
-				"message": _("Bank registered successfully. Currently onboarding."),
+				"message": _("Bank registered successfully. Currently in review."),
 				"bank_code": bank_code,
 				"bank_id": existing_bank,
 			}
@@ -208,7 +203,7 @@ def register_bank(**kwargs):
 				"registered_email": kwargs.get("registered_email"),
 				"registered_phone": kwargs.get("registered_phone"),
 				"website": kwargs.get("website"),
-				"status": "Onboarding",
+				"status": "In Review",
 			}
 		)
 		bank.insert(ignore_permissions=True)
@@ -230,7 +225,7 @@ def register_bank(**kwargs):
 
 	return success_response(
 		data={
-			"message": _("Bank registered successfully. Currently onboarding."),
+			"message": _("Bank registered successfully. Currently in review."),
 			"bank_code": bank.bank_code,
 			"bank_id": bank.name,
 		}
@@ -550,43 +545,7 @@ def invite_user(email: str, full_name: str, role: str, password: str):
 
 
 # -----------------
-# 6. set_user_status
-# -----------------
-@frappe.whitelist()
-@validate_request(SetUserStatusSchema)
-@handle_api_errors
-@require_bank_role(BANK_ADMIN_ROLE)
-def set_user_status(email: str, enabled: bool):
-	user = frappe.session.user
-	bank = frappe.db.get_value(
-		"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
-	)
-
-	if not bank:
-		frappe.throw(_("No bank associated with the current user."))
-
-	if email == user:
-		frappe.throw(_("You cannot change your own account status."), frappe.ValidationError)
-
-	target_bank = frappe.db.get_value(
-		"User Permission", {"user": email, "allow": "A2C Participating Bank"}, "for_value"
-	)
-	if target_bank != bank:
-		frappe.throw(_("Not permitted to update a user from another bank."))
-
-	frappe.db.set_value("User", email, "enabled", 1 if enabled else 0)
-
-	return success_response(data={"message": _("User status updated successfully.")})
-
-
-class UpdateUserProfileSchema(BaseModel):
-	email: SafeEmail
-	full_name: str | None = None
-	role: str | None = None
-
-
-# -----------------
-# 7. list_users
+# 6. list_users
 # -----------------
 @frappe.whitelist()
 @handle_api_errors
@@ -627,38 +586,91 @@ def list_users():
 
 
 # -----------------
-# 8. update_user_profile
+# 7. update_user
 # -----------------
+class UpdateUserSchema(BaseModel):
+	email: SafeEmail
+	full_name: str | None = Field(None, max_length=140)
+	role: str | None = Field(None, max_length=140)
+	enabled: bool | None = None
+
+
 @frappe.whitelist()
-@validate_request(UpdateUserProfileSchema)
+@validate_request(UpdateUserSchema)
 @handle_api_errors
-@require_bank_role(BANK_ADMIN_ROLE)
-def update_user_profile(email: str, full_name: str | None = None, role: str | None = None):
-	user = frappe.session.user
-	bank = frappe.db.get_value(
-		"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
-	)
+def update_user(
+	email: str, full_name: str | None = None, role: str | None = None, enabled: bool | None = None
+):
+	caller = frappe.session.user
+	caller_roles = set(frappe.get_roles(caller))
+	caller_level = _get_user_level(caller)
 
-	if not bank:
-		frappe.throw(_("No bank associated with the current user."))
+	# Only two tiers may manage users at all. Platform admins (level 1) act
+	# across banks; Bank Admins act only within their own bank. Everyone else
+	# (Bank Agent, Dev Agent, Farmer) is denied even toward a lower level.
+	is_platform_admin = caller_level == 1
+	is_bank_admin = BANK_ADMIN_ROLE in caller_roles
+	if not (is_platform_admin or is_bank_admin):
+		frappe.throw(_("You do not have permission to manage users."), frappe.PermissionError)
 
-	target_bank = frappe.db.get_value(
-		"User Permission", {"user": email, "allow": "A2C Participating Bank"}, "for_value"
-	)
-	if target_bank != bank:
-		frappe.throw(_("Not permitted to update a user from another bank."))
+	if email == caller:
+		frappe.throw(_("You cannot modify your own account through this endpoint."), frappe.ValidationError)
+
+	if not frappe.db.exists("User", email):
+		frappe.throw(_("User not found."), frappe.DoesNotExistError)
+
+	target_roles = set(frappe.get_roles(email))
+	target_level = _get_user_level(email)
+
+	# Guard against reaching a peer or a superior (strictly-lower rule).
+	if caller_level >= target_level:
+		frappe.throw(
+			_("You can only manage users with a lower privilege level than your own."),
+			frappe.PermissionError,
+		)
+
+	# Bank Admins (when not also a platform admin) may only manage Bank Agents,
+	# and only within their own bank. Farmers / Dev Agents are platform-managed.
+	if is_bank_admin and not is_platform_admin:
+		if BANK_AGENT_ROLE not in target_roles:
+			frappe.throw(_("Bank Admins can only manage Bank Agents."), frappe.PermissionError)
+
+		caller_bank = frappe.db.get_value(
+			"User Permission", {"user": caller, "allow": "A2C Participating Bank"}, "for_value"
+		)
+		if not caller_bank:
+			frappe.throw(_("No bank associated with the current user."), frappe.PermissionError)
+		target_bank = frappe.db.get_value(
+			"User Permission", {"user": email, "allow": "A2C Participating Bank"}, "for_value"
+		)
+		if target_bank != caller_bank:
+			frappe.throw(_("Not permitted to manage a user from another bank."), frappe.PermissionError)
+
+	if role is not None:
+		if role not in ROLE_LEVELS:
+			frappe.throw(_("Invalid role."), frappe.ValidationError)
+		if ROLE_LEVELS[role] <= caller_level:
+			frappe.throw(
+				_("You can only assign roles with a lower privilege level than your own."),
+				frappe.PermissionError,
+			)
+		# A Bank Admin's only assignable role is Bank Agent — never move a user
+		# into a platform role (Dev Agent / Farmer) from the bank console.
+		if is_bank_admin and not is_platform_admin and role != BANK_AGENT_ROLE:
+			frappe.throw(_("Bank Admins can only assign the Bank Agent role."), frappe.PermissionError)
 
 	target_user = frappe.get_doc("User", email)
 
-	if full_name:
+	if full_name is not None:
 		target_user.first_name = full_name
 
-	if role:
-		role = resolve_assignable_role(role, {BANK_ADMIN_ROLE, BANK_AGENT_ROLE})
-		# check if role is already assigned
-		if not any(d.role == role for d in target_user.roles):
-			target_user.append("roles", {"role": role})
+	if role is not None:
+		target_user.roles = [r for r in target_user.roles if r.role not in _ALL_A2C_ROLES]
+		target_user.append("roles", {"role": role})
+
+	if enabled is not None:
+		target_user.enabled = 1 if enabled else 0
 
 	target_user.save(ignore_permissions=True)
 
-	return success_response(data={"message": _("User profile updated successfully.")})
+	return success_response(message=_("User updated successfully."))

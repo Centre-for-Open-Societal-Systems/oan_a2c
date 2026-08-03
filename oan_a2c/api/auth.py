@@ -9,7 +9,7 @@ import jwt
 from frappe import _
 from frappe.auth import LoginManager
 from frappe.core.doctype.user.user import update_password
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from oan_a2c.a2c_marketplace.roles import (
 	ADMIN_ROLE,
@@ -86,10 +86,26 @@ class LogoutSchema(BaseModel):
 
 
 class UpdateProfileSchema(BaseModel):
-	full_name: str | None = Field(default=None, min_length=1)
+	full_name: str | None = Field(default=None)
 	phone_number: str | None = Field(default=None)
 	language: str | None = Field(default=None)
 	user_image: str | None = Field(default=None)
+
+
+class ChangePasswordSchema(BaseModel):
+	current_password: str = Field(..., min_length=1)
+	new_password: str = Field(..., min_length=8, max_length=64)
+
+	@field_validator("new_password")
+	@classmethod
+	def validate_new_password(cls, v: str) -> str:
+		if not any(c.isalpha() for c in v):
+			raise ValueError("Password must contain at least one letter.")
+		if not any(c.isdigit() for c in v):
+			raise ValueError("Password must contain at least one number.")
+		if not any(not c.isalnum() for c in v):
+			raise ValueError("Password must contain at least one special character.")
+		return v
 
 
 def _classify_user_type(roles: list[str]) -> str:
@@ -317,11 +333,16 @@ def reset_password(email: str, key: str, new_password: str):
 	if not valid:
 		raise frappe.AuthenticationError(_("Invalid or expired reset OTP."))
 
-	# Temporarily set reset_password_key to just the key so Frappe's native check passes
+	# Temporarily set reset_password_key to just the key so Frappe's native check passes,
+	# and set session user so update_password (which acts on frappe.session.user) targets
+	# the right account.
 	frappe.db.set_value("User", user, "reset_password_key", key)
+	original_user = frappe.session.user
 	try:
-		update_password(new_password=new_password, logout_all_sessions=True, key=key, user=user)
+		frappe.set_user(user)
+		update_password(new_password=new_password, logout_all_sessions=True, key=key)
 	finally:
+		frappe.set_user(original_user)
 		frappe.db.set_value("User", user, "reset_password_key", "")
 
 	return success_response(message=_("Your password has been successfully updated. You may now login."))
@@ -539,3 +560,24 @@ def update_profile(
 	user.save(ignore_permissions=True)
 
 	return get_user_profile()
+
+
+@frappe.whitelist()
+@validate_request(ChangePasswordSchema)
+@handle_api_errors
+def change_password(current_password: str, new_password: str):
+	if frappe.session.user == "Guest":
+		frappe.throw(_("Not permitted"), frappe.AuthenticationError)
+
+	check_rate_limit(f"rl:change_pwd:{frappe.session.user}", limit=5, window=300)
+
+	try:
+		login_manager = LoginManager()
+		login_manager.authenticate(frappe.session.user, current_password)
+	except frappe.exceptions.AuthenticationError:
+		frappe.clear_messages()
+		raise frappe.AuthenticationError(_("Current password is incorrect."))
+
+	update_password(new_password=new_password, logout_all_sessions=False, user=frappe.session.user)
+
+	return success_response(message=_("Password changed successfully."))

@@ -3,7 +3,7 @@ from typing import Literal
 import frappe
 from frappe import _
 from frappe.utils import cint, flt
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from oan_a2c.api.utils import (
 	SafeDate,
@@ -17,78 +17,92 @@ from oan_a2c.api.utils import (
 
 
 class GetBasicProfileSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 	include_consent_data: int | None = None
 
 
 class UpdateBasicProfileSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 	email: SafeEmail = None
-	region: str | None = None
-	woreda: str | None = None
-	kebele: str | None = None
+	region: str | None = Field(None, max_length=140)
+	woreda: str | None = Field(None, max_length=140)
+	kebele: str | None = Field(None, max_length=140)
 
 
 class LoanApplicationIDSchema(BaseModel):
-	application_id: str = Field(..., min_length=1)
+	application_id: str = Field(..., min_length=1, max_length=140)
 
 
 class LeadIDSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 
 
 class GetAllLoansSchema(BaseModel):
-	status: str | None = None
-	loan_amount: float | None = None
-	min_loan_amount: float | None = None
-	max_loan_amount: float | None = None
-	loan_type: str | None = None
-	location: str | None = None
-	phone_number: str | None = None
-	loan_officer: str | None = None
+	status: str | None = Field(None, max_length=140)
+	loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	min_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	loan_type: str | None = Field(None, max_length=140)
+	location: str | None = Field(None, max_length=140)
+	phone_number: str | None = Field(None, max_length=50)
+	loan_officer: str | None = Field(None, max_length=140)
 	from_date: SafeDate = None
 	to_date: SafeDate = None
 	page: int | None = Field(None, ge=1)
 	page_size: int | None = Field(None, ge=1, le=100)
-	lead_id: str | None = None
-	search_query: str | None = None
+	lead_id: str | None = Field(None, max_length=140)
+	search_query: str | None = Field(None, max_length=140)
 	sort_by: Literal["loan_amount", "creation"] | None = None
 	sort_order: Literal["asc", "desc"] | None = None
 
+	@model_validator(mode="after")
+	def validate_loan_amount_range(self):
+		if self.min_loan_amount is not None and self.max_loan_amount is not None:
+			if self.min_loan_amount > self.max_loan_amount:
+				raise ValueError("min_loan_amount cannot be greater than max_loan_amount.")
+		return self
+
 
 class BrowseProductsSchema(BaseModel):
-	search: str | None = None
-	bank: str | None = None
-	loan_product: str | None = None
-	min_amount: float | None = None
-	max_amount: float | None = None
+	search: str | None = Field(None, max_length=140)
+	bank: str | None = Field(None, max_length=140)
+	loan_product: str | None = Field(None, max_length=140)
+	min_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_amount: float | None = Field(None, ge=0, le=999999999999.0)
 	limit: int = Field(20, ge=1, le=100)
 	start: int = Field(0, ge=0)
 
+	@model_validator(mode="after")
+	def validate_amount_range(self):
+		if self.min_amount is not None and self.max_amount is not None:
+			if self.min_amount > self.max_amount:
+				raise ValueError("min_amount cannot be greater than max_amount.")
+		return self
+
 
 class DownloadSupportingDocumentSchema(BaseModel):
-	file_id: str = Field(..., min_length=1)
+	file_id: str = Field(..., min_length=1, max_length=140)
 	view: int | None = None
 
 
 class DeleteSupportingDocumentSchema(BaseModel):
-	application_id: str = Field(..., min_length=1)
-	file_id: str = Field(..., min_length=1)
+	application_id: str = Field(..., min_length=1, max_length=140)
+	file_id: str = Field(..., min_length=1, max_length=140)
 
 
 class UpdateLoanStatusSchema(BaseModel):
-	application_id: str = Field(..., min_length=1)
+	application_id: str = Field(..., min_length=1, max_length=140)
 	status: Literal["Draft", "Processing", "Approved", "Rejected"]
 
 
 class UpdateLoanStepSchema(BaseModel):
-	application_id: str = Field(..., min_length=1)
+	application_id: str = Field(..., min_length=1, max_length=140)
 	step: int = Field(..., ge=1, le=4)
 
 
 class AssignLoanOfficerSchema(BaseModel):
-	application_id: str = Field(..., min_length=1)
-	loan_officer: str = Field(..., min_length=1)
+	application_id: str = Field(..., min_length=1, max_length=140)
+	loan_officer: str = Field(..., min_length=1, max_length=140)
 
 
 def _get_app(application_id):
@@ -513,12 +527,14 @@ def get_all_loans(**kwargs):
 
 	or_filters = []
 	if search_query:
-		search_query_param = f"{search_query}%"
+		search_query_param = f"%{search_query}%"
 		or_filters.append(["name", "like", search_query_param])
 		or_filters.append(["phone_number", "like", search_query_param])
 		or_filters.append(["farmer_id", "like", search_query_param])
 		or_filters.append(["first_name", "like", search_query_param])
 		or_filters.append(["last_name", "like", search_query_param])
+		or_filters.append(["loan_product_name", "like", search_query_param])
+		or_filters.append(["loan_product", "like", search_query_param])
 
 	# Count via get_list (not frappe.db.count) so the bank_scope_query hook is
 	# applied identically to the records query below — otherwise the total can

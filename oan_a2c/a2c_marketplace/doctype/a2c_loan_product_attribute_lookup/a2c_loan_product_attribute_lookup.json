@@ -93,6 +93,10 @@
   {
    "read": 1,
    "role": "A2C Bank Admin"
+  },
+  {
+   "read": 1,
+   "role": "A2C Bank Agent"
   }
  ],
  "sort_field": "modified",

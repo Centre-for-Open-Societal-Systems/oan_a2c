@@ -427,7 +427,7 @@ def _save_direct_consent_response_to_lead(consent_request, response_data, openg2
 			"selected_data": response_data,
 		}
 		# enforce_permission=False: called in-process, not via authenticated HTTP.
-		validate_and_enqueue_consent(payload, enforce_permission=False)
+		validate_and_enqueue_consent(payload, enforce_permission=False, sync=True)
 		frappe.logger().info(f"Direct consent response enqueued for {consent_request}")
 		return True
 	except Exception as e:

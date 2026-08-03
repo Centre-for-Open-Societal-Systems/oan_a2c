@@ -74,3 +74,97 @@ class TestPydanticValidation(unittest.TestCase):
 		self.assertEqual(res["data"]["name"], "Bob")
 		self.assertEqual(res["data"]["age"], 30)
 		self.assertEqual(res["data"]["is_active"], True)
+
+	def test_create_product_schema_validation(self):
+		from pydantic import ValidationError
+
+		from oan_a2c.api.v1.seller.loan_products import CreateProductSchema
+
+		# Valid schema
+		valid = CreateProductSchema(
+			product_name="Test Loan",
+			min_interest_rate=5.0,
+			max_interest_rate=12.0,
+			min_amount=1000.0,
+			max_amount=50000.0,
+			tenure_months=12,
+		)
+		self.assertEqual(valid.product_name, "Test Loan")
+
+		# Negative interest rate
+		with self.assertRaises(ValidationError) as ctx:
+			CreateProductSchema(
+				product_name="Test Loan",
+				min_interest_rate=-1.0,
+				max_amount=5000.0,
+				tenure_months=12,
+			)
+		self.assertIn("min_interest_rate", str(ctx.exception))
+
+		# min_interest_rate > max_interest_rate
+		with self.assertRaises(ValidationError) as ctx:
+			CreateProductSchema(
+				product_name="Test Loan",
+				min_interest_rate=15.0,
+				max_interest_rate=10.0,
+				max_amount=5000.0,
+				tenure_months=12,
+			)
+		self.assertIn("min_interest_rate cannot be greater than max_interest_rate", str(ctx.exception))
+
+		# min_amount > max_amount
+		with self.assertRaises(ValidationError) as ctx:
+			CreateProductSchema(
+				product_name="Test Loan",
+				min_interest_rate=5.0,
+				min_amount=100000.0,
+				max_amount=5000.0,
+				tenure_months=12,
+			)
+		self.assertIn("min_amount cannot be greater than max_amount", str(ctx.exception))
+
+	def test_create_lead_schema_max_length(self):
+		from pydantic import ValidationError
+
+		from oan_a2c.api.v1.leads import CreateLeadSchema
+
+		# Excessively long name > 140 chars
+		long_name = "A" * 141
+		with self.assertRaises(ValidationError) as ctx:
+			CreateLeadSchema(phone_number="+251911223344", first_name=long_name)
+		self.assertIn("first_name", str(ctx.exception))
+
+	def test_register_bank_schema_entity_type(self):
+		from pydantic import ValidationError
+
+		from oan_a2c.api.v1.seller.onboarding import RegisterBankSchema
+
+		# Single char entity_type rejected
+		with self.assertRaises(ValidationError) as ctx:
+			RegisterBankSchema(
+				bank_name="Test Bank",
+				bank_code="TB01",
+				entity_type="X",
+				registered_street="Street 1",
+				registered_city="Addis",
+				registered_country="Ethiopia",
+				registered_postal_code="1000",
+				registered_email="test@bank.com",
+				registered_phone="+251911223344",
+			)
+		self.assertIn("entity_type", str(ctx.exception))
+
+	def test_filter_amount_ordering(self):
+		from pydantic import ValidationError
+
+		from oan_a2c.api.v1.loan_applications import BrowseProductsSchema, GetAllLoansSchema
+
+		# GetAllLoansSchema min_loan_amount > max_loan_amount
+		with self.assertRaises(ValidationError) as ctx:
+			GetAllLoansSchema(min_loan_amount=50000.0, max_loan_amount=10000.0)
+		self.assertIn("min_loan_amount cannot be greater than max_loan_amount", str(ctx.exception))
+
+		# BrowseProductsSchema min_amount > max_amount
+		with self.assertRaises(ValidationError) as ctx:
+			BrowseProductsSchema(min_amount=50000.0, max_amount=1000.0)
+		self.assertIn("min_amount cannot be greater than max_amount", str(ctx.exception))

@@ -18,6 +18,17 @@ class BankNotOnboarded(frappe.PermissionError):
 	"""
 
 
+class BankNotActive(frappe.PermissionError):
+	"""Raised when a bank is registered but not yet Active (In Review/Suspended).
+
+	Subclasses PermissionError so it still fails closed as a 403, but
+	handle_api_errors catches it first to return a distinct BANK_NOT_ACTIVE code
+	so the client can tell "finish KYC / await approval" apart from a generic
+	permission denial. This is the "registered but not approved to trade" case,
+	distinct from BankNotOnboarded (no bank binding at all).
+	"""
+
+
 def is_bank_unbound(user=None):
 	"""True if the user bypasses bank tenant isolation (sees all banks)."""
 	if not user:
@@ -196,6 +207,29 @@ def bank_scope_query(user):
 	return f"`bank` = {frappe.db.escape(bank)}"
 
 
+def loan_application_scope_query(user=None):
+	"""permission_query_conditions hook for A2C Loan Application only.
+
+	Extends bank_scope_query with a lifecycle gate: a Draft application belongs to
+	the Development Agent until "Send for Review" moves it to Processing, so
+	bank-bound users (Bank Admin/Agent) must not see Drafts even within their own
+	bank. Unbound roles (Dev Agent / admins) keep seeing every state.
+
+	Registered separately from bank_scope_query because `status` only exists on
+	A2C Loan Application; the shared hook must stay column-agnostic for the other
+	bank-scoped doctypes (Loan Product, lookups, term relationship).
+	"""
+	if not user:
+		user = frappe.session.user
+
+	base = bank_scope_query(user)
+	if is_bank_unbound(user):
+		return base
+
+	draft_gate = "`status` != 'Draft'"
+	return f"({base}) and {draft_gate}" if base else draft_gate
+
+
 def bank_scope_doc(doc, user=None):
 	"""
 	has_permission doc hook.
@@ -209,6 +243,15 @@ def bank_scope_doc(doc, user=None):
 
 	bank = get_user_bank(user)
 	allowed = bool(bank) and doc.bank == bank
+
+	# Lifecycle gate (mirror of loan_application_scope_query): even within their own
+	# bank, bank users can't read a Draft loan application — it's the Development
+	# Agent's until "Send for Review". Applies to single-doc reads (get_doc etc.).
+	if allowed and doc.doctype == "A2C Loan Application" and doc.get("status") == "Draft":
+		frappe.logger("bank_scope").info(
+			f"Denied Draft loan application to bank user: user={user} {doc.doctype}={doc.name}"
+		)
+		return False
 
 	if not allowed:
 		# Potentially high volume (probing), so use the file logger, not log_error:

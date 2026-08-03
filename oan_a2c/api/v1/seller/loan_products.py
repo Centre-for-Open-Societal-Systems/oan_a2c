@@ -1,46 +1,93 @@
 import frappe
 from frappe import _
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from oan_a2c.a2c_marketplace.permissions import bank_scoped
+from oan_a2c.a2c_marketplace.permissions import (
+	BankNotActive,
+	bank_scoped,
+	get_user_bank,
+	is_bank_unbound,
+)
+from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE
 from oan_a2c.api.utils import handle_api_errors, success_response, validate_request
 
 
+def assert_bank_active(bank: str | None) -> None:
+	"""Block catalog writes for a bank that isn't Active (e.g. In Review/Suspended).
+
+	Bank binding alone (enforced by @bank_scoped) only proves the user belongs to a
+	bank, not that the bank is approved to trade. A None bank is an unbound admin,
+	who is exempt. Raises BankNotActive (a PermissionError subclass) so the API
+	returns a distinct BANK_NOT_ACTIVE code with a KYC/approval hint instead of an
+	opaque "Permission denied".
+	"""
+	if not bank:
+		return
+	status = frappe.db.get_value("A2C Participating Bank", bank, "status")
+	if status != "Active":
+		frappe.throw(
+			_("Your bank is not active yet (currently {0}). Complete onboarding to manage products.").format(
+				_(status or "Unknown")
+			),
+			BankNotActive,
+		)
+
+
 class ProductMetaSchema(BaseModel):
-	meta_key: str
-	meta_value: str
+	meta_key: str = Field(..., min_length=1, max_length=140)
+	meta_value: str = Field(..., min_length=1, max_length=2000)
 
 
 class CreateProductSchema(BaseModel):
-	product_name: str
-	min_interest_rate: float
-	max_interest_rate: float | None = None
-	min_amount: float | None = None
-	max_amount: float
-	tenure_months: int
-	description: str | None = None
+	product_name: str = Field(..., min_length=1, max_length=140)
+	min_interest_rate: float = Field(..., ge=0, le=100)
+	max_interest_rate: float | None = Field(None, ge=0, le=100)
+	min_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_amount: float = Field(..., ge=0, le=999999999999.0)
+	tenure_months: int = Field(..., ge=1, le=1200)
+	description: str | None = Field(None, max_length=2000)
 	product_meta: list[ProductMetaSchema] | None = None
+
+	@model_validator(mode="after")
+	def validate_min_max_ordering(self):
+		if self.min_interest_rate is not None and self.max_interest_rate is not None:
+			if self.min_interest_rate > self.max_interest_rate:
+				raise ValueError("min_interest_rate cannot be greater than max_interest_rate.")
+		if self.min_amount is not None and self.max_amount is not None:
+			if self.min_amount > self.max_amount:
+				raise ValueError("min_amount cannot be greater than max_amount.")
+		return self
 
 
 class UpdateProductSchema(BaseModel):
-	product_id: str
-	product_name: str | None = None
-	min_interest_rate: float | None = None
-	max_interest_rate: float | None = None
-	min_amount: float | None = None
-	max_amount: float | None = None
-	tenure_months: int | None = None
-	description: str | None = None
+	product_id: str = Field(..., min_length=1, max_length=140)
+	product_name: str | None = Field(None, max_length=140)
+	min_interest_rate: float | None = Field(None, ge=0, le=100)
+	max_interest_rate: float | None = Field(None, ge=0, le=100)
+	min_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	tenure_months: int | None = Field(None, ge=1, le=1200)
+	description: str | None = Field(None, max_length=2000)
 	product_meta: list[ProductMetaSchema] | None = None
+
+	@model_validator(mode="after")
+	def validate_min_max_ordering(self):
+		if self.min_interest_rate is not None and self.max_interest_rate is not None:
+			if self.min_interest_rate > self.max_interest_rate:
+				raise ValueError("min_interest_rate cannot be greater than max_interest_rate.")
+		if self.min_amount is not None and self.max_amount is not None:
+			if self.min_amount > self.max_amount:
+				raise ValueError("min_amount cannot be greater than max_amount.")
+		return self
 
 
 class SetProductStatusSchema(BaseModel):
-	product_id: str
+	product_id: str = Field(..., min_length=1, max_length=140)
 	status: str = Field(..., pattern="^(Draft|Active|Archived)$")
 
 
 class GetProductSchema(BaseModel):
-	product_id: str
+	product_id: str = Field(..., min_length=1, max_length=140)
 
 
 @frappe.whitelist()
@@ -49,6 +96,7 @@ class GetProductSchema(BaseModel):
 @bank_scoped
 def create_product(**kwargs):
 	frappe.has_permission("A2C Loan Product", "create", throw=True)
+	assert_bank_active(kwargs.get("bank"))
 
 	product_meta = kwargs.get("product_meta")
 
@@ -79,6 +127,9 @@ def update_product(**kwargs):
 	if not frappe.has_permission("A2C Loan Product", "write", product_id):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
+	if not is_bank_unbound():
+		assert_bank_active(get_user_bank())
+
 	doc = frappe.get_doc("A2C Loan Product", product_id)
 
 	direct_fields = [
@@ -94,10 +145,15 @@ def update_product(**kwargs):
 		if field in kwargs and kwargs[field] is not None:
 			setattr(doc, field, kwargs[field])
 
-	if "product_meta" in kwargs and kwargs["product_meta"] is not None:
-		doc.set("product_meta", [])
-		for meta in kwargs["product_meta"]:
-			doc.append("product_meta", {"meta_key": meta["meta_key"], "meta_value": meta["meta_value"]})
+	if doc.min_interest_rate is not None and doc.max_interest_rate is not None:
+		if float(doc.min_interest_rate) > float(doc.max_interest_rate):
+			frappe.throw(
+				_("min_interest_rate cannot be greater than max_interest_rate."), frappe.ValidationError
+			)
+
+	if doc.min_amount is not None and doc.max_amount is not None:
+		if float(doc.min_amount) > float(doc.max_amount):
+			frappe.throw(_("min_amount cannot be greater than max_amount."), frappe.ValidationError)
 
 	doc.save(ignore_permissions=False)
 	return success_response(data={"message": _("Product updated"), "product_id": doc.name})
@@ -111,6 +167,15 @@ def set_product_status(**kwargs):
 	status = kwargs.get("status")
 	if not frappe.has_permission("A2C Loan Product", "write", product_id):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	# Approval gate: activating a product is a Bank Admin / platform-admin action.
+	# Bank Agents can draft and edit products (write) but cannot approve their own —
+	# so the `Active` transition needs an explicit role check beyond `write`.
+	if status == "Active" and not (is_bank_unbound() or BANK_ADMIN_ROLE in frappe.get_roles()):
+		frappe.throw(_("Only a Bank Admin can approve (activate) a product."), frappe.PermissionError)
+
+	if not is_bank_unbound():
+		assert_bank_active(get_user_bank())
 
 	doc = frappe.get_doc("A2C Loan Product", product_id)
 	doc.status = status

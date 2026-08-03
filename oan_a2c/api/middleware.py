@@ -43,8 +43,7 @@ def validate_jwt_request(request=None):
 		"/api/method/oan_a2c.api.auth.logout",
 		"/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
 		"/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
-		"/api/method/oan_a2c.api.v1.websub_subscriber.callback",
-		"/api/method/oan_a2c.api.v1.seller.onboarding.register_seller",
+		"/api/method/oan_a2c.api.v1.auth.register_user",
 	]:
 		return
 

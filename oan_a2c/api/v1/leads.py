@@ -29,83 +29,84 @@ from oan_a2c.api.utils import (
 class GetLeadsSchema(BaseModel):
 	start: int | None = Field(None, ge=0)
 	page_length: int | None = Field(None, ge=1, le=100)
-	search_query: str | None = None
-	status: str | None = None
-	lead_source: str | None = None
-	loan_type: str | None = None
-	assigned_to: str | None = None
+	search_query: str | None = Field(None, max_length=140)
+	status: str | None = Field(None, max_length=140)
+	lead_source: str | None = Field(None, max_length=140)
+	loan_type: str | None = Field(None, max_length=140)
+	assigned_to: str | None = Field(None, max_length=140)
 	start_date: SafeDate = None
 	end_date: SafeDate = None
-	min_loan_amount: float | None = None
-	max_loan_amount: float | None = None
+	min_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
 	sort_by: Literal["loan_amount", "creation"] | None = None
 	sort_order: Literal["asc", "desc"] | None = None
+
+	@model_validator(mode="after")
+	def validate_loan_amount_range(self):
+		if self.min_loan_amount is not None and self.max_loan_amount is not None:
+			if self.min_loan_amount > self.max_loan_amount:
+				raise ValueError("min_loan_amount cannot be greater than max_loan_amount.")
+		return self
 
 
 class CreateLeadSchema(BaseModel):
 	phone_number: RequiredPhone
-	first_name: str | None = None
-	last_name: str | None = None
+	first_name: str | None = Field(None, max_length=140)
+	last_name: str | None = Field(None, max_length=140)
 	email: SafeEmail = None
 	lead_source: Literal["Missed Call", "IVR", "SMS", "Agent Entry"] | None = None
-	external_id: str | None = None
+	external_id: str | None = Field(None, max_length=140)
 
 
 class AddLeadCreditInfoSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	loan_type: str | None = Field(default=None, min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	loan_type: str | None = Field(default=None, max_length=140)
 	loan_amount: float = Field(..., gt=0, le=999999999999.0)
-	purpose_message: str = Field(..., min_length=1)
-	loan_product: str | None = None
-
-	@model_validator(mode="after")
-	def require_type_or_product(self):
-		if not self.loan_type and not self.loan_product:
-			raise ValueError("Either loan_type or loan_product is required.")
-		return self
+	purpose_message: str = Field(..., min_length=1, max_length=2000)
+	loan_product: str = Field(..., min_length=1, max_length=140)
 
 
 class LeadIDSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 
 
 class UpdateLeadStatusSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 	status: Literal["Active", "Verified", "Processed", "Granted", "Rejected", "Dormant"]
-	reason: str | None = None
+	reason: str | None = Field(None, max_length=2000)
 
 
 class GetAssignableUsersSchema(BaseModel):
-	search_query: str | None = None
+	search_query: str | None = Field(None, max_length=140)
 	start: int | None = Field(None, ge=0)
 	page_length: int | None = Field(None, ge=1, le=100)
 
 
 class AssignLeadSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	assigned_to: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	assigned_to: str = Field(..., min_length=1, max_length=140)
 
 
 class AddLeadCommentSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	content: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	content: str = Field(..., min_length=1, max_length=2000)
 
 
 class GetLeadTimelineSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	event_type: str | None = None
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	event_type: str | None = Field(None, max_length=140)
 
 
 class ScheduleVisitSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	visit_date: str = Field(..., min_length=1)
-	visit_time: str = Field(..., min_length=1)
-	region: str = Field(..., min_length=1)
-	zone: str = Field(..., min_length=1)
-	woreda: str = Field(..., min_length=1)
-	kebele: str = Field(..., min_length=1)
-	meeting_location: str | None = None
-	notes: str | None = None
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	visit_date: str = Field(..., min_length=1, max_length=50)
+	visit_time: str = Field(..., min_length=1, max_length=50)
+	region: str = Field(..., min_length=1, max_length=140)
+	zone: str = Field(..., min_length=1, max_length=140)
+	woreda: str = Field(..., min_length=1, max_length=140)
+	kebele: str = Field(..., min_length=1, max_length=140)
+	meeting_location: str | None = Field(None, max_length=255)
+	notes: str | None = Field(None, max_length=2000)
 
 
 class GetVisitSchedulesSchema(BaseModel):
@@ -514,11 +515,11 @@ def add_lead_credit_info(**kwargs):
 	if not frappe.db.exists("A2C Lead", lead_id):
 		frappe.throw(_("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
 
-	# When a product is supplied, its category IS the loan type; derive it and
-	# ignore any client-supplied loan_type. Otherwise fall back to loan_type.
-	if loan_product:
-		if not frappe.db.exists("A2C Loan Product", loan_product):
-			frappe.throw(_("Loan Product {0} not found").format(loan_product), frappe.DoesNotExistError)
+	if not loan_product:
+		frappe.throw(_("Loan Product is required for Credit Information."), frappe.ValidationError)
+
+	if not frappe.db.exists("A2C Loan Product", loan_product):
+		frappe.throw(_("Loan Product {0} not found").format(loan_product), frappe.DoesNotExistError)
 
 		category = frappe.db.get_value(
 			"A2C Term Relationship",
