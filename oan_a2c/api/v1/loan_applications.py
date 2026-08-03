@@ -1,11 +1,9 @@
-import json
-from functools import wraps
-from typing import Literal, Optional
+from typing import Literal
 
 import frappe
 from frappe import _
 from frappe.utils import cint, flt
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 from oan_a2c.api.utils import (
 	SafeDate,
@@ -19,61 +17,92 @@ from oan_a2c.api.utils import (
 
 
 class GetBasicProfileSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 	include_consent_data: int | None = None
 
 
 class UpdateBasicProfileSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 	email: SafeEmail = None
-	region: str | None = None
-	woreda: str | None = None
-	kebele: str | None = None
+	region: str | None = Field(None, max_length=140)
+	woreda: str | None = Field(None, max_length=140)
+	kebele: str | None = Field(None, max_length=140)
 
 
 class LoanApplicationIDSchema(BaseModel):
-	application_id: str = Field(..., min_length=1)
+	application_id: str = Field(..., min_length=1, max_length=140)
 
 
 class LeadIDSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 
 
 class GetAllLoansSchema(BaseModel):
-	status: str | None = None
-	loan_amount: float | None = None
-	min_loan_amount: float | None = None
-	max_loan_amount: float | None = None
-	loan_type: str | None = None
-	location: str | None = None
-	phone_number: str | None = None
-	loan_officer: str | None = None
+	status: str | None = Field(None, max_length=140)
+	loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	min_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	loan_type: str | None = Field(None, max_length=140)
+	location: str | None = Field(None, max_length=140)
+	phone_number: str | None = Field(None, max_length=50)
+	loan_officer: str | None = Field(None, max_length=140)
 	from_date: SafeDate = None
 	to_date: SafeDate = None
 	page: int | None = Field(None, ge=1)
 	page_size: int | None = Field(None, ge=1, le=100)
-	lead_id: str | None = None
-	search_query: str | None = None
+	lead_id: str | None = Field(None, max_length=140)
+	search_query: str | None = Field(None, max_length=140)
+	sort_by: Literal["loan_amount", "creation"] | None = None
+	sort_order: Literal["asc", "desc"] | None = None
+
+	@model_validator(mode="after")
+	def validate_loan_amount_range(self):
+		if self.min_loan_amount is not None and self.max_loan_amount is not None:
+			if self.min_loan_amount > self.max_loan_amount:
+				raise ValueError("min_loan_amount cannot be greater than max_loan_amount.")
+		return self
+
+
+class BrowseProductsSchema(BaseModel):
+	search: str | None = Field(None, max_length=140)
+	bank: str | None = Field(None, max_length=140)
+	loan_product: str | None = Field(None, max_length=140)
+	min_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	limit: int = Field(20, ge=1, le=100)
+	start: int = Field(0, ge=0)
+
+	@model_validator(mode="after")
+	def validate_amount_range(self):
+		if self.min_amount is not None and self.max_amount is not None:
+			if self.min_amount > self.max_amount:
+				raise ValueError("min_amount cannot be greater than max_amount.")
+		return self
 
 
 class DownloadSupportingDocumentSchema(BaseModel):
-	file_id: str = Field(..., min_length=1)
+	file_id: str = Field(..., min_length=1, max_length=140)
 	view: int | None = None
 
 
 class DeleteSupportingDocumentSchema(BaseModel):
-	application_id: str = Field(..., min_length=1)
-	file_id: str = Field(..., min_length=1)
+	application_id: str = Field(..., min_length=1, max_length=140)
+	file_id: str = Field(..., min_length=1, max_length=140)
 
 
 class UpdateLoanStatusSchema(BaseModel):
-	application_id: str = Field(..., min_length=1)
+	application_id: str = Field(..., min_length=1, max_length=140)
 	status: Literal["Draft", "Processing", "Approved", "Rejected"]
 
 
 class UpdateLoanStepSchema(BaseModel):
-	application_id: str = Field(..., min_length=1)
+	application_id: str = Field(..., min_length=1, max_length=140)
 	step: int = Field(..., ge=1, le=4)
+
+
+class AssignLoanOfficerSchema(BaseModel):
+	application_id: str = Field(..., min_length=1, max_length=140)
+	loan_officer: str = Field(..., min_length=1, max_length=140)
 
 
 def _get_app(application_id):
@@ -201,8 +230,6 @@ def update_basic_profile(
 	if changed:
 		farmer_doc.save(ignore_permissions=False)
 		lead_doc.save(ignore_permissions=False)
-		# nosemgrep: frappe-manual-commit -- reviewed: commit paired profile + lead update atomically
-		frappe.db.commit()
 
 	return success_response(
 		data={
@@ -243,6 +270,8 @@ def get_full_profile(**kwargs):
 		"farmer_id": doc.farmer_id,
 		"consent_id": doc.consent_id,
 		"loan_type": doc.loan_type,
+		"loan_product": doc.loan_product,
+		"loan_product_name": doc.loan_product_name,
 		"loan_amount": float(doc.loan_amount) if doc.loan_amount else 0.0,
 		"loan_reason": doc.loan_reason,
 		"status": doc.status,
@@ -346,6 +375,75 @@ def get_loan_metadata():
 
 
 @frappe.whitelist(allow_guest=False)
+@validate_request(BrowseProductsSchema)
+@handle_api_errors
+def browse_products(**kwargs):
+	"""Browse Active loan products to attach one to a farmer's application.
+
+	This is the Development Agent's product-discovery path. The seller endpoint
+	(seller/loan_products.list_products) is for a bank managing its own catalog and
+	shows only that bank's products (incl. Drafts); a Development Agent has no write
+	access there. Here we read A2C Loan Product via get_list, which applies both
+	DocPerm (Dev Agent has read) and the bank_scope_query hook:
+
+	  - Development Agent is bank-unbound -> sees Active products across ALL banks.
+	  - A bank user hitting this still sees only their own bank (hook scopes them).
+
+	Only Active products are returned -- Drafts/Archived are not offerable to farmers.
+	"""
+	frappe.has_permission("A2C Loan Product", "read", throw=True)
+
+	filters = {"status": "Active"}
+	if kwargs.get("bank"):
+		filters["bank"] = kwargs["bank"]
+	if kwargs.get("loan_product"):
+		filters["name"] = kwargs["loan_product"]
+	if kwargs.get("search"):
+		filters["product_name"] = ["like", f"%{kwargs['search']}%"]
+	if kwargs.get("min_amount") is not None:
+		filters["min_amount"] = [">=", float(kwargs["min_amount"])]
+	if kwargs.get("max_amount") is not None:
+		filters["max_amount"] = ["<=", float(kwargs["max_amount"])]
+
+	limit = kwargs["limit"]
+	start = kwargs["start"]
+
+	products = frappe.get_list(
+		"A2C Loan Product",
+		filters=filters,
+		fields=[
+			"name",
+			"product_name",
+			"slug",
+			"bank",
+			"min_interest_rate",
+			"max_interest_rate",
+			"min_amount",
+			"max_amount",
+			"tenure_months",
+		],
+		order_by="product_name asc",
+		limit_page_length=limit,
+		limit_start=start,
+	)
+
+	total = len(frappe.get_list("A2C Loan Product", filters=filters, pluck="name", limit_page_length=0))
+	pagination = {
+		"page": (start // limit) + 1,
+		"limit": limit,
+		"total": total,
+		"total_pages": -(-total // limit),
+		"has_next": start + limit < total,
+	}
+
+	return success_response(
+		data={"products": products},
+		message="Products retrieved successfully",
+		pagination=pagination,
+	)
+
+
+@frappe.whitelist(allow_guest=False)
 @validate_request(GetAllLoansSchema)
 @handle_api_errors
 def get_all_loans(**kwargs):
@@ -368,6 +466,12 @@ def get_all_loans(**kwargs):
 	page_size = kwargs.get("page_size") or 20
 	lead_id = kwargs.get("lead_id")
 	search_query = kwargs.get("search_query")
+
+	# Sorting: sort_by is Literal-constrained to safe columns, so it can't inject
+	# into order_by. Defaults preserve the prior "newest first" behavior.
+	sort_by = kwargs.get("sort_by") or "creation"
+	sort_order = "asc" if kwargs.get("sort_order") == "asc" else "desc"
+	order_by = f"{sort_by} {sort_order}"
 
 	offset = (page - 1) * page_size
 
@@ -399,21 +503,20 @@ def get_all_loans(**kwargs):
 			filters["loan_type"] = ["in", valid_loan_types]
 
 	if location:
-		filters["location"] = ("like", f"%{location}%")
+		filters["location"] = ("like", f"{location}%")
 
 	if phone_number:
-		filters["phone_number"] = ("like", f"%{phone_number}%")
+		filters["phone_number"] = ("like", f"{phone_number}%")
 
-	# Filter by assigned Loan Officer (User). Single user, comma-separated users, or the literal
-	# "unassigned" for loans with no officer (matching the unassigned tab in get_loan_summary).
-	# Not allowlist-validated; an unknown user simply yields no matches.
+	# Assignment tab filter: exactly three options, matching get_loan_summary's
+	# tab_counts -- "all" (no filter), "my" (loans where the caller is the officer),
+	# "unassigned" (no officer). Any other value is ignored (treated as "all").
 	if loan_officer:
-		officers = [o.strip() for o in str(loan_officer).split(",") if o.strip()]
-		if any(o.lower() == "unassigned" for o in officers):
-			named = [o for o in officers if o.lower() != "unassigned"]
-			filters["loan_officer"] = ["in", [*named, ""] if named else ["", None]]
-		elif officers:
-			filters["loan_officer"] = ["in", officers]
+		tab = str(loan_officer).strip().lower()
+		if tab == "my":
+			filters["loan_officer"] = frappe.session.user
+		elif tab == "unassigned":
+			filters["loan_officer"] = ["in", ["", None]]
 
 	if from_date and to_date:
 		filters["creation"] = ("between", [from_date, f"{to_date} 23:59:59"])
@@ -430,18 +533,20 @@ def get_all_loans(**kwargs):
 		or_filters.append(["farmer_id", "like", search_query_param])
 		or_filters.append(["first_name", "like", search_query_param])
 		or_filters.append(["last_name", "like", search_query_param])
+		or_filters.append(["loan_product_name", "like", search_query_param])
+		or_filters.append(["loan_product", "like", search_query_param])
 
-	if or_filters:
-		count_res = frappe.get_list(
-			"A2C Loan Application",
-			filters=filters,
-			or_filters=or_filters,
-			fields=[{"COUNT": "*"}],
-			ignore_permissions=False,
-		)
-		total_records = count_res[0].get("COUNT(*)") if count_res else 0
-	else:
-		total_records = frappe.db.count("A2C Loan Application", filters=filters)
+	# Count via get_list (not frappe.db.count) so the bank_scope_query hook is
+	# applied identically to the records query below — otherwise the total can
+	# report cross-bank rows that aren't in the returned page.
+	count_res = frappe.get_list(
+		"A2C Loan Application",
+		filters=filters,
+		or_filters=or_filters or None,
+		fields=[{"COUNT": "*"}],
+		ignore_permissions=False,
+	)
+	total_records = count_res[0].get("COUNT(*)") if count_res else 0
 
 	records = frappe.get_list(
 		"A2C Loan Application",
@@ -454,11 +559,13 @@ def get_all_loans(**kwargs):
 			"lead_id",
 			"loan_amount",
 			"loan_type",
+			"loan_product",
+			"loan_product_name",
 			"location",
 			"phone_number",
 			"creation",
 		],
-		order_by="creation DESC",
+		order_by=order_by,
 		limit_start=offset,
 		page_length=page_size,
 		ignore_permissions=False,
@@ -560,9 +667,9 @@ def upload_supporting_documents(**kwargs):
 			{"name": file_doc.name, "file_url": file_doc.file_url, "file_name": file_doc.file_name}
 		)
 
-	# nosemgrep: frappe-manual-commit -- reviewed: persist uploaded file records before returning URLs
-	frappe.db.commit()
-	return success_response(data=uploaded_files, message="Supporting documents uploaded successfully")
+	return success_response(
+		data={"uploaded_files": uploaded_files}, message="Supporting documents uploaded successfully"
+	)
 
 
 @frappe.whitelist(allow_guest=False)
@@ -642,10 +749,7 @@ def delete_supporting_document(**kwargs):
 		frappe.throw(_("File not found or not attached to this application"), frappe.DoesNotExistError)
 
 	frappe.delete_doc("File", file_id, ignore_permissions=False)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist file deletion before returning
-	frappe.db.commit()
-
-	return success_response(message="File deleted successfully")
+	return success_response(message=_("Document deleted successfully."))
 
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
@@ -664,7 +768,11 @@ def create_loan_application(**kwargs):
 	# race conditions during concurrent API requests.
 	# Alternative unique constraints cannot be enforced on the database layer because some values
 	# (such as lead_id) are not guaranteed to be unique under database schemas without custom migration scripts.
-	frappe.db.sql("SELECT name FROM `tabA2C Loan Application` WHERE lead_id = %s FOR UPDATE", (lead_id,))
+	# Lock-only query (returns nothing to the caller); the permission-checked read
+	# is the frappe.get_list below. Locking across banks is safe. bank-scope-exempt
+	frappe.db.sql(
+		"SELECT name FROM `tabA2C Loan Application` WHERE lead_id = %s FOR UPDATE", (lead_id,)
+	)  # bank-scope-exempt
 	existing = frappe.get_list(
 		"A2C Loan Application",
 		filters={"lead_id": lead_id},
@@ -688,7 +796,7 @@ def create_loan_application(**kwargs):
 	credit_infos = frappe.get_list(
 		"A2C Credit Information",
 		filters={"lead": lead_id},
-		fields=["loan_type", "loan_amount", "purpose_message"],
+		fields=["loan_type", "loan_amount", "purpose_message", "loan_product"],
 		order_by="creation desc",
 		limit=1,
 		ignore_permissions=False,
@@ -702,6 +810,24 @@ def create_loan_application(**kwargs):
 			frappe.ValidationError,
 		)
 
+	credit_info = credit_infos[0]
+
+	# bank is mandatory on the loan application and is derived from the chosen
+	# product. Without a product we cannot attribute the application to a bank.
+	loan_product = credit_info.get("loan_product")
+	if not loan_product:
+		frappe.throw(
+			_("Credit Information for this lead has no loan product, so the bank cannot be determined."),
+			frappe.ValidationError,
+		)
+
+	# bank-scope-exempt — reading the product's own bank to stamp the application; not a cross-bank query.
+	bank = frappe.db.get_value("A2C Loan Product", loan_product, "bank")
+	if not bank:
+		frappe.throw(
+			_("Loan Product {0} is not linked to a bank.").format(loan_product), frappe.ValidationError
+		)
+
 	loan_app = frappe.new_doc("A2C Loan Application")
 	loan_app.lead_id = lead_id
 	loan_app.farmer_profile = farmer_profile.name
@@ -712,14 +838,16 @@ def create_loan_application(**kwargs):
 		if field.fieldname not in fields_to_ignore and loan_app.meta.has_field(field.fieldname):
 			loan_app.set(field.fieldname, farmer_profile.get(field.fieldname))
 
-	loan_app.loan_type = credit_infos[0].loan_type
-	loan_app.loan_amount = flt(credit_infos[0].loan_amount)
-	loan_app.loan_reason = credit_infos[0].purpose_message
+	loan_app.loan_type = credit_info.loan_type
+	loan_app.loan_amount = flt(credit_info.loan_amount)
+	loan_app.requested_amount = flt(credit_info.loan_amount)
+	loan_app.loan_reason = credit_info.purpose_message
+	loan_app.loan_product = loan_product
+	loan_app.loan_product_name = frappe.db.get_value("A2C Loan Product", loan_product, "product_name")
+	loan_app.bank = bank
 	loan_app.status = "Draft"
 
 	loan_app.insert(ignore_permissions=False)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist new loan application before returning its id
-	frappe.db.commit()
 
 	# NOTE: the lead is intentionally NOT advanced here. Lead status transitions go through the
 	# A2C Lead Workflow (Active -> Verified -> Processed), driven by the frontend via
@@ -755,17 +883,21 @@ def update_loan_status(**kwargs):
 	application_id = kwargs.get("application_id")
 	status = kwargs.get("status")
 
-	frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
+	# Read (not write) is the gate here: Bank Agent is a read-only role on loan
+	# applications but is authorised to change *status* only. Authorisation for the
+	# transition itself is enforced by the workflow's per-role `allowed` gate below,
+	# and read is bank-scoped (bank_scope_doc), so an agent can only act on his own
+	# bank's loans. ignore_permissions lets the workflow save/submit despite the
+	# role lacking write.
+	frappe.has_permission("A2C Loan Application", "read", doc=application_id, throw=True)
 	doc = _get_app(application_id)
+	doc.flags.ignore_permissions = True
 
 	# Apply the status change through the A2C Loan Application Workflow. The workflow enforces
 	# legal transitions and per-role gating, and submits the doc (docstatus 1) on
 	# Approve/Reject. Illegal/unauthorised targets raise ValidationError.
 	apply_status_transition(doc, status)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist workflow status transition before returning
-	frappe.db.commit()
-
-	return success_response(message=f"Loan application status updated to {status}")
+	return success_response(message=_("Loan status updated to {0}.").format(status))
 
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])
@@ -783,10 +915,45 @@ def update_loan_step(**kwargs):
 
 	doc.current_step = step
 	doc.save(ignore_permissions=False)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist step change before returning
-	frappe.db.commit()
-
 	return success_response(
 		data={"application_id": doc.name, "current_step": doc.current_step},
 		message=f"Loan application step updated to {doc.current_step}",
+	)
+
+
+@frappe.whitelist(allow_guest=False, methods=["POST"])
+@validate_request(AssignLoanOfficerSchema)
+@handle_api_errors
+def assign_loan_officer(**kwargs):
+	"""
+	Assigns a loan officer to a loan application.
+	"""
+	application_id = kwargs.get("application_id")
+	loan_officer = kwargs.get("loan_officer")
+
+	frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
+
+	if not frappe.db.exists("User", {"email": loan_officer, "enabled": 1}):
+		if not frappe.db.exists("User", {"name": loan_officer, "enabled": 1}):
+			frappe.throw(
+				_("User '{0}' is not a valid active user").format(loan_officer), frappe.DoesNotExistError
+			)
+
+	doc = _get_app(application_id)
+	doc.loan_officer = loan_officer
+	doc.save(ignore_permissions=False)
+
+	officer_name = (
+		frappe.db.get_value("User", {"email": loan_officer}, "full_name")
+		or frappe.db.get_value("User", loan_officer, "full_name")
+		or loan_officer
+	)
+
+	return success_response(
+		data={
+			"application_id": doc.name,
+			"loan_officer": doc.loan_officer,
+			"loan_officer_name": officer_name,
+		},
+		message="Loan officer assigned successfully.",
 	)

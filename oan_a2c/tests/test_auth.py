@@ -4,7 +4,7 @@ import unittest
 import frappe
 import jwt
 
-from oan_a2c.api.auth import forgot_password, login, logout, refresh, reset_password
+from oan_a2c.api.auth import change_password, forgot_password, login, logout, refresh, reset_password
 from oan_a2c.api.middleware import JWTUnauthorized, validate_jwt_request
 
 
@@ -107,7 +107,13 @@ class TestAuthAPI(unittest.TestCase):
 		self.assertIn("token", response.get("data", {}))
 
 		token = response["data"]["token"]
-		payload = jwt.decode(token, frappe.conf.encryption_key, algorithms=["HS256"])
+		payload = jwt.decode(
+			token,
+			frappe.conf.encryption_key,
+			algorithms=["HS256"],
+			audience="oan_a2c_client",
+			issuer="oan_a2c_identity_gateway",
+		)
 		self.assertEqual(payload["sub"], self.test_email)
 		self.assertEqual(payload["iss"], "oan_a2c_identity_gateway")
 
@@ -125,6 +131,8 @@ class TestAuthAPI(unittest.TestCase):
 	def test_3_middleware_valid_jwt(self):
 		payload = {
 			"sub": self.test_email,
+			"iss": "oan_a2c_identity_gateway",
+			"aud": "oan_a2c_client",
 			"exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
 		}
 		token = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v1"})
@@ -169,7 +177,6 @@ class TestAuthAPI(unittest.TestCase):
 			"/api/method/oan_a2c.api.auth.login",
 			"/api/method/oan_a2c.api.auth.forgot_password",
 			"/api/method/oan_a2c.api.auth.reset_password",
-			"/api/method/oan_a2c.api.v1.websub_subscriber.callback",
 		]:
 			frappe.local.request = frappe._dict({"path": path})
 			self._mock_headers = {}  # No token
@@ -204,6 +211,8 @@ class TestAuthAPI(unittest.TestCase):
 		payload = {
 			"sub": self.test_email,
 			"exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
+			"iss": "oan_a2c_identity_gateway",
+			"aud": "oan_a2c_client",
 		}
 		token = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v1"})
 		frappe.local.request = frappe._dict({"path": "/api/method/oan_a2c.api.v1.get_leads"})
@@ -325,3 +334,23 @@ class TestAuthAPI(unittest.TestCase):
 
 		# Verify token is deleted
 		self.assertFalse(frappe.db.exists("A2C User Refresh Token", {"token_hash": token_hash}))
+
+	def test_14_change_password(self):
+		frappe.set_user(self.test_email)
+
+		# 1. Invalid current password
+		bad_resp = change_password(
+			current_password="WrongCurrentPassword123!", new_password="NewPassword123!"
+		)
+		self.assertEqual(bad_resp.get("status"), "error")
+		self.assertEqual(bad_resp.get("code"), "AUTHENTICATION_ERROR")
+		self.assertIn("Current password is incorrect", bad_resp.get("message"))
+
+		# 2. Valid current password -> change success
+		new_pwd = "NewValidPassword123!"
+		good_resp = change_password(current_password=self.test_password, new_password=new_pwd)
+		self.assertEqual(good_resp.get("status"), "success")
+
+		# 3. Restore original password using change_password
+		restore_resp = change_password(current_password=new_pwd, new_password=self.test_password)
+		self.assertEqual(restore_resp.get("status"), "success")

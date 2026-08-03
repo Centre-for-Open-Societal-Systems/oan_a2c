@@ -1,11 +1,16 @@
 import inspect
 from functools import wraps
-from typing import Annotated, Optional
+from typing import Annotated
 
-import frappe
-from frappe import _
+import frappe  # pyright: ignore[reportMissingImports]
+from frappe import _  # pyright: ignore[reportMissingImports]
 from pydantic import BaseModel, BeforeValidator
 from pydantic import ValidationError as PydanticValidationError
+
+from oan_a2c.a2c_marketplace.permissions import (  # pyright: ignore[reportMissingTypeStubs]
+	BankNotActive,
+	BankNotOnboarded,
+)
 
 
 class _DummyException(Exception):
@@ -117,8 +122,55 @@ def validate_email_string(v):
 	return v
 
 
+def validate_phone_string(v):
+	"""Validate and normalize a phone number.
+
+	Single source of truth for phone validation across every API schema. Accepts
+	both international (`+251912345678`) and local (`0912345678`) formats, and
+	tolerates spaces/dashes/parens in the input (common when users paste). The
+	rule is on the digit count, not the punctuation:
+
+	  - strip everything except digits and a single leading '+'
+	  - require 10-15 digits
+	  - a leading 0 (local format) is allowed
+
+	Returns the normalized value (separators removed, '+' preserved if present).
+	Passes through None/empty so it composes with optional fields; required-ness
+	is enforced by the RequiredPhone variant.
+	"""
+	if v is None or v == "":
+		return v
+	import re
+
+	raw = str(v).strip()
+	has_plus = raw.startswith("+")
+	digits = re.sub(r"\D", "", raw)
+
+	if not (10 <= len(digits) <= 15):
+		raise ValueError("Phone number must contain between 10 and 15 digits.")
+	# First significant digit can't be 0 for an international number; a local
+	# number may legitimately start with 0 (e.g. 0912345678).
+	if has_plus and digits.startswith("0"):
+		raise ValueError("An international (+) phone number cannot start with 0.")
+
+	return f"+{digits}" if has_plus else digits
+
+
+def validate_required_phone_string(v):
+	"""Like validate_phone_string but rejects a missing/empty value.
+
+	Use for phone fields that are mandatory (e.g. lead / onboarding create),
+	so the same format rule applies and absence is a validation error, not a pass.
+	"""
+	if v is None or str(v).strip() == "":
+		raise ValueError("Phone number is required.")
+	return validate_phone_string(v)
+
+
 SafeDate = Annotated[str | None, BeforeValidator(validate_date_string)]
 SafeEmail = Annotated[str | None, BeforeValidator(validate_email_string)]
+SafePhone = Annotated[str | None, BeforeValidator(validate_phone_string)]
+RequiredPhone = Annotated[str, BeforeValidator(validate_required_phone_string)]
 
 
 def success_response(data=None, message="Success", meta=None, pagination=None):
@@ -149,7 +201,7 @@ def _envelope_success(data=None, message="Success", meta=None, pagination=None):
 	return res
 
 
-def error_response(message, code="GENERIC_ERROR", details=None):
+def error_response(message, code="GENERIC_ERROR", details=None):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
 	res = {
 		"status": "error",
 		"message": message,
@@ -162,8 +214,28 @@ def error_response(message, code="GENERIC_ERROR", details=None):
 	return res
 
 
+def check_rate_limit(key: str, limit: int, window: int):
+	"""
+	Apply rate limits using Redis counter.
+	key    — unique per user+endpoint
+	limit  — max calls allowed in window
+	window — seconds
+	"""
+	cache = frappe.cache()
+	count = cache.get_value(key) or 0
+
+	if int(count) >= limit:
+		frappe.response.status_code = 429
+		frappe.throw(_("Rate limit exceeded. Try again later."), frappe.ValidationError)
+
+	pipeline = cache.pipeline()
+	pipeline.incr(key)
+	pipeline.expire(key, window)
+	pipeline.execute()
+
+
 def extract_message_from_str(val):
-	if val.startswith("{") and val.endswith("}"):
+	if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
 		try:
 			import ast
 			import json
@@ -173,12 +245,17 @@ def extract_message_from_str(val):
 			except Exception:
 				parsed = ast.literal_eval(val)
 			if isinstance(parsed, dict) and "message" in parsed:
-				return str(parsed["message"])
+				val = str(parsed["message"])
 		except Exception:
 			# Best-effort extraction only; unparseable input falls through to the
 			# raw value. Debug level so it's available when troubleshooting but
 			# doesn't add noise (this fires on any non-dict-shaped string).
 			frappe.logger().debug("Could not parse message payload; returning raw value")
+
+	if isinstance(val, str) and "<" in val and ">" in val:
+		import re
+
+		val = re.sub(r"<[^>]+>", "", val).strip()
 	return val
 
 
@@ -250,6 +327,25 @@ def handle_api_errors(func):
 				meta = res.get("meta")
 
 			return _envelope_success(data=data, message=message, pagination=pagination, meta=meta)
+		except BankNotOnboarded:
+			# Distinct from a plain 403: the user is authenticated and role-correct
+			# but their bank registration isn't complete, so guide them to finish it.
+			frappe.local.message_log = []
+			frappe.response["http_status_code"] = 403
+			return error_response(
+				"Your bank registration is not complete. Finish onboarding to access this resource.",
+				"BANK_NOT_ONBOARDED",
+			)
+		except BankNotActive as e:
+			# Distinct from a plain 403: the user's bank exists but isn't Active yet
+			# (In Review/Suspended), so tell them to complete KYC / await approval
+			# rather than returning an opaque "Permission denied".
+			frappe.local.message_log = []
+			frappe.response["http_status_code"] = 403
+			return error_response(
+				str(e) or "Your bank is not active yet. Complete onboarding to manage products.",
+				"BANK_NOT_ACTIVE",
+			)
 		except frappe.PermissionError:
 			frappe.local.message_log = []
 			frappe.response["http_status_code"] = 403

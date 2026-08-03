@@ -11,7 +11,17 @@ authoritative design (states, transitions, role gates, submittable decision).
 
 import frappe
 
+from oan_a2c.a2c_marketplace.roles import BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
+
 # --- Master metadata -------------------------------------------------------
+
+# Roles referenced by the workflow transitions/allow_edit below. `allowed` is a
+# required Link to Role, so these must exist before the workflows are inserted.
+# On an incremental upgrade they already exist (renamed from plain names or
+# synced via the Role fixture); on a clean-slate install neither is true yet
+# because fixtures load *after* patches — hence we create them here. System
+# Manager is a Frappe built-in and always present.
+WORKFLOW_ROLES = (DEVELOPMENT_AGENT_ROLE, BANK_AGENT_ROLE)
 
 # Workflow State -> style (cosmetic only; Frappe ships these styles)
 WORKFLOW_STATES = {
@@ -40,12 +50,25 @@ WORKFLOW_ACTIONS = [
 
 
 def execute():
+	_ensure_roles()
 	_ensure_workflow_states()
 	_ensure_workflow_actions()
 	_create_lead_workflow()
 	_create_loan_workflow()
 	_backfill_workflow_state()
 	frappe.db.commit()
+
+
+def _ensure_roles():
+	for role_name in WORKFLOW_ROLES:
+		if not frappe.db.exists("Role", role_name):
+			frappe.get_doc(
+				{
+					"doctype": "Role",
+					"role_name": role_name,
+					"desk_access": 1,
+				}
+			).insert(ignore_permissions=True)
 
 
 def _ensure_workflow_states():
@@ -94,38 +117,48 @@ def _upsert_workflow(name, doctype, states, transitions):
 def _create_lead_workflow():
 	# A2C Lead is non-submittable: every state stays at docstatus 0.
 	states = [
-		{"state": "Active", "doc_status": "0", "allow_edit": "Development Agent"},
-		{"state": "Verified", "doc_status": "0", "allow_edit": "Development Agent"},
-		{"state": "Processed", "doc_status": "0", "allow_edit": "Bank Agent"},
+		{"state": "Active", "doc_status": "0", "allow_edit": "A2C Development Agent"},
+		{"state": "Verified", "doc_status": "0", "allow_edit": "A2C Development Agent"},
+		{"state": "Processed", "doc_status": "0", "allow_edit": "A2C Bank Agent"},
 		{"state": "Granted", "doc_status": "0", "allow_edit": "System Manager"},
 		{"state": "Rejected", "doc_status": "0", "allow_edit": "System Manager"},
-		{"state": "Dormant", "doc_status": "0", "allow_edit": "Development Agent"},
+		{"state": "Dormant", "doc_status": "0", "allow_edit": "A2C Development Agent"},
 	]
 	transitions = [
-		{"state": "Active", "action": "Verify", "next_state": "Verified", "allowed": "Development Agent"},
+		{"state": "Active", "action": "Verify", "next_state": "Verified", "allowed": "A2C Development Agent"},
 		{
 			"state": "Verified",
 			"action": "Mark Processed",
 			"next_state": "Processed",
-			"allowed": "Development Agent",
+			"allowed": "A2C Development Agent",
 		},
-		{"state": "Processed", "action": "Grant", "next_state": "Granted", "allowed": "Bank Agent"},
-		{"state": "Processed", "action": "Reject", "next_state": "Rejected", "allowed": "Bank Agent"},
-		{"state": "Active", "action": "Reject", "next_state": "Rejected", "allowed": "Development Agent"},
-		{"state": "Verified", "action": "Reject", "next_state": "Rejected", "allowed": "Development Agent"},
+		{"state": "Processed", "action": "Grant", "next_state": "Granted", "allowed": "A2C Bank Agent"},
+		{"state": "Processed", "action": "Reject", "next_state": "Rejected", "allowed": "A2C Bank Agent"},
+		{"state": "Active", "action": "Reject", "next_state": "Rejected", "allowed": "A2C Development Agent"},
+		{
+			"state": "Verified",
+			"action": "Reject",
+			"next_state": "Rejected",
+			"allowed": "A2C Development Agent",
+		},
 		{
 			"state": "Active",
 			"action": "Mark Dormant",
 			"next_state": "Dormant",
-			"allowed": "Development Agent",
+			"allowed": "A2C Development Agent",
 		},
 		{
 			"state": "Verified",
 			"action": "Mark Dormant",
 			"next_state": "Dormant",
-			"allowed": "Development Agent",
+			"allowed": "A2C Development Agent",
 		},
-		{"state": "Dormant", "action": "Reactivate", "next_state": "Active", "allowed": "Development Agent"},
+		{
+			"state": "Dormant",
+			"action": "Reactivate",
+			"next_state": "Active",
+			"allowed": "A2C Development Agent",
+		},
 	]
 	_upsert_workflow("A2C Lead Workflow", "A2C Lead", states, transitions)
 
@@ -133,8 +166,8 @@ def _create_lead_workflow():
 def _create_loan_workflow():
 	# A2C Loan Application is submittable: Approved/Rejected submit the doc (docstatus 1).
 	states = [
-		{"state": "Draft", "doc_status": "0", "allow_edit": "Development Agent"},
-		{"state": "Processing", "doc_status": "0", "allow_edit": "Bank Agent"},
+		{"state": "Draft", "doc_status": "0", "allow_edit": "A2C Development Agent"},
+		{"state": "Processing", "doc_status": "0", "allow_edit": "A2C Bank Agent"},
 		{"state": "Approved", "doc_status": "1", "allow_edit": "System Manager"},
 		{"state": "Rejected", "doc_status": "1", "allow_edit": "System Manager"},
 	]
@@ -143,10 +176,10 @@ def _create_loan_workflow():
 			"state": "Draft",
 			"action": "Send for Review",
 			"next_state": "Processing",
-			"allowed": "Development Agent",
+			"allowed": "A2C Development Agent",
 		},
-		{"state": "Processing", "action": "Approve", "next_state": "Approved", "allowed": "Bank Agent"},
-		{"state": "Processing", "action": "Reject", "next_state": "Rejected", "allowed": "Bank Agent"},
+		{"state": "Processing", "action": "Approve", "next_state": "Approved", "allowed": "A2C Bank Agent"},
+		{"state": "Processing", "action": "Reject", "next_state": "Rejected", "allowed": "A2C Bank Agent"},
 	]
 	_upsert_workflow("A2C Loan Application Workflow", "A2C Loan Application", states, transitions)
 
@@ -158,9 +191,10 @@ def _backfill_workflow_state():
 		frappe.db.set_value("A2C Lead", name, "workflow_state", status, update_modified=False)
 
 	# Loans: blank/legacy statuses default to Draft; Approved/Rejected become docstatus 1.
+	# Migration runs as Administrator over every bank's records by design. bank-scope-exempt
 	for name, status, docstatus in frappe.get_all(
 		"A2C Loan Application", fields=["name", "status", "docstatus"], as_list=True
-	):
+	):  # bank-scope-exempt
 		state = status if status in ("Draft", "Processing", "Approved", "Rejected") else "Draft"
 		frappe.db.set_value("A2C Loan Application", name, "workflow_state", state, update_modified=False)
 		# Submit existing terminal records so their docstatus matches the new workflow.

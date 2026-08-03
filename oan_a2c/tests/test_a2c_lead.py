@@ -13,6 +13,29 @@ def _make_lead_verifiable(lead_id):
 	the lead. Idempotent so it can be called from setUp without piling up records.
 	"""
 	if not frappe.db.exists("A2C Credit Information", {"lead": lead_id}):
+		prod = frappe.db.get_value("A2C Loan Product", {}, "name")
+		if not prod:
+			bank = frappe.db.get_value("A2C Bank Profile", {}, "name")
+			if not bank:
+				bank = (
+					frappe.get_doc(
+						{"doctype": "A2C Bank Profile", "bank_name": "Test Bank", "bank_code": "TB123"}
+					)
+					.insert(ignore_permissions=True)
+					.name
+				)
+			prod = (
+				frappe.get_doc(
+					{
+						"doctype": "A2C Loan Product",
+						"product_name": "Test Product",
+						"bank": bank,
+						"status": "Active",
+					}
+				)
+				.insert(ignore_permissions=True)
+				.name
+			)
 		frappe.get_doc(
 			{
 				"doctype": "A2C Credit Information",
@@ -20,6 +43,7 @@ def _make_lead_verifiable(lead_id):
 				"loan_type": "Input loan (seeds, agrochemicals)",
 				"loan_amount": 5000.0,
 				"purpose_message": "Verification prerequisite",
+				"loan_product": prod,
 			}
 		).insert(ignore_permissions=True)
 	if not frappe.db.exists("A2C Consent Request", {"lead": lead_id, "status": "Approved"}):
@@ -78,7 +102,7 @@ class TestA2CLead(unittest.TestCase):
 		lead.status = "Active"
 		lead.insert()
 
-		self.assertTrue(lead.name.startswith("LEAD-"))
+		self.assertTrue(lead.name.startswith(("LD-", "LEAD-")))
 		self.assertEqual(lead.status, "Active")
 
 	def test_2_duplicate_active_lead_blocked(self):
@@ -111,7 +135,7 @@ class TestA2CLead(unittest.TestCase):
 		new_lead.status = "Active"
 		new_lead.insert()
 
-		self.assertTrue(new_lead.name.startswith("LEAD-"))
+		self.assertTrue(new_lead.name.startswith(("LD-", "LEAD-")))
 
 		# Verify that updating/saving the Processed lead raises ValidationError
 		lead.email = "updated_processed_email@example.com"
@@ -132,7 +156,7 @@ class TestA2CLead(unittest.TestCase):
 		)
 
 		self.assertEqual(response["status"], "success")
-		self.assertTrue(response["data"]["lead_id"].startswith("LEAD-"))
+		self.assertTrue(response["data"]["lead_id"].startswith(("LD-", "LEAD-")))
 
 		lead = frappe.get_doc("A2C Lead", response["data"]["lead_id"])
 		self.assertEqual(lead.phone_number, self.TEST_PHONE)
@@ -486,7 +510,7 @@ class TestLeadCreationAPI(unittest.TestCase):
 			external_id="EXT-API-999",
 		)
 		self.assertEqual(res["status"], "success")
-		self.assertTrue(res["data"]["lead_id"].startswith("LEAD-"))
+		self.assertTrue(res["data"]["lead_id"].startswith(("LD-", "LEAD-")))
 
 		lead = frappe.get_doc("A2C Lead", res["data"]["lead_id"])
 		self.assertEqual(lead.phone_number, self.TEST_PHONE)
@@ -870,9 +894,9 @@ class TestLeadAssignmentAPI(unittest.TestCase):
 		# Create a dummy user with a role if none exists to ensure tests pass in clean environments
 		if not res["data"]:
 			# Ensure Development Agent role exists
-			if not frappe.db.exists("Role", "Development Agent"):
+			if not frappe.db.exists("Role", "A2C Development Agent"):
 				role = frappe.new_doc("Role")
-				role.role_name = "Development Agent"
+				role.role_name = "A2C Development Agent"
 				role.insert(ignore_permissions=True)
 
 			dummy_username = "test_agent_assignee"
@@ -884,8 +908,29 @@ class TestLeadAssignmentAPI(unittest.TestCase):
 				user.username = dummy_username
 				user.location = "Oromia"
 				user.insert(ignore_permissions=True)
-				user.add_roles("Development Agent")
-				frappe.db.commit()
+
+			user_doc = frappe.get_doc("User", dummy_email)
+			if "A2C Development Agent" not in [r.role for r in user_doc.roles]:
+				user_doc.add_roles("A2C Development Agent")
+
+			user_bank = frappe.db.get_value(
+				"User Permission",
+				{"user": frappe.session.user, "allow": "A2C Participating Bank"},
+				"for_value",
+			)
+			if user_bank and not frappe.db.exists(
+				"User Permission", {"user": dummy_email, "allow": "A2C Participating Bank"}
+			):
+				frappe.get_doc(
+					{
+						"doctype": "User Permission",
+						"user": dummy_email,
+						"allow": "A2C Participating Bank",
+						"for_value": user_bank,
+					}
+				).insert(ignore_permissions=True)
+
+			frappe.db.commit()
 
 			res = get_assignable_users()
 			self.assertTrue(len(res["data"]) >= 1)

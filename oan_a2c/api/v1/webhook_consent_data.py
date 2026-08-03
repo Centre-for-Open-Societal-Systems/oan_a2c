@@ -69,13 +69,31 @@ def download_cert_photo_to_file(url, lead_id):
 		return url
 
 	try:
+		import ipaddress
 		import os
+		import socket
 		from urllib.parse import urlparse
 
 		import requests
 		from frappe.utils.file_manager import save_file
 
+		parsed = urlparse(url)
+		if not parsed.hostname:
+			return url
+		try:
+			ip_str = socket.gethostbyname(parsed.hostname)
+			ip = ipaddress.ip_address(ip_str)
+			if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+				frappe.logger().warning(
+					f"SSRF blocked: cert photo URL {url} resolved to internal IP {ip_str}"
+				)
+				return url
+		except Exception as e:
+			frappe.logger().warning(f"SSRF check failed for hostname {parsed.hostname}: {e}")
+			return url
+
 		resp = requests.get(url, timeout=15)
+
 		resp.raise_for_status()
 
 		fname = os.path.basename(urlparse(url).path) or "certificate.jpg"
@@ -99,10 +117,12 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 	"""
 	# Set user context based on A2C Consent Request owner (Option 1 & 2)
 	owner = frappe.db.get_value("A2C Consent Request", consent_doc_name, "owner")
-	# TODO: This fallback to "Administrator" will be changed to fail/raise an exception if owner is not present
-	user_to_set = owner if owner and frappe.db.exists("User", owner) else "Administrator"
+	if not owner or not frappe.db.exists("User", owner):
+		raise frappe.PermissionError(
+			f"Cannot process consent data: Consent Request {consent_doc_name} lacks a valid owner user."
+		)
 	# nosemgrep: frappe-setuser -- reviewed: background worker sets context to the consent request owner
-	frappe.set_user(user_to_set)
+	frappe.set_user(owner)
 
 	# Bound before the try so it's always safe to reference in the except block,
 	# even if the failure happens before the lead link is resolved below.
@@ -335,7 +355,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		raise e
 
 
-def validate_and_enqueue_consent(data, enforce_permission=True):
+def validate_and_enqueue_consent(data, enforce_permission=True, sync=False):
 	"""
 	Internal: validate an OpenG2P consent payload and enqueue background
 	processing. Returns the resolved A2C Consent Request name.
@@ -343,6 +363,9 @@ def validate_and_enqueue_consent(data, enforce_permission=True):
 	Callable in-process (e.g. from the WebSub hub endpoint) without going
 	through HTTP auth. When called from the authenticated receiver, pass
 	enforce_permission=True so the caller's write permission is checked.
+
+	Pass sync=True to run process_consent_data inline instead of enqueuing
+	(used by the direct-response path where the payload arrives in-request).
 	"""
 	try:
 		validated_data = ReceiveConsentDataSchema.model_validate(data)
@@ -374,15 +397,21 @@ def validate_and_enqueue_consent(data, enforce_permission=True):
 	if enforce_permission:
 		frappe.has_permission("A2C Consent Request", "write", doc=consent_doc_name, throw=True)
 
-	# Enqueue the processing job to prevent blocking the OpenG2P system
-	frappe.enqueue(
-		method=process_consent_data,
-		queue="default",
-		data=data,
-		consent_doc_name=consent_doc_name,
-		consent_request_id=str(consent_id),
-		job_name=f"process_consent_{consent_id}",
-	)
+	if sync:
+		process_consent_data(
+			data=data,
+			consent_doc_name=consent_doc_name,
+			consent_request_id=str(consent_id),
+		)
+	else:
+		frappe.enqueue(
+			method=process_consent_data,
+			queue="default",
+			data=data,
+			consent_doc_name=consent_doc_name,
+			consent_request_id=str(consent_id),
+			job_name=f"process_consent_{consent_id}",
+		)
 
 	return consent_doc_name
 

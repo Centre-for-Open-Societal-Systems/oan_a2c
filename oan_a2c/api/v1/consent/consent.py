@@ -315,7 +315,6 @@ def request_otp(**kwargs):
 
 		doc.otp_transaction_id = transaction_id
 		doc.save(ignore_permissions=False)
-		frappe.db.commit()
 
 		# Preserve the Odoo session so verify_otp / submit_consent reuse it.
 		import requests
@@ -383,8 +382,6 @@ def verify_otp(**kwargs):
 			"otp_verified_at": now_datetime(),
 		},
 	)
-	# nosemgrep: frappe-manual-commit -- reviewed: persist OTP-verified status before returning
-	frappe.db.commit()
 
 	return success_response(
 		data={
@@ -430,7 +427,7 @@ def _save_direct_consent_response_to_lead(consent_request, response_data, openg2
 			"selected_data": response_data,
 		}
 		# enforce_permission=False: called in-process, not via authenticated HTTP.
-		validate_and_enqueue_consent(payload, enforce_permission=False)
+		validate_and_enqueue_consent(payload, enforce_permission=False, sync=True)
 		frappe.logger().info(f"Direct consent response enqueued for {consent_request}")
 		return True
 	except Exception as e:
@@ -503,19 +500,39 @@ def submit_consent(**kwargs):
 		# base64 straight to OpenG2P.
 		import base64
 
-		from frappe.utils.file_manager import save_file
-
 		b64_data = consent_form_base64
 		if "," in b64_data:
 			b64_data = b64_data.split(",", 1)[1]
-		file_content = base64.b64decode(b64_data)
-		saved_file = save_file(
-			fname=consent_form_filename,
-			content=file_content,
-			dt="A2C Lead",
-			dn=lead_id,
-			is_private=1,
+		# Add padding and use urlsafe variant to accept both standard and URL-safe base64
+		b64_data += "=" * (-len(b64_data) % 4)
+		file_content = base64.urlsafe_b64decode(b64_data)
+
+		# Consent form must be a PDF, max 10 MB. Check the decoded bytes: the size
+		# on the real content (not the base64 length), and the %PDF- magic header so
+		# a mislabeled/renamed non-PDF is rejected regardless of filename extension.
+		MAX_CONSENT_BYTES = 10 * 1024 * 1024
+		if len(file_content) > MAX_CONSENT_BYTES:
+			frappe.throw(_("Consent form exceeds the 10 MB maximum size."), frappe.ValidationError)
+		is_pdf_name = str(consent_form_filename).lower().endswith(".pdf")
+		is_pdf_magic = file_content[:5] == b"%PDF-"
+		if not (is_pdf_name and is_pdf_magic):
+			frappe.throw(_("Consent form must be a PDF file."), frappe.ValidationError)
+		# Build the File doc directly with ignore_permissions rather than save_file():
+		# save_file dedupes by content hash, so an identical consent PDF saved by another
+		# user leaves a private File that validate_private_file_access blocks this caller
+		# from re-attaching. This is a trusted server-side write, so bypass that check.
+		file_doc = frappe.get_doc(
+			{
+				"doctype": "File",
+				"file_name": consent_form_filename,
+				"content": file_content,
+				"attached_to_doctype": "A2C Lead",
+				"attached_to_name": lead_id,
+				"is_private": 1,
+			}
 		)
+		file_doc.insert(ignore_permissions=True)
+		saved_file = file_doc
 		attachment_base64 = base64.b64encode(file_content).decode("utf-8")
 
 		# Map the requested field ids to names for the child table.
@@ -620,8 +637,6 @@ def submit_consent(**kwargs):
 				lead.save(ignore_permissions=False)
 			except Exception as e:
 				frappe.logger().warning(f"Could not save farmer name fields: {e}")
-
-		frappe.db.commit()
 
 	except ConsentNotApproved as e:
 		# Upstream (OpenG2P) declined the consent. Roll back the partial writes,

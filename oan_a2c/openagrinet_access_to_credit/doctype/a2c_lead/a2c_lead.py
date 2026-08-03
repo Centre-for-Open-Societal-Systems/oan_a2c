@@ -4,15 +4,20 @@ from frappe.model.document import Document
 
 
 class A2CLead(Document):
+	# Committed/terminal states are read-only via a normal save. Legitimate status
+	# changes run through the workflow (apply_status_transition -> apply_workflow),
+	# which bypasses before_save, so any before_save hit on these states is an
+	# unintended field edit and is rejected.
+	LOCKED_STATUSES = ("Processed", "Granted", "Rejected")
+
 	def before_save(self):
 		if not self.is_new():
 			db_status = self.get_db_value("status")
-			if db_status == "Processed":
+			if db_status in self.LOCKED_STATUSES:
 				frappe.throw(
-					_("Lead cannot be edited because it is already Processed"), frappe.ValidationError
+					_("Lead cannot be edited because it is {0}.").format(_(db_status)),
+					frappe.ValidationError,
 				)
-			elif db_status == "Rejected" and self.status != "Rejected":
-				frappe.throw(_("Status is locked because the lead is Rejected"), frappe.ValidationError)
 			# Guard the transition *into* Verified: only fire when the status is
 			# actually changing to Verified (not on re-saves of an already
 			# Verified lead), so the prerequisites are enforced once, up front.

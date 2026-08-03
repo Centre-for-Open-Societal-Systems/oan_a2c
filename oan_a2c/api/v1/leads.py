@@ -11,9 +11,11 @@ from typing import Literal, Optional
 import frappe
 from frappe import _
 from frappe.utils import sanitize_html, strip_html
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from oan_a2c.a2c_marketplace.roles import BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
 from oan_a2c.api.utils import (
+	RequiredPhone,
 	SafeDate,
 	SafeEmail,
 	apply_status_transition,
@@ -27,74 +29,84 @@ from oan_a2c.api.utils import (
 class GetLeadsSchema(BaseModel):
 	start: int | None = Field(None, ge=0)
 	page_length: int | None = Field(None, ge=1, le=100)
-	search_query: str | None = None
-	status: str | None = None
-	lead_source: str | None = None
-	loan_type: str | None = None
-	assigned_to: str | None = None
+	search_query: str | None = Field(None, max_length=140)
+	status: str | None = Field(None, max_length=140)
+	lead_source: str | None = Field(None, max_length=140)
+	loan_type: str | None = Field(None, max_length=140)
+	assigned_to: str | None = Field(None, max_length=140)
 	start_date: SafeDate = None
 	end_date: SafeDate = None
-	min_loan_amount: float | None = None
-	max_loan_amount: float | None = None
+	min_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	sort_by: Literal["loan_amount", "creation"] | None = None
+	sort_order: Literal["asc", "desc"] | None = None
+
+	@model_validator(mode="after")
+	def validate_loan_amount_range(self):
+		if self.min_loan_amount is not None and self.max_loan_amount is not None:
+			if self.min_loan_amount > self.max_loan_amount:
+				raise ValueError("min_loan_amount cannot be greater than max_loan_amount.")
+		return self
 
 
 class CreateLeadSchema(BaseModel):
-	phone_number: str = Field(..., min_length=1)
-	first_name: str | None = None
-	last_name: str | None = None
+	phone_number: RequiredPhone
+	first_name: str | None = Field(None, max_length=140)
+	last_name: str | None = Field(None, max_length=140)
 	email: SafeEmail = None
 	lead_source: Literal["Missed Call", "IVR", "SMS", "Agent Entry"] | None = None
-	external_id: str | None = None
+	external_id: str | None = Field(None, max_length=140)
 
 
 class AddLeadCreditInfoSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	loan_type: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	loan_type: str | None = Field(default=None, max_length=140)
 	loan_amount: float = Field(..., gt=0, le=999999999999.0)
-	purpose_message: str = Field(..., min_length=1)
+	purpose_message: str = Field(..., min_length=1, max_length=2000)
+	loan_product: str = Field(..., min_length=1, max_length=140)
 
 
 class LeadIDSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 
 
 class UpdateLeadStatusSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 	status: Literal["Active", "Verified", "Processed", "Granted", "Rejected", "Dormant"]
-	reason: str | None = None
+	reason: str | None = Field(None, max_length=2000)
 
 
 class GetAssignableUsersSchema(BaseModel):
-	search_query: str | None = None
+	search_query: str | None = Field(None, max_length=140)
 	start: int | None = Field(None, ge=0)
 	page_length: int | None = Field(None, ge=1, le=100)
 
 
 class AssignLeadSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	assigned_to: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	assigned_to: str = Field(..., min_length=1, max_length=140)
 
 
 class AddLeadCommentSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	content: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	content: str = Field(..., min_length=1, max_length=2000)
 
 
 class GetLeadTimelineSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	event_type: str | None = None
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	event_type: str | None = Field(None, max_length=140)
 
 
 class ScheduleVisitSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	visit_date: str = Field(..., min_length=1)
-	visit_time: str = Field(..., min_length=1)
-	region: str = Field(..., min_length=1)
-	zone: str = Field(..., min_length=1)
-	woreda: str = Field(..., min_length=1)
-	kebele: str = Field(..., min_length=1)
-	meeting_location: str | None = None
-	notes: str | None = None
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	visit_date: str = Field(..., min_length=1, max_length=50)
+	visit_time: str = Field(..., min_length=1, max_length=50)
+	region: str = Field(..., min_length=1, max_length=140)
+	zone: str = Field(..., min_length=1, max_length=140)
+	woreda: str = Field(..., min_length=1, max_length=140)
+	kebele: str = Field(..., min_length=1, max_length=140)
+	meeting_location: str | None = Field(None, max_length=255)
+	notes: str | None = Field(None, max_length=2000)
 
 
 class GetVisitSchedulesSchema(BaseModel):
@@ -119,7 +131,7 @@ def get_leads(**kwargs):
 	Retrieves a paginated list of A2C Leads with multi-faceted search and filter configurations.
 
 	Security Specs:
-	  - Parametrizes all inputs to prevent SQL Injection.
+	        - Parametrizes all inputs to prevent SQL Injection.
 	"""
 	start = kwargs.get("start") or 0
 	page_length = kwargs.get("page_length") or 20
@@ -132,6 +144,13 @@ def get_leads(**kwargs):
 	end_date = kwargs.get("end_date")
 	min_loan_amount = kwargs.get("min_loan_amount")
 	max_loan_amount = kwargs.get("max_loan_amount")
+
+	# Sorting: sort_by is Literal-constrained to safe columns (both native to
+	# A2C Lead -- loan_amount is denormalized from Credit Information), so it can't
+	# inject into order_by. Defaults preserve the prior "newest first" behavior.
+	sort_by = kwargs.get("sort_by") or "creation"
+	sort_order = "asc" if kwargs.get("sort_order") == "asc" else "desc"
+	order_by = f"{sort_by} {sort_order}"
 
 	# 1. Enforce Role-Based Access Control
 	frappe.has_permission("A2C Lead", "read", throw=True)
@@ -157,17 +176,17 @@ def get_leads(**kwargs):
 	# Apply Assigned Agent Filter (single user, comma-separated users, or the literal
 	# "unassigned" to return leads with no agent). User values are not constrained to an
 	# allowlist here; an unknown user simply yields no matches.
+	# Assignment tab filter: exactly three options, matching get_lead_summary's
+	# tab_counts -- "all" (no filter), "my" (assigned to caller), "unassigned"
+	# (no assignee). Any other value is ignored (treated as "all").
 	if assigned_to:
-		agents = [a.strip() for a in str(assigned_to).split(",") if a.strip()]
-		if any(a.lower() == "unassigned" for a in agents):
-			named = [a for a in agents if a.lower() != "unassigned"]
-			if named:
-				# "unassigned" OR one of the named agents
-				filters.append(["assigned_to", "in", [*named, ""]])
-			else:
-				filters.append(["assigned_to", "in", ["", None]])
-		elif agents:
-			filters.append(["assigned_to", "in", agents])
+		tab = str(assigned_to).strip().lower()
+		if tab == "my":
+			filters.append(["assigned_to", "=", frappe.session.user])
+		elif tab == "unassigned":
+			filters.append(["assigned_to", "in", ["", None]])
+		elif tab != "all":
+			filters.append(["assigned_to", "=", assigned_to])
 
 	# Apply Creation Date Range Filter
 	if start_date and end_date:
@@ -182,14 +201,8 @@ def get_leads(**kwargs):
 	# in one subquery so a lead must satisfy all supplied credit criteria.
 	valid_loan_types = []
 	if loan_type:
-		allowed_loan_types = tuple(
-			o.strip()
-			for o in (frappe.get_meta("A2C Credit Information").get_field("loan_type").options or "").split(
-				"\n"
-			)
-			if o.strip()
-		)
-		valid_loan_types = parse_multi_value(loan_type, allowed_loan_types)
+		# loan_type is free-text (derived from product category), so accept any value.
+		valid_loan_types = parse_multi_value(loan_type)
 
 	if min_loan_amount is not None or max_loan_amount is not None or valid_loan_types:
 		credit_filters = {}
@@ -247,7 +260,7 @@ def get_leads(**kwargs):
 		or_filters=or_filters or None,
 		limit_start=start,
 		page_length=page_length,
-		order_by="creation desc",
+		order_by=order_by,
 	)
 
 	# Fetch linked loan_type and loan_amount from Credit Information for each lead in a single query (resolving N+1 query issue)
@@ -358,6 +371,10 @@ def create_lead(**kwargs):
 	lead.lead_source = lead_source
 	lead.external_id = external_id
 	lead.status = "Active"
+	# A lead belongs to whoever created it: auto-assign to the creator so it shows
+	# up as "my lead" and (per the edit rule) only they can edit it.
+	lead.assigned_to = frappe.session.user
+	lead.assigned_date = frappe.utils.nowdate()
 	lead.insert(ignore_permissions=False)
 
 	audit_event = frappe.new_doc("A2C Lead Audit Event")
@@ -396,27 +413,44 @@ def get_lead_summary():
 	frappe.has_permission("A2C Lead", "read", throw=True)
 
 	allowed_statuses = ("Active", "Verified", "Processed", "Granted", "Rejected", "Dormant")
-	counts_by_status = {}
+	counts_by_status = {st: 0 for st in allowed_statuses}
 	total_count = 0
 
-	for status in allowed_statuses:
-		cnt_res = frappe.get_list("A2C Lead", filters={"status": status}, fields=[{"COUNT": "*"}])
-		count = cnt_res[0].get("COUNT(*)") if cnt_res else 0
-		counts_by_status[status] = count
-		total_count += count
-
-	# Assignment split: a lead is "assigned" when assigned_to is set, else "unassigned".
-	assigned_res = frappe.get_list(
-		"A2C Lead", filters={"assigned_to": ["is", "set"]}, fields=[{"COUNT": "*"}]
+	grouped = frappe.get_list(
+		"A2C Lead",
+		filters={"status": ["in", list(allowed_statuses)]},
+		fields=["status", {"COUNT": "*"}],
+		group_by="status",
 	)
-	assigned_count = assigned_res[0].get("COUNT(*)") if assigned_res else 0
-	unassigned_count = total_count - assigned_count
+	for row in grouped:
+		st = row.get("status")
+		cnt = row.get("COUNT(*)", 0)
+		if st in counts_by_status:
+			counts_by_status[st] = cnt
+			total_count += cnt
+
+	# Assignment split, mirroring get_loan_summary's tab_counts: "my" = leads
+	# assigned to the caller, "unassigned" = leads with no assignee.
+	user = frappe.session.user
+	my_res = frappe.get_list(
+		"A2C Lead",
+		filters={"status": ["in", list(allowed_statuses)], "assigned_to": user},
+		fields=[{"COUNT": "*"}],
+	)
+	my_count = my_res[0].get("COUNT(*)") if my_res else 0
+
+	unassigned_res = frappe.get_list(
+		"A2C Lead",
+		filters={"status": ["in", list(allowed_statuses)], "assigned_to": ["in", ["", None]]},
+		fields=[{"COUNT": "*"}],
+	)
+	unassigned_count = unassigned_res[0].get("COUNT(*)") if unassigned_res else 0
 
 	return success_response(
 		data={
 			"total": total_count,
 			"by_status": counts_by_status,
-			"tab_counts": {"all": total_count, "assigned": assigned_count, "unassigned": unassigned_count},
+			"tab_counts": {"all": total_count, "my": my_count, "unassigned": unassigned_count},
 		},
 		message="Lead summary retrieved successfully",
 	)
@@ -447,11 +481,7 @@ def get_lead_metadata():
 	statuses = status_field.options.split("\n") if status_field else []
 	sources = source_field.options.split("\n") if source_field else []
 
-	credit_meta = frappe.get_meta("A2C Credit Information")
-	loan_type_field = credit_meta.get_field("loan_type")
-	loan_types = loan_type_field.options.split("\n") if loan_type_field else []
-
-	data = {"statuses": statuses, "sources": sources, "loan_types": loan_types}
+	data = {"statuses": statuses, "sources": sources}
 	frappe.cache().set_value(cache_key, data, expires_in_sec=3600)
 
 	return success_response(data=data, message="Lead metadata retrieved successfully")
@@ -473,6 +503,7 @@ def add_lead_credit_info(**kwargs):
 	loan_type = kwargs.get("loan_type")
 	loan_amount = kwargs.get("loan_amount")
 	purpose_message = kwargs.get("purpose_message")
+	loan_product = kwargs.get("loan_product")
 
 	if purpose_message:
 		purpose_message = strip_html(purpose_message)
@@ -484,18 +515,39 @@ def add_lead_credit_info(**kwargs):
 	if not frappe.db.exists("A2C Lead", lead_id):
 		frappe.throw(_("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
 
-	# Validate loan_type Select field input
-	meta = frappe.get_meta("A2C Credit Information")
-	loan_type_field = meta.get_field("loan_type")
-	allowed_types = loan_type_field.options.split("\n") if loan_type_field else []
-	if loan_type not in allowed_types:
-		frappe.throw(_("Invalid loan type: {0}").format(loan_type), frappe.ValidationError)
+	if not loan_product:
+		frappe.throw(_("Loan Product is required for Credit Information."), frappe.ValidationError)
+
+	if not frappe.db.exists("A2C Loan Product", loan_product):
+		frappe.throw(_("Loan Product {0} not found").format(loan_product), frappe.DoesNotExistError)
+
+		category = frappe.db.get_value(
+			"A2C Term Relationship",
+			{"loan_product": loan_product, "term_type": "Category"},
+			"term_category",
+		)
+		if not category:
+			frappe.throw(
+				_("Loan Product {0} has no category to derive a loan type from.").format(loan_product),
+				frappe.ValidationError,
+			)
+
+		# term_category stores the taxonomy term ID; resolve to the human-readable
+		# term name, which is what we store as the loan_type.
+		term = frappe.db.get_value("A2C Term Category", category, "term")
+		loan_type = frappe.db.get_value("A2C Term", term, "term_name") if term else None
+		if not loan_type:
+			frappe.throw(
+				_("Could not resolve a loan type from the product's category."),
+				frappe.ValidationError,
+			)
 
 	credit_info = frappe.new_doc("A2C Credit Information")
 	credit_info.lead = lead_id
 	credit_info.loan_type = loan_type
 	credit_info.loan_amount = loan_amount
 	credit_info.purpose_message = purpose_message
+	credit_info.loan_product = loan_product
 	credit_info.insert(ignore_permissions=False)
 
 	# Insert Audit Event
@@ -605,7 +657,7 @@ def get_assignable_users(**kwargs):
 	# do not have permission to read/query the Has Role doctype.
 	role_users = frappe.get_list(
 		"Has Role",
-		filters={"role": ["in", ["Development Agent", "Bank Agent"]]},
+		filters={"role": ["in", [DEVELOPMENT_AGENT_ROLE, BANK_AGENT_ROLE]]},
 		pluck="parent",
 		ignore_permissions=True,
 	)
@@ -617,8 +669,26 @@ def get_assignable_users(**kwargs):
 			pagination={"start": start_idx, "page_length": page_len, "total_count": 0, "has_next": False},
 		)
 
-	# TODO: Implement tenant/bank isolation context checks if scoped assignment requirements are introduced in the future.
-	# TODO: Create or use a dedicated Bank Agent mapping/relation table for get and assignable tasks in the future.
+	# Implement tenant/bank isolation: filter users to caller's bank if applicable
+	user_bank = frappe.db.get_value(
+		"User Permission", {"user": frappe.session.user, "allow": "A2C Participating Bank"}, "for_value"
+	)
+	if user_bank:
+		bank_users = frappe.get_all(
+			"User Permission",
+			filters={"allow": "A2C Participating Bank", "for_value": user_bank},
+			pluck="user",
+			ignore_permissions=True,
+		)
+		role_users = list(set(role_users).intersection(set(bank_users)))
+
+		if not role_users:
+			return success_response(
+				data=[],
+				message="Assignable users retrieved successfully",
+				pagination={"start": start_idx, "page_length": page_len, "total_count": 0, "has_next": False},
+			)
+
 	# Construct DB query filters
 	user_filters = {"name": ["in", list(set(role_users))], "enabled": 1}
 
