@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
 
@@ -9,9 +10,9 @@ class A2CParticipatingBank(Document):
 	def on_update(self):
 		if self.status == "Active":
 			if not self.kyc_document:
-				frappe.throw("KYC Document is required to activate the bank.")
+				frappe.throw(_("KYC Document is required to activate the bank."))
 			if not self.gro_name or not self.ops_name:
-				frappe.throw("GRO Name and Ops Name are required to activate the bank.")
+				frappe.throw(_("GRO Name and Ops Name are required to activate the bank."))
 
 		# Handle Suspended / Active side effects on User records
 		# If suspended, disable users. If active, enable users.
