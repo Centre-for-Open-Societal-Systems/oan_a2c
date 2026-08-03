@@ -571,13 +571,15 @@ def change_password(current_password: str, new_password: str):
 
 	check_rate_limit(f"rl:change_pwd:{frappe.session.user}", limit=5, window=300)
 
+	from frappe.utils.password import check_password
+	from frappe.utils.password import update_password as update_password_db
+
 	try:
-		login_manager = LoginManager()
-		login_manager.authenticate(frappe.session.user, current_password)
+		check_password(frappe.session.user, current_password)
 	except frappe.exceptions.AuthenticationError:
 		frappe.clear_messages()
 		raise frappe.AuthenticationError(_("Current password is incorrect."))
 
-	update_password(new_password=new_password, logout_all_sessions=False, user=frappe.session.user)
+	update_password_db(user=frappe.session.user, pwd=new_password, logout_all_sessions=False)
 
 	return success_response(message=_("Password changed successfully."))

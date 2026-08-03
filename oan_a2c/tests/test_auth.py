@@ -4,7 +4,7 @@ import unittest
 import frappe
 import jwt
 
-from oan_a2c.api.auth import forgot_password, login, logout, refresh, reset_password
+from oan_a2c.api.auth import change_password, forgot_password, login, logout, refresh, reset_password
 from oan_a2c.api.middleware import JWTUnauthorized, validate_jwt_request
 
 
@@ -334,3 +334,23 @@ class TestAuthAPI(unittest.TestCase):
 
 		# Verify token is deleted
 		self.assertFalse(frappe.db.exists("A2C User Refresh Token", {"token_hash": token_hash}))
+
+	def test_14_change_password(self):
+		frappe.set_user(self.test_email)
+
+		# 1. Invalid current password
+		bad_resp = change_password(
+			current_password="WrongCurrentPassword123!", new_password="NewPassword123!"
+		)
+		self.assertEqual(bad_resp.get("status"), "error")
+		self.assertEqual(bad_resp.get("code"), "AUTHENTICATION_ERROR")
+		self.assertIn("Current password is incorrect", bad_resp.get("message"))
+
+		# 2. Valid current password -> change success
+		new_pwd = "NewValidPassword123!"
+		good_resp = change_password(current_password=self.test_password, new_password=new_pwd)
+		self.assertEqual(good_resp.get("status"), "success")
+
+		# 3. Restore original password using change_password
+		restore_resp = change_password(current_password=new_pwd, new_password=self.test_password)
+		self.assertEqual(restore_resp.get("status"), "success")
