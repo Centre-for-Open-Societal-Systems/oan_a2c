@@ -41,6 +41,9 @@ def _make_lead_verifiable(lead_id):
 						"product_name": "Test Product",
 						"bank": bank,
 						"status": "Active",
+						"min_interest_rate": 5,
+						"max_amount": 100000,
+						"tenure_months": 12,
 					}
 				)
 				.insert(ignore_permissions=True)
@@ -1032,6 +1035,9 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 						"product_name": "Test Product",
 						"bank": bank,
 						"status": "Active",
+						"min_interest_rate": 5,
+						"max_amount": 100000,
+						"tenure_months": 12,
 					}
 				)
 				.insert(ignore_permissions=True)

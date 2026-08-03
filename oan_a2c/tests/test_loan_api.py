@@ -464,9 +464,14 @@ class TestLoansV1API(unittest.TestCase):
 					"doctype": "A2C Participating Bank",
 					"bank_name": "Test Loan API Bank",
 					"bank_code": "TEST_LOAN_API_BANK",
-					"status": "Active",
+					"status": "In Review",
+					"entity_type": "Commercial Bank",
+					"registered_email": "loanapi@test.com",
+					"registered_phone": "+251911000000",
+					"registered_city": "Addis Ababa",
+					"registered_country": "Ethiopia",
 				}
-			).insert(ignore_permissions=True, ignore_mandatory=True, ignore_links=True)
+			).insert(ignore_permissions=True)
 			test_bank = bank_doc.name
 
 		test_product = frappe.db.get_value(

@@ -46,9 +46,14 @@ class TestNotifications(unittest.TestCase):
 					"doctype": "A2C Participating Bank",
 					"bank_name": "Test Notif Bank",
 					"bank_code": BANK,
-					"status": "Active",
+					"status": "In Review",
+					"entity_type": "Commercial Bank",
+					"registered_email": "notif@test.com",
+					"registered_phone": "+251911000000",
+					"registered_city": "Addis Ababa",
+					"registered_country": "Ethiopia",
 				}
-			).insert(ignore_permissions=True, ignore_mandatory=True, ignore_links=True)
+			).insert(ignore_permissions=True)
 			frappe.db.sql("UPDATE `tabA2C Participating Bank` SET name=%s WHERE name=%s", (BANK, bank.name))
 		_ensure_user(ADMIN_USER, BANK_ADMIN_ROLE)
 		_ensure_user(AGENT_USER, BANK_AGENT_ROLE)
