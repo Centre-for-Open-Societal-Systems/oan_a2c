@@ -67,7 +67,7 @@ repos:
     hooks:
       - id: semgrep
         name: "Run semgrep rules"
-        entry: env PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python SEMGREP_SEND_METRICS=off ../../env/bin/semgrep scan
+        entry: env PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python SEMGREP_SEND_METRICS=off semgrep scan
         language: system
         types: [python]
         args:
@@ -76,6 +76,7 @@ repos:
           - "--config"
           - "r/python.lang.correctness"
           - "--error"
+
 
 ci:
     autoupdate_schedule: weekly
