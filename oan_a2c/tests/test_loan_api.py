@@ -41,14 +41,11 @@ class TestLoansV1API(unittest.TestCase):
 					"doctype": "A2C Lead",
 					"phone_number": "+251999888777",
 					"lead_source": "Agent Entry",
-					"status": "Verified",
+					"status": "Active",
 				}
 			)
 			lead.insert(ignore_permissions=True)
 			frappe.db.sql("UPDATE `tabA2C Lead` SET name='TEST_LEAD_999' WHERE name=%s", lead.name)
-			frappe.db.commit()
-		else:
-			frappe.db.set_value("A2C Lead", "TEST_LEAD_999", "status", "Verified")
 			frappe.db.commit()
 
 		# Create Farmer Profile and link to Lead

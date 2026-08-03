@@ -339,10 +339,10 @@ def reset_password(email: str, key: str, new_password: str):
 	frappe.db.set_value("User", user, "reset_password_key", key)
 	original_user = frappe.session.user
 	try:
-		frappe.set_user(user)  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-setuser
+		frappe.set_user(user)
 		update_password(new_password=new_password, logout_all_sessions=True, key=key)
 	finally:
-		frappe.set_user(original_user)  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-setuser
+		frappe.set_user(original_user)
 		frappe.db.set_value("User", user, "reset_password_key", "")
 
 	return success_response(message=_("Your password has been successfully updated. You may now login."))

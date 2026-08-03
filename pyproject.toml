@@ -12,20 +12,13 @@ dependencies = [
     "pydantic>=2.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pre-commit",
-    "semgrep",
-]
-
 [build-system]
 requires = ["flit_core >=3.4,<4"]
 build-backend = "flit_core.buildapi"
 
 # These dependencies are only installed when developer mode is enabled
 [tool.bench.dev-dependencies]
-pre-commit = "*"
-semgrep = "*"
+# package_name = "~=1.1.0"
 
 # These apt dependencies will be installed from Ubuntu repositories when you host your app on Frappe Cloud
 [deploy.dependencies.apt]

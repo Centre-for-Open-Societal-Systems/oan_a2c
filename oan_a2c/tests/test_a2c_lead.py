@@ -993,31 +993,6 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 		cls.lead.status = "Active"
 		cls.lead.insert(ignore_permissions=True)
 		cls.lead_id = cls.lead.name
-
-		prod = frappe.db.get_value("A2C Loan Product", {}, "name")
-		if not prod:
-			bank = frappe.db.get_value("A2C Bank Profile", {}, "name")
-			if not bank:
-				bank = (
-					frappe.get_doc(
-						{"doctype": "A2C Bank Profile", "bank_name": "Test Bank", "bank_code": "TB123"}
-					)
-					.insert(ignore_permissions=True)
-					.name
-				)
-			prod = (
-				frappe.get_doc(
-					{
-						"doctype": "A2C Loan Product",
-						"product_name": "Test Product",
-						"bank": bank,
-						"status": "Active",
-					}
-				)
-				.insert(ignore_permissions=True)
-				.name
-			)
-		cls.test_product = prod
 		frappe.db.commit()
 
 	@classmethod
@@ -1066,7 +1041,6 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 			loan_type="Input loan (seeds, agrochemicals)",
 			loan_amount=5000.0,
 			purpose_message=payload,
-			loan_product=self.test_product,
 		)
 		self.assertEqual(res["status"], "success")
 		credit_info_id = res["data"]["credit_info_id"]
