@@ -16,6 +16,9 @@ jobs:
     name: 'Frappe Linter'
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    env:
+      PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: 'python'
+      SEMGREP_SEND_METRICS: 'off'
 
     steps:
       - uses: actions/checkout@v6

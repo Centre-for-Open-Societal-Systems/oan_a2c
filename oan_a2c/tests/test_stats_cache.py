@@ -20,7 +20,12 @@ class TestStatsCache(unittest.TestCase):
 					"doctype": "A2C Participating Bank",
 					"bank_name": "Test Stats Bank",
 					"bank_code": "TEST_STATS_BANK",
-					"status": "Active",
+					"status": "In Review",
+					"entity_type": "Commercial Bank",
+					"registered_email": "stats@test.com",
+					"registered_phone": "+251911000000",
+					"registered_city": "Addis Ababa",
+					"registered_country": "Ethiopia",
 				}
 			)
 			bank.insert(ignore_permissions=True)

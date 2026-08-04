@@ -27,11 +27,21 @@ class TestLeadCreditInfo(unittest.TestCase):
 
 		prod = frappe.db.get_value("A2C Loan Product", {}, "name")
 		if not prod:
-			bank = frappe.db.get_value("A2C Bank Profile", {}, "name")
+			bank = frappe.db.get_value("A2C Participating Bank", {}, "name")
 			if not bank:
 				bank = (
 					frappe.get_doc(
-						{"doctype": "A2C Bank Profile", "bank_name": "Test Bank", "bank_code": "TB123"}
+						{
+							"doctype": "A2C Participating Bank",
+							"bank_name": "Test Bank",
+							"bank_code": "TB123",
+							"status": "In Review",
+							"entity_type": "Commercial Bank",
+							"registered_email": "tb123@test.com",
+							"registered_phone": "+251911000000",
+							"registered_city": "Addis Ababa",
+							"registered_country": "Ethiopia",
+						}
 					)
 					.insert(ignore_permissions=True)
 					.name
@@ -43,6 +53,9 @@ class TestLeadCreditInfo(unittest.TestCase):
 						"product_name": "Test Product",
 						"bank": bank,
 						"status": "Active",
+						"min_interest_rate": 5,
+						"max_amount": 100000,
+						"tenure_months": 12,
 					}
 				)
 				.insert(ignore_permissions=True)

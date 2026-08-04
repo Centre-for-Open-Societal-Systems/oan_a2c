@@ -26,7 +26,7 @@ def _create_test_bank(bank_code: str, bank_name: str) -> str:
 			"registered_postal_code": "1000",
 			"registered_email": f"{bank_code.lower()}@test.com",
 			"registered_phone": "+251911000000",
-			"status": "Onboarding",
+			"status": "In Review",
 		}
 	)
 	doc.insert(ignore_permissions=True)
