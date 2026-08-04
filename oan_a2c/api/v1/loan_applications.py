@@ -12,6 +12,7 @@ from oan_a2c.api.utils import (
 	handle_api_errors,
 	parse_multi_value,
 	success_response,
+	to_tz_aware_iso,
 	validate_request,
 )
 
@@ -129,7 +130,14 @@ def _get_consent_details(consent_id: str) -> dict:
 		)
 		or {}
 	)
-	for key in ["websub_delivered_at", "validity_from", "validity_to"]:
+	# websub_delivered_at is a Datetime: emit a system-tz-aware ISO 8601 string
+	# (…T…+HH:MM) to match every other timestamp this API returns, instead of a
+	# bare, offset-less DB string.
+	if res_fields.get("websub_delivered_at"):
+		res_fields["websub_delivered_at"] = to_tz_aware_iso(res_fields["websub_delivered_at"])
+	# validity_from/validity_to are Date fields (no time-of-day) — a plain
+	# YYYY-MM-DD string is correct and carries no timezone.
+	for key in ["validity_from", "validity_to"]:
 		if res_fields.get(key):
 			res_fields[key] = str(res_fields[key])
 
@@ -277,7 +285,7 @@ def get_full_profile(**kwargs):
 		"status": doc.status,
 		"current_step": cint(doc.current_step),
 		"loan_officer": doc.loan_officer,
-		"creation": str(doc.creation),
+		"creation": to_tz_aware_iso(doc.creation),
 		"date_of_birth": str(doc.date_of_birth) if doc.date_of_birth else None,
 		"gender": doc.gender,
 		"marital_status": doc.marital_status,
@@ -574,7 +582,7 @@ def get_all_loans(**kwargs):
 	for r in records:
 		r["loan_amount"] = float(r["loan_amount"]) if r.get("loan_amount") else 0.0
 		r["step"] = cint(r.get("step"))
-		r["creation"] = str(r["creation"])
+		r["creation"] = to_tz_aware_iso(r["creation"])
 
 	total_pages = -(-total_records // page_size)
 	has_next = offset + page_size < total_records
@@ -692,7 +700,7 @@ def get_supporting_documents(**kwargs):
 	)
 
 	for f in files:
-		f["creation"] = str(f["creation"])
+		f["creation"] = to_tz_aware_iso(f["creation"])
 
 	return success_response(data=files, message="Supporting documents retrieved successfully")
 

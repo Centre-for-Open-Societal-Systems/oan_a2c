@@ -9,7 +9,7 @@ from oan_a2c.a2c_marketplace.permissions import (
 	is_bank_unbound,
 )
 from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE
-from oan_a2c.api.utils import handle_api_errors, success_response, validate_request
+from oan_a2c.api.utils import handle_api_errors, success_response, to_tz_aware_iso, validate_request
 
 
 def assert_bank_active(bank: str | None) -> None:
@@ -46,6 +46,7 @@ class CreateProductSchema(BaseModel):
 	max_amount: float = Field(..., ge=0, le=999999999999.0)
 	tenure_months: int = Field(..., ge=1, le=1200)
 	description: str | None = Field(None, max_length=2000)
+	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None
 
 	@model_validator(mode="after")
@@ -68,6 +69,7 @@ class UpdateProductSchema(BaseModel):
 	max_amount: float | None = Field(None, ge=0, le=999999999999.0)
 	tenure_months: int | None = Field(None, ge=1, le=1200)
 	description: str | None = Field(None, max_length=2000)
+	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None
 
 	@model_validator(mode="after")
@@ -109,6 +111,7 @@ def create_product(**kwargs):
 	doc.max_amount = kwargs.get("max_amount")
 	doc.tenure_months = kwargs.get("tenure_months")
 	doc.description = kwargs.get("description")
+	doc.image = kwargs.get("image")
 	doc.status = "Draft"
 
 	if product_meta:
@@ -140,6 +143,7 @@ def update_product(**kwargs):
 		"max_amount",
 		"tenure_months",
 		"description",
+		"image",
 	]
 	for field in direct_fields:
 		if field in kwargs and kwargs[field] is not None:
@@ -285,6 +289,7 @@ def list_products(
 			"min_amount",
 			"max_amount",
 			"tenure_months",
+			"image",
 			"creation",
 		],
 		order_by="creation desc",
@@ -383,9 +388,10 @@ def get_product(**kwargs):
 		"max_amount": doc.max_amount,
 		"tenure_months": doc.tenure_months,
 		"description": doc.description,
+		"image": doc.image,
 		"bank": doc.bank,
-		"creation": str(doc.creation) if doc.creation else None,
-		"modified": str(doc.modified) if doc.modified else None,
+		"creation": to_tz_aware_iso(doc.creation),
+		"modified": to_tz_aware_iso(doc.modified),
 		"product_meta": product_meta,
 		"categories": categories,
 		"tags": tags,

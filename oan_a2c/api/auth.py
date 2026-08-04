@@ -518,6 +518,54 @@ def get_user_profile():
 	)
 
 
+# Clients send human-readable English language names (e.g. "Swahili"), but the
+# Frappe Language doctype is keyed by ISO code ("sw") and stores the *native*
+# name ("Kiswahili"), so a raw `user.language = "Swahili"` fails the Link check.
+# These aliases map the common English exonyms to their Language codes.
+_LANGUAGE_ALIASES = {
+	"english": "en",
+	"amharic": "am",
+	"swahili": "sw",
+	"oromo": "om",
+	"afaan oromo": "om",
+	"oromiffa": "om",
+	"tigrinya": "ti",
+	"tigrigna": "ti",
+}
+
+
+def _resolve_language(value):
+	"""Resolve a client-supplied language to a valid Language code.
+
+	Accepts the ISO code (the Link key, e.g. 'sw'), the stored native
+	language_name (e.g. 'Kiswahili'), or a common English exonym ('Swahili').
+	Returns None for an empty value (clears the field). Raises a clear
+	ValidationError if the language cannot be resolved to an existing record.
+	"""
+	raw = (value or "").strip()
+	if not raw:
+		return None
+
+	# 1. Exact Language code (the Link key), e.g. 'sw'.
+	if frappe.db.exists("Language", raw):
+		return raw
+	# 2. Stored native language_name, e.g. 'Kiswahili'.
+	by_name = frappe.db.get_value("Language", {"language_name": raw}, "name")
+	if by_name:
+		return by_name
+	# 3. Common English exonym, e.g. 'Swahili' -> 'sw'.
+	code = _LANGUAGE_ALIASES.get(raw.lower())
+	if code and frappe.db.exists("Language", code):
+		return code
+
+	frappe.throw(
+		_(
+			"Unsupported language '{0}'. Provide a valid language code (e.g. 'en', 'am', 'sw') or name."
+		).format(raw),
+		frappe.ValidationError,
+	)
+
+
 @frappe.whitelist()
 @validate_request(UpdateProfileSchema)
 @handle_api_errors
@@ -544,7 +592,7 @@ def update_profile(
 	if phone_number is not None:
 		user.mobile_no = phone_number.strip()
 	if language is not None:
-		user.language = language.strip()
+		user.language = _resolve_language(language)
 	if user_image is not None:
 		user_image = user_image.strip()
 		if user.user_image and user.user_image != user_image:

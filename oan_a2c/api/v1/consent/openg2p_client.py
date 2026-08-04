@@ -271,10 +271,18 @@ class OpenG2PConsentClient:
 
 			result = data.get("result")
 			if isinstance(result, dict) and result.get("success") is False:
+				# Unlike the JSON-RPC "error" branch above (protocol/traceback-level,
+				# kept generic to avoid leaking internals), a success=False result is an
+				# application-level, user-facing failure — "Invalid OTP", "OTP expired",
+				# etc. Surface that upstream message so the caller sees actionable
+				# feedback instead of a misleading "try again later".
+				upstream_msg = (result.get("message") or "").strip()
 				frappe.log_error(
-					f"OpenG2P returned failure on {endpoint}: {result.get('message') or 'Unknown error'}",
+					f"OpenG2P returned failure on {endpoint}: {upstream_msg or 'Unknown error'}",
 					"OpenG2P Error",
 				)
+				if upstream_msg:
+					frappe.throw(_(upstream_msg))
 				frappe.throw(_("OpenG2P request could not be completed. Please try again later."))
 
 			# Reset circuit breaker failure count on success

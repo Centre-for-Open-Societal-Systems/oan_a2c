@@ -11,7 +11,7 @@
 import frappe
 from pydantic import BaseModel, Field
 
-from oan_a2c.api.utils import handle_api_errors, success_response, validate_request
+from oan_a2c.api.utils import handle_api_errors, success_response, to_tz_aware_iso, validate_request
 
 
 def notify_users(users, subject, message=None, doctype=None, docname=None, notification_type="Alert"):
@@ -93,6 +93,10 @@ def get_notifications(**kwargs):
 		limit_page_length=limit,
 		limit_start=start,
 	)
+
+	for n in notifications:
+		if n.get("creation"):
+			n["creation"] = to_tz_aware_iso(n["creation"])
 
 	total = frappe.db.count("Notification Log", filters=filters)
 	unread_count = frappe.db.count("Notification Log", filters={"for_user": user, "read": 0})

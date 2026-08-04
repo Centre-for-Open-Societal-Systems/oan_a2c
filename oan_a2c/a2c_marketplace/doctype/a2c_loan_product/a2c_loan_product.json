@@ -14,6 +14,7 @@
   "max_amount",
   "tenure_months",
   "description",
+  "image",
   "status",
   "menu_order",
   "product_meta"
@@ -73,6 +74,11 @@
    "fieldname": "description",
    "fieldtype": "Text Editor",
    "label": "Description"
+  },
+  {
+   "fieldname": "image",
+   "fieldtype": "Attach Image",
+   "label": "Image"
   },
   {
    "default": "Draft",

@@ -38,12 +38,17 @@ class A2CLead(Document):
 		has_approved_consent = frappe.db.exists(
 			"A2C Consent Request", {"lead": self.name, "status": "Approved"}
 		)
+		has_scheduled_visit = frappe.db.exists(
+			"A2C Visit Schedule", {"lead": self.name, "status": ["in", ["Scheduled", "Completed"]]}
+		)
 
 		missing = []
 		if not has_credit:
 			missing.append(_("credit information"))
 		if not has_approved_consent:
 			missing.append(_("an approved consent request"))
+		if not has_scheduled_visit:
+			missing.append(_("a scheduled visit"))
 
 		if missing:
 			frappe.throw(

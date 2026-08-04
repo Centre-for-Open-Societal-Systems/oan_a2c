@@ -6,6 +6,8 @@ import frappe
 from frappe import _
 from frappe.utils import now_datetime
 
+from oan_a2c.api.utils import to_tz_aware_iso
+
 
 def generate_consent_receipt(consent_request_name):
 	secret_key = frappe.conf.get("secret_key")
@@ -21,8 +23,8 @@ def generate_consent_receipt(consent_request_name):
 		"lead": getattr(consent, "lead", None),
 		"openg2p_consent_id": consent.openg2p_consent_id or None,
 		"status": consent.status,
-		"otp_verified_at": str(consent.otp_verified_at) if consent.otp_verified_at else None,
-		"timestamp": str(now_datetime()),
+		"otp_verified_at": to_tz_aware_iso(consent.otp_verified_at) if consent.otp_verified_at else None,
+		"timestamp": to_tz_aware_iso(now_datetime()),
 	}
 
 	payload_str = json.dumps(receipt_data, separators=(",", ":"), sort_keys=True)
