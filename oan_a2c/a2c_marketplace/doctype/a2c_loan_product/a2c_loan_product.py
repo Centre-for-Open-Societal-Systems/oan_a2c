@@ -39,12 +39,15 @@ class A2CLoanProduct(Document):
 		# an Active/Archived product must be re-activated. A pure status change
 		# (e.g. set_product_status activating the product) touches no content
 		# field, so it is left untouched.
-		if (
-			not self.is_new()
-			and self.status != "Draft"
-			and any(self.has_value_changed(f) for f in self.CONTENT_FIELDS)
-		):
-			self.status = "Draft"
+		if not self.is_new() and self.status != "Draft":
+			for f in self.CONTENT_FIELDS:
+				if self.has_value_changed(f):
+					old = self.get_doc_before_save().get(f)
+					new = self.get(f)
+					if not old and not new:
+						continue
+					self.status = "Draft"
+					break
 
 		if self.product_name:
 			base_slug = frappe.scrub(self.product_name).replace("_", "-")

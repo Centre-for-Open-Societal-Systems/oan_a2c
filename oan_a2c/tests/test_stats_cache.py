@@ -14,31 +14,34 @@ class TestStatsCache(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
 		frappe.set_user("Administrator")
-		if not frappe.db.exists("A2C Participating Bank", "TEST_STATS_BANK"):
-			bank = frappe.get_doc(
-				{
-					"doctype": "A2C Participating Bank",
-					"bank_name": "Test Stats Bank",
-					"bank_code": "TEST_STATS_BANK",
-					"status": "In Review",
-					"entity_type": "Commercial Bank",
-					"registered_email": "stats@test.com",
-					"registered_phone": "+251911000000",
-					"registered_city": "Addis Ababa",
-					"registered_country": "Ethiopia",
-				}
-			)
-			bank.insert(ignore_permissions=True)
-			frappe.db.sql(
-				"UPDATE `tabA2C Participating Bank` SET name='TEST_STATS_BANK' WHERE name=%s", bank.name
-			)
-			frappe.db.commit()
+		suffix = frappe.generate_hash(length=6)
+		cls.bank = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"bank_name": f"Test Stats Bank {suffix}",
+				"bank_code": f"TEST_STATS_{suffix}",
+				"status": "In Review",
+				"entity_type": "Commercial Bank",
+				"registered_email": f"stats_{suffix}@test.com",
+				"registered_phone": "+251911000000",
+				"registered_city": "Addis Ababa",
+				"registered_country": "Ethiopia",
+			}
+		).insert(ignore_permissions=True)
+		cls.bank_name = cls.bank.name
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Participating Bank", cls.bank_name, force=True)
+		frappe.db.commit()
 
 	def setUp(self):
 		frappe.set_user("Administrator")
-		frappe.db.sql("DELETE FROM `tabA2C Loan Product` WHERE bank='TEST_STATS_BANK'")
+		frappe.db.delete("A2C Loan Product", {"bank": self.bank_name})
 		frappe.db.commit()
-		frappe.cache().delete_keys("dashboard_stats:TEST_STATS_BANK:*")
+		frappe.cache().delete_keys(f"dashboard_stats:{self.bank_name}:*")
 
 	def test_total_products_excludes_archived(self):
 		# Create 1 Draft, 1 Active, 1 Archived product
@@ -46,7 +49,7 @@ class TestStatsCache(unittest.TestCase):
 			{
 				"doctype": "A2C Loan Product",
 				"product_name": "Test Draft",
-				"bank": "TEST_STATS_BANK",
+				"bank": self.bank_name,
 				"min_interest_rate": 5,
 				"max_amount": 1000,
 				"tenure_months": 12,
@@ -58,7 +61,7 @@ class TestStatsCache(unittest.TestCase):
 			{
 				"doctype": "A2C Loan Product",
 				"product_name": "Test Active",
-				"bank": "TEST_STATS_BANK",
+				"bank": self.bank_name,
 				"min_interest_rate": 5,
 				"max_amount": 1000,
 				"tenure_months": 12,
@@ -70,7 +73,7 @@ class TestStatsCache(unittest.TestCase):
 			{
 				"doctype": "A2C Loan Product",
 				"product_name": "Test Archived",
-				"bank": "TEST_STATS_BANK",
+				"bank": self.bank_name,
 				"min_interest_rate": 5,
 				"max_amount": 1000,
 				"tenure_months": 12,
@@ -78,7 +81,7 @@ class TestStatsCache(unittest.TestCase):
 			}
 		).insert(ignore_permissions=True)
 
-		stats = _compute_from_db("TEST_STATS_BANK")
+		stats = _compute_from_db(self.bank_name)
 		self.assertEqual(stats["total_products"], 2)  # Draft + Active (Archived excluded)
 		self.assertEqual(stats["active_products"], 1)  # Only Active
 		self.assertNotIn("archived_products", stats)
@@ -87,7 +90,7 @@ class TestStatsCache(unittest.TestCase):
 		p_active.status = "Archived"
 		p_active.save(ignore_permissions=True)
 
-		stats_after = _compute_from_db("TEST_STATS_BANK")
+		stats_after = _compute_from_db(self.bank_name)
 		self.assertEqual(stats_after["total_products"], 1)  # Only Draft remaining
 		self.assertEqual(stats_after["active_products"], 0)
 
@@ -95,6 +98,6 @@ class TestStatsCache(unittest.TestCase):
 		p_active.status = "Active"
 		p_active.save(ignore_permissions=True)
 
-		stats_resumed = _compute_from_db("TEST_STATS_BANK")
+		stats_resumed = _compute_from_db(self.bank_name)
 		self.assertEqual(stats_resumed["total_products"], 2)
 		self.assertEqual(stats_resumed["active_products"], 1)

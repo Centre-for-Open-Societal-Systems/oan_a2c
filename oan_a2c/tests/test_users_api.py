@@ -12,8 +12,7 @@ from oan_a2c.api.v1.seller.onboarding import update_user
 
 
 def _create_test_bank(bank_code: str, bank_name: str) -> str:
-	if frappe.db.exists("A2C Participating Bank", {"bank_code": bank_code}):
-		return frappe.db.get_value("A2C Participating Bank", {"bank_code": bank_code}, "name")
+	"""Always create a fresh bank — never reuse ambient data."""
 	doc = frappe.get_doc(
 		{
 			"doctype": "A2C Participating Bank",
@@ -41,27 +40,20 @@ def _ensure_role(role: str) -> None:
 
 
 def _create_test_user(email: str, full_name: str, role: str, bank: str | None = None) -> str:
+	"""Always create a fresh user — never reuse ambient data."""
 	_ensure_role(role)
-	if not frappe.db.exists("User", email):
-		user = frappe.get_doc(
-			{
-				"doctype": "User",
-				"email": email,
-				"first_name": full_name,
-				"send_welcome_email": 0,
-				"roles": [{"role": role}],
-			}
-		)
-		user.insert(ignore_permissions=True)
-	else:
-		user = frappe.get_doc("User", email)
-		if not any(r.role == role for r in user.roles):
-			user.append("roles", {"role": role})
-			user.save(ignore_permissions=True)
+	user = frappe.get_doc(
+		{
+			"doctype": "User",
+			"email": email,
+			"first_name": full_name,
+			"send_welcome_email": 0,
+			"roles": [{"role": role}],
+		}
+	)
+	user.insert(ignore_permissions=True)
 
-	if bank and not frappe.db.exists(
-		"User Permission", {"user": email, "allow": "A2C Participating Bank", "for_value": bank}
-	):
+	if bank:
 		frappe.get_doc(
 			{
 				"doctype": "User Permission",
@@ -79,31 +71,57 @@ class TestUpdateUser(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
 		frappe.set_user("Administrator")
+		suffix = frappe.generate_hash(length=6)
 
-		cls.bank_a = _create_test_bank("TU_BANK_A", "Test Users Bank A")
-		cls.bank_b = _create_test_bank("TU_BANK_B", "Test Users Bank B")
+		cls.bank_a = _create_test_bank(f"TU_BANK_A_{suffix}", "Test Users Bank A")
+		cls.bank_b = _create_test_bank(f"TU_BANK_B_{suffix}", "Test Users Bank B")
 
-		cls.admin = _create_test_user("tu_admin@oan.test", "TU Admin", ADMIN_ROLE)
+		cls.admin = _create_test_user(f"tu_admin_{suffix}@oan.test", "TU Admin", ADMIN_ROLE)
 		cls.bank_admin_a = _create_test_user(
-			"tu_bankadmin_a@oan.test", "TU Bank Admin A", BANK_ADMIN_ROLE, cls.bank_a
+			f"tu_bankadmin_a_{suffix}@oan.test", "TU Bank Admin A", BANK_ADMIN_ROLE, cls.bank_a
 		)
-		cls.bank_agent_a = _create_test_user("tu_agent_a@oan.test", "TU Agent A", BANK_AGENT_ROLE, cls.bank_a)
+		cls.bank_agent_a = _create_test_user(
+			f"tu_agent_a_{suffix}@oan.test", "TU Agent A", BANK_AGENT_ROLE, cls.bank_a
+		)
 		cls.bank_agent_a2 = _create_test_user(
-			"tu_agent_a2@oan.test", "TU Agent A2", BANK_AGENT_ROLE, cls.bank_a
+			f"tu_agent_a2_{suffix}@oan.test", "TU Agent A2", BANK_AGENT_ROLE, cls.bank_a
 		)
 		cls.bank_admin_b = _create_test_user(
-			"tu_bankadmin_b@oan.test", "TU Bank Admin B", BANK_ADMIN_ROLE, cls.bank_b
+			f"tu_bankadmin_b_{suffix}@oan.test", "TU Bank Admin B", BANK_ADMIN_ROLE, cls.bank_b
 		)
-		cls.bank_agent_b = _create_test_user("tu_agent_b@oan.test", "TU Agent B", BANK_AGENT_ROLE, cls.bank_b)
-		cls.dev_agent = _create_test_user("tu_devagent@oan.test", "TU Dev Agent", DEVELOPMENT_AGENT_ROLE)
-		cls.farmer = _create_test_user("tu_farmer@oan.test", "TU Farmer", "A2C Farmer")
+		cls.bank_agent_b = _create_test_user(
+			f"tu_agent_b_{suffix}@oan.test", "TU Agent B", BANK_AGENT_ROLE, cls.bank_b
+		)
+		cls.dev_agent = _create_test_user(
+			f"tu_devagent_{suffix}@oan.test", "TU Dev Agent", DEVELOPMENT_AGENT_ROLE
+		)
+		cls.farmer = _create_test_user(f"tu_farmer_{suffix}@oan.test", "TU Farmer", "A2C Farmer")
+
+		# Records to tear down, in deletion order: users (and their permissions) before banks.
+		cls._users = [
+			cls.admin,
+			cls.bank_admin_a,
+			cls.bank_agent_a,
+			cls.bank_agent_a2,
+			cls.bank_admin_b,
+			cls.bank_agent_b,
+			cls.dev_agent,
+			cls.farmer,
+		]
+		cls._banks = [cls.bank_a, cls.bank_b]
 
 		frappe.db.commit()
 
 	@classmethod
 	def tearDownClass(cls):
 		frappe.set_user("Administrator")
-		frappe.db.rollback()
+		for email in cls._users:
+			for perm in frappe.get_all("User Permission", filters={"user": email}, pluck="name"):
+				frappe.delete_doc("User Permission", perm, force=True, ignore_permissions=True)
+			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+		for bank in cls._banks:
+			frappe.delete_doc("A2C Participating Bank", bank, force=True, ignore_permissions=True)
+		frappe.db.commit()
 
 	def setUp(self):
 		frappe.local.response = {}

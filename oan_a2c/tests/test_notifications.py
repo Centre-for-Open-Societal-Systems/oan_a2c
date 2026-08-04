@@ -114,7 +114,7 @@ class TestNotifications(unittest.TestCase):
 		frappe.db.delete("Notification Log", {"for_user": ["in", [ADMIN_USER, AGENT_USER]]})
 		frappe.db.commit()
 
-		product.max_amount = 2000
+		product.menu_order = 1
 		product.save(ignore_permissions=True)
 
 		self.assertFalse(self._logs_for(ADMIN_USER, "A2C Loan Product"))
