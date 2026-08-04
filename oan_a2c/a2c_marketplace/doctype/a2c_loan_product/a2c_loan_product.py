@@ -39,12 +39,13 @@ class A2CLoanProduct(Document):
 		# an Active/Archived product must be re-activated. A pure status change
 		# (e.g. set_product_status activating the product) touches no content
 		# field, so it is left untouched.
-		if not self.is_new() and self.status != "Draft":
+		before = self.get_doc_before_save()
+		if not self.is_new() and before and self.status != "Draft":
 			for f in self.CONTENT_FIELDS:
 				if self.has_value_changed(f):
-					old = self.get_doc_before_save().get(f)
-					new = self.get(f)
-					if not old and not new:
+					# Ignore empty→empty normalization (None vs "" vs 0); a real
+					# edit like 5→0 still reverts because the old value is truthy.
+					if not before.get(f) and not self.get(f):
 						continue
 					self.status = "Draft"
 					break
