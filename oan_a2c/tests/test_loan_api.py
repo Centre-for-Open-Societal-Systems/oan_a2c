@@ -205,7 +205,7 @@ class TestLoansV1API(unittest.TestCase):
 		# Request with include_consent_data=1
 		res_consent = get_basic_profile(lead_id="TEST_LEAD_999", include_consent_data=1)
 		self.assertEqual(res_consent["status"], "success")
-		self.assertEqual(res_consent["data"]["websub_delivered_at"], "2026-06-11 13:00:00")
+		self.assertTrue(res_consent["data"]["websub_delivered_at"].startswith("2026-06-11T13:00:00"))
 		self.assertEqual(res_consent["data"]["consent_type"], "Personal Data Sharing")
 		self.assertEqual(res_consent["data"]["purpose"], "Loan Credit Risk Analysis")
 		self.assertEqual(res_consent["data"]["validity_from"], "2026-06-11")

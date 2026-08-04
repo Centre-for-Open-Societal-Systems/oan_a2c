@@ -521,6 +521,7 @@ def add_lead_credit_info(**kwargs):
 	if not frappe.db.exists("A2C Loan Product", loan_product):
 		frappe.throw(_("Loan Product {0} not found").format(loan_product), frappe.DoesNotExistError)
 
+	if not loan_type:
 		category = frappe.db.get_value(
 			"A2C Term Relationship",
 			{"loan_product": loan_product, "term_type": "Category"},
@@ -867,6 +868,12 @@ def get_lead_timeline(**kwargs):
 		order_by="creation desc",
 	)
 
+	from oan_a2c.api.utils import to_tz_aware_iso
+
+	for event in timeline:
+		if event.get("creation"):
+			event["creation"] = to_tz_aware_iso(event["creation"])
+
 	return success_response(
 		data={"lead_id": lead_id, "timeline": timeline}, message="Lead timeline retrieved successfully"
 	)
@@ -902,10 +909,16 @@ def get_lead_call_logs(**kwargs):
 				key, val = part.split(":", 1)
 				log_entry[key.strip().lower().replace(" ", "_")] = val.strip()
 		if log_entry:
+			from oan_a2c.api.utils import to_tz_aware_iso
+
 			# Always expose both time keys so the frontend has a stable shape.
 			# Fall back to the reliable server time when the reported one is absent.
 			log_entry.setdefault("received", None)
 			log_entry.setdefault("timestamp", log_entry.get("received"))
+			# Only normalize the server-recorded time; timestamp is caller-reported
+			# and may already carry timezone info — pass it through verbatim.
+			if log_entry.get("received"):
+				log_entry["received"] = to_tz_aware_iso(log_entry["received"])
 			parsed_logs.append(log_entry)
 
 	return success_response(

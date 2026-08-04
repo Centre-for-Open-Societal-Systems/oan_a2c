@@ -5,7 +5,7 @@ from frappe import _
 from frappe.utils import now_datetime
 from pydantic import BaseModel, Field
 
-from oan_a2c.api.utils import SafeDate, handle_api_errors, success_response, validate_request
+from oan_a2c.api.utils import SafeDate, handle_api_errors, success_response, to_tz_aware_iso, validate_request
 from oan_a2c.api.v1.webhook_consent_data import validate_and_enqueue_consent
 
 from .openg2p_client import OpenG2PConsentClient
@@ -178,11 +178,11 @@ def _save_farmer_data_to_lead(lead_id, farmer_dict, openg2p_consent_id):
 		synthetic_payload = {
 			"source": "frappe_direct_fetch",
 			"event_type": "WEBSUB_INDIVIDUAL_UPDATED",
-			"published_at": str(now_datetime()),
+			"published_at": to_tz_aware_iso(now_datetime()),
 			"consent": {
 				"consent_creation_request_id": openg2p_consent_id,
 				"status": "approved",
-				"approved_at": str(now_datetime()),
+				"approved_at": to_tz_aware_iso(now_datetime()),
 			},
 			"farmer": farmer_record,
 			"selected_data": selected_data,
@@ -417,17 +417,21 @@ def _save_direct_consent_response_to_lead(consent_request, response_data, openg2
 		payload = {
 			"source": "frappe_direct_response",
 			"event_type": "WEBSUB_INDIVIDUAL_UPDATED",
-			"published_at": str(now_datetime()),
+			"published_at": to_tz_aware_iso(now_datetime()),
 			"consent": {
 				"id": openg2p_consent_id,
 				"consent_creation_request_id": str(openg2p_consent_id),
 				"status": "approved",
-				"approved_at": str(now_datetime()),
+				"approved_at": to_tz_aware_iso(now_datetime()),
 			},
 			"selected_data": response_data,
 		}
 		# enforce_permission=False: called in-process, not via authenticated HTTP.
-		validate_and_enqueue_consent(payload, enforce_permission=False, sync=True)
+		# enqueue_after_commit: process_consent_data must run in its own
+		# transaction only after submit_consent commits — both so it sees the
+		# committed openg2p_consent_id/status, and so its rollback/commit can
+		# never corrupt this request's transaction.
+		validate_and_enqueue_consent(payload, enforce_permission=False, enqueue_after_commit=True)
 		frappe.logger().info(f"Direct consent response enqueued for {consent_request}")
 		return True
 	except Exception as e:

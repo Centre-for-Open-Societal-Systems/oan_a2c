@@ -21,7 +21,35 @@ class A2CLoanProduct(Document):
 			docname=self.name,
 		)
 
+	# Content fields whose edit invalidates a prior approval — changing any of
+	# these on an already-approved product forces it back to Draft for re-review.
+	CONTENT_FIELDS = (
+		"product_name",
+		"min_interest_rate",
+		"max_interest_rate",
+		"min_amount",
+		"max_amount",
+		"tenure_months",
+		"description",
+		"image",
+	)
+
 	def before_save(self):
+		# Revert to Draft when the product's content is edited after approval, so
+		# an Active/Archived product must be re-activated. A pure status change
+		# (e.g. set_product_status activating the product) touches no content
+		# field, so it is left untouched.
+		before = self.get_doc_before_save()
+		if not self.is_new() and before and self.status != "Draft":
+			for f in self.CONTENT_FIELDS:
+				if self.has_value_changed(f):
+					# Ignore empty→empty normalization (None vs "" vs 0); a real
+					# edit like 5→0 still reverts because the old value is truthy.
+					if not before.get(f) and not self.get(f):
+						continue
+					self.status = "Draft"
+					break
+
 		if self.product_name:
 			base_slug = frappe.scrub(self.product_name).replace("_", "-")
 			candidate_slug = f"{self.bank}-{base_slug}"

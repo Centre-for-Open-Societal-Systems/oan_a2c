@@ -97,6 +97,50 @@ def parse_multi_value(value, allowed=None):
 	return result
 
 
+def to_tz_aware_iso(dt):
+	"""Convert a naive Frappe datetime to a timezone-aware ISO 8601 string in the system timezone."""
+	if not dt:
+		return None
+	import pytz
+	from frappe.utils import get_datetime, get_system_timezone
+
+	dt_obj = get_datetime(dt)
+	system_tz = pytz.timezone(get_system_timezone())
+	return system_tz.localize(dt_obj).isoformat()
+
+
+def from_tz_aware_iso(value):
+	"""Inverse of to_tz_aware_iso: parse an ISO 8601 string (tz-aware or naive)
+	into a naive datetime in the system timezone.
+
+	Frappe Datetime fields map to MariaDB `datetime` columns, which reject
+	tz-aware ISO strings like '2026-08-04T11:05:27+05:30' (the 'T' separator and
+	offset are invalid). Use this before writing an ISO timestamp produced by
+	to_tz_aware_iso (e.g. a webhook `published_at`) into a Datetime field.
+	"""
+	if not value:
+		return None
+
+	import pytz
+	from frappe.utils import get_datetime, get_system_timezone
+
+	if isinstance(value, str):
+		from datetime import datetime
+
+		try:
+			dt_obj = datetime.fromisoformat(value)
+		except ValueError:
+			# Fall back to Frappe's tolerant parser for non-ISO inputs.
+			return get_datetime(value)
+	else:
+		dt_obj = value
+
+	if dt_obj.tzinfo is not None:
+		system_tz = pytz.timezone(get_system_timezone())
+		dt_obj = dt_obj.astimezone(system_tz).replace(tzinfo=None)
+	return dt_obj
+
+
 def validate_date_string(v):
 	"""Validate that a string represents a valid date or datetime."""
 	if v:

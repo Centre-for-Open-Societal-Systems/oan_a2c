@@ -6,68 +6,82 @@ from oan_a2c.api.v1.webhooks import lead_inbound
 
 
 def _make_lead_verifiable(lead_id):
-	"""Create the prerequisites a lead needs before it can move to 'Verified'.
+	"""Create fresh prerequisites for lead verification and return a cleanup list.
 
-	The workflow gate (A2CLead._enforce_verification_prerequisites) requires at
-	least one A2C Credit Information and an Approved A2C Consent Request linked to
-	the lead. Idempotent so it can be called from setUp without piling up records.
+	Always creates new records — never reuses ambient data. Callers must store
+	the returned list and delete each (doctype, name) pair in tearDown.
 	"""
-	if not frappe.db.exists("A2C Credit Information", {"lead": lead_id}):
-		prod = frappe.db.get_value("A2C Loan Product", {}, "name")
-		if not prod:
-			bank = frappe.db.get_value("A2C Participating Bank", {}, "name")
-			if not bank:
-				bank = (
-					frappe.get_doc(
-						{
-							"doctype": "A2C Participating Bank",
-							"bank_name": "Test Bank",
-							"bank_code": "TB123",
-							"status": "In Review",
-							"entity_type": "Commercial Bank",
-							"registered_email": "tb123@test.com",
-							"registered_phone": "+251911000000",
-							"registered_city": "Addis Ababa",
-							"registered_country": "Ethiopia",
-						}
-					)
-					.insert(ignore_permissions=True)
-					.name
-				)
-			prod = (
-				frappe.get_doc(
-					{
-						"doctype": "A2C Loan Product",
-						"product_name": "Test Product",
-						"bank": bank,
-						"status": "Active",
-						"min_interest_rate": 5,
-						"max_amount": 100000,
-						"tenure_months": 12,
-					}
-				)
-				.insert(ignore_permissions=True)
-				.name
-			)
-		frappe.get_doc(
-			{
-				"doctype": "A2C Credit Information",
-				"lead": lead_id,
-				"loan_type": "Input loan (seeds, agrochemicals)",
-				"loan_amount": 5000.0,
-				"purpose_message": "Verification prerequisite",
-				"loan_product": prod,
-			}
-		).insert(ignore_permissions=True)
-	if not frappe.db.exists("A2C Consent Request", {"lead": lead_id, "status": "Approved"}):
-		frappe.get_doc(
-			{
-				"doctype": "A2C Consent Request",
-				"lead": lead_id,
-				"status": "Approved",
-			}
-		).insert(ignore_permissions=True)
+	suffix = frappe.generate_hash(length=6)
+
+	bank = frappe.get_doc(
+		{
+			"doctype": "A2C Participating Bank",
+			"bank_name": f"Verifiable Test Bank {suffix}",
+			"bank_code": f"VTB{suffix}",
+			"status": "In Review",
+			"entity_type": "Commercial Bank",
+			"registered_email": f"vtb{suffix}@test.com",
+			"registered_phone": "+251911000000",
+			"registered_city": "Addis Ababa",
+			"registered_country": "Ethiopia",
+		}
+	).insert(ignore_permissions=True)
+
+	product = frappe.get_doc(
+		{
+			"doctype": "A2C Loan Product",
+			"product_name": f"Verifiable Test Product {suffix}",
+			"bank": bank.name,
+			"status": "Active",
+			"min_interest_rate": 5,
+			"max_amount": 100000,
+			"tenure_months": 12,
+		}
+	).insert(ignore_permissions=True)
+
+	credit_info = frappe.get_doc(
+		{
+			"doctype": "A2C Credit Information",
+			"lead": lead_id,
+			"loan_type": "Input loan (seeds, agrochemicals)",
+			"loan_amount": 5000.0,
+			"purpose_message": "Verification prerequisite",
+			"loan_product": product.name,
+		}
+	).insert(ignore_permissions=True)
+
+	consent = frappe.get_doc(
+		{
+			"doctype": "A2C Consent Request",
+			"lead": lead_id,
+			"status": "Approved",
+		}
+	).insert(ignore_permissions=True)
+
+	visit = frappe.get_doc(
+		{
+			"doctype": "A2C Visit Schedule",
+			"lead": lead_id,
+			"visit_date": "2026-01-01",
+			"visit_time": "09:00:00",
+			"region": "Oromia",
+			"zone": "West Hararghe",
+			"woreda": "Chiro",
+			"kebele": "01",
+			"status": "Scheduled",
+		}
+	).insert(ignore_permissions=True)
+
 	frappe.db.commit()
+
+	# Return in deletion order: children before parents to avoid FK issues.
+	return [
+		("A2C Visit Schedule", visit.name),
+		("A2C Consent Request", consent.name),
+		("A2C Credit Information", credit_info.name),
+		("A2C Loan Product", product.name),
+		("A2C Participating Bank", bank.name),
+	]
 
 
 class TestA2CLead(unittest.TestCase):
@@ -596,6 +610,14 @@ class TestVisitScheduleAPI(unittest.TestCase):
 		for name in frappe.get_all("A2C Visit Schedule", pluck="name"):
 			frappe.delete_doc("A2C Visit Schedule", name, ignore_permissions=True, force=True)
 		frappe.db.commit()
+		self._verifiable_cleanup = []
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		for doctype, name in self._verifiable_cleanup:
+			if frappe.db.exists(doctype, name):
+				frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)
+		frappe.db.commit()
 
 	def test_schedule_visit_success(self):
 		"""Verifies that schedule_visit successfully creates a visit schedule, promotes lead status, and logs timeline."""
@@ -645,7 +667,7 @@ class TestVisitScheduleAPI(unittest.TestCase):
 		# Verification requires credit info + an approved consent to be in place.
 		from oan_a2c.api.v1.leads import update_lead_status
 
-		_make_lead_verifiable(self.lead_id)
+		self._verifiable_cleanup = _make_lead_verifiable(self.lead_id)
 		update_lead_status(lead_id=self.lead_id, status="Verified")
 
 		# Verify Lead status is now Verified
@@ -784,6 +806,14 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 		for comment in comments:
 			frappe.delete_doc("A2C Lead Audit Event", comment, ignore_permissions=True, force=True)
 		frappe.db.commit()
+		self._verifiable_cleanup = []
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		for doctype, name in self._verifiable_cleanup:
+			if frappe.db.exists(doctype, name):
+				frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)
+		frappe.db.commit()
 
 	def test_1_update_status_success(self):
 		"""Verifies that update_lead_status successfully updates status and records the reason as a timeline comment."""
@@ -791,7 +821,7 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 
 		# A lead can only move Active -> Verified once credit info + an approved
 		# consent exist (enforced by the workflow gate).
-		_make_lead_verifiable(self.lead_id)
+		self._verifiable_cleanup = _make_lead_verifiable(self.lead_id)
 
 		res = update_lead_status(
 			lead_id=self.lead_id,
@@ -829,7 +859,7 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 
 		# 1. Walk the workflow to the terminal Processed state: Active -> Verified
 		#    (requires prerequisites) -> Processed.
-		_make_lead_verifiable(self.lead_id)
+		self._verifiable_cleanup = _make_lead_verifiable(self.lead_id)
 		update_lead_status(lead_id=self.lead_id, status="Verified", reason="Verified before processing.")
 		update_lead_status(
 			lead_id=self.lead_id, status="Processed", reason="Processing lead to loan application."
@@ -999,7 +1029,6 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
 		frappe.set_user("Administrator")
-		# Create a test lead
 		cls.lead = frappe.new_doc("A2C Lead")
 		cls.lead.phone_number = "+251977000001"
 		cls.lead.lead_source = "Agent Entry"
@@ -1007,43 +1036,32 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 		cls.lead.insert(ignore_permissions=True)
 		cls.lead_id = cls.lead.name
 
-		prod = frappe.db.get_value("A2C Loan Product", {}, "name")
-		if not prod:
-			bank = frappe.db.get_value("A2C Participating Bank", {}, "name")
-			if not bank:
-				bank = (
-					frappe.get_doc(
-						{
-							"doctype": "A2C Participating Bank",
-							"bank_name": "Test Bank",
-							"bank_code": "TB123",
-							"status": "In Review",
-							"entity_type": "Commercial Bank",
-							"registered_email": "tb123@test.com",
-							"registered_phone": "+251911000000",
-							"registered_city": "Addis Ababa",
-							"registered_country": "Ethiopia",
-						}
-					)
-					.insert(ignore_permissions=True)
-					.name
-				)
-			prod = (
-				frappe.get_doc(
-					{
-						"doctype": "A2C Loan Product",
-						"product_name": "Test Product",
-						"bank": bank,
-						"status": "Active",
-						"min_interest_rate": 5,
-						"max_amount": 100000,
-						"tenure_months": 12,
-					}
-				)
-				.insert(ignore_permissions=True)
-				.name
-			)
-		cls.test_product = prod
+		suffix = frappe.generate_hash(length=6)
+		cls._bank = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"bank_name": f"XSS Test Bank {suffix}",
+				"bank_code": f"XSS{suffix}",
+				"status": "In Review",
+				"entity_type": "Commercial Bank",
+				"registered_email": f"xss{suffix}@test.com",
+				"registered_phone": "+251911000000",
+				"registered_city": "Addis Ababa",
+				"registered_country": "Ethiopia",
+			}
+		).insert(ignore_permissions=True)
+		cls._product = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"XSS Test Product {suffix}",
+				"bank": cls._bank.name,
+				"status": "Active",
+				"min_interest_rate": 5,
+				"max_amount": 100000,
+				"tenure_months": 12,
+			}
+		).insert(ignore_permissions=True)
+		cls.test_product = cls._product.name
 		frappe.db.commit()
 
 	@classmethod
@@ -1051,6 +1069,21 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 		frappe.set_user("Administrator")
 		for name in frappe.get_all("A2C Lead", filters={"phone_number": "+251977000001"}, pluck="name"):
 			frappe.delete_doc("A2C Lead", name, ignore_permissions=True, force=True)
+		if frappe.db.exists("A2C Loan Product", cls._product.name):
+			frappe.delete_doc("A2C Loan Product", cls._product.name, ignore_permissions=True, force=True)
+		if frappe.db.exists("A2C Participating Bank", cls._bank.name):
+			frappe.delete_doc("A2C Participating Bank", cls._bank.name, ignore_permissions=True, force=True)
+		frappe.db.commit()
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		self._verifiable_cleanup = []
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+		for doctype, name in self._verifiable_cleanup:
+			if frappe.db.exists(doctype, name):
+				frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)
 		frappe.db.commit()
 
 	def test_comment_content_sanitization(self):
@@ -1069,7 +1102,7 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 	def test_lead_status_reason_sanitization(self):
 		from oan_a2c.api.v1.leads import update_lead_status
 
-		_make_lead_verifiable(self.lead_id)
+		self._verifiable_cleanup = _make_lead_verifiable(self.lead_id)
 		payload = "<iframe src='javascript:alert(1)'></iframe>Reason text"
 		res = update_lead_status(lead_id=self.lead_id, status="Verified", reason=payload)
 		self.assertEqual(res["status"], "success")

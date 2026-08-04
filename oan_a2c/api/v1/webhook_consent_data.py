@@ -5,7 +5,13 @@ from typing import Any as DummyAny
 import frappe
 from pydantic import BaseModel, Field, ValidationError
 
-from oan_a2c.api.utils import handle_api_errors, notify_lead_event, success_response, validate_request
+from oan_a2c.api.utils import (
+	from_tz_aware_iso,
+	handle_api_errors,
+	notify_lead_event,
+	success_response,
+	validate_request,
+)
 
 
 class SelectedDataSchema(BaseModel):
@@ -139,7 +145,10 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 			updates_dict["status"] = new_status.capitalize() if new_status.islower() else new_status
 
 		if validated.published_at:
-			updates_dict["websub_delivered_at"] = validated.published_at
+			# published_at is a tz-aware ISO 8601 string (see to_tz_aware_iso);
+			# websub_delivered_at is a Datetime column that rejects it, so
+			# normalize to a naive system-tz datetime before persisting.
+			updates_dict["websub_delivered_at"] = from_tz_aware_iso(validated.published_at)
 
 		if consent_info.validity_from:
 			updates_dict["validity_from"] = consent_info.validity_from.split(" ")[0].split("T")[0]
@@ -355,7 +364,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		raise e
 
 
-def validate_and_enqueue_consent(data, enforce_permission=True, sync=False):
+def validate_and_enqueue_consent(data, enforce_permission=True, sync=False, enqueue_after_commit=False):
 	"""
 	Internal: validate an OpenG2P consent payload and enqueue background
 	processing. Returns the resolved A2C Consent Request name.
@@ -364,8 +373,13 @@ def validate_and_enqueue_consent(data, enforce_permission=True, sync=False):
 	through HTTP auth. When called from the authenticated receiver, pass
 	enforce_permission=True so the caller's write permission is checked.
 
-	Pass sync=True to run process_consent_data inline instead of enqueuing
-	(used by the direct-response path where the payload arrives in-request).
+	Pass sync=True to run process_consent_data inline. Avoid this from within
+	an open request transaction: process_consent_data manages its own
+	rollback/commit, so an inline failure rolls back the caller's transaction
+	and commits a "Failed" status underneath it. The direct-response path
+	instead uses enqueue_after_commit=True so processing runs in its own
+	isolated transaction only after the request commits — identical to the
+	real WebSub webhook path.
 	"""
 	try:
 		validated_data = ReceiveConsentDataSchema.model_validate(data)
@@ -407,6 +421,7 @@ def validate_and_enqueue_consent(data, enforce_permission=True, sync=False):
 		frappe.enqueue(
 			method=process_consent_data,
 			queue="default",
+			enqueue_after_commit=enqueue_after_commit,
 			data=data,
 			consent_doc_name=consent_doc_name,
 			consent_request_id=str(consent_id),
