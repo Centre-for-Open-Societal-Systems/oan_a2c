@@ -3,6 +3,7 @@ import hashlib
 import secrets
 import string
 import time
+from typing import Literal
 
 import frappe
 import jwt
@@ -90,6 +91,18 @@ class UpdateProfileSchema(BaseModel):
 	phone_number: str | None = Field(default=None)
 	language: str | None = Field(default=None)
 	user_image: str | None = Field(default=None)
+	gender: (
+		Literal[
+			"Male",
+			"Female",
+			"Other",
+			"Transgender",
+			"Genderqueer",
+			"Non-Conforming",
+			"Prefer not to say",
+		]
+		| None
+	) = Field(default=None)
 
 
 class ChangePasswordSchema(BaseModel):
@@ -505,6 +518,7 @@ def get_user_profile():
 				"user_image": getattr(user, "user_image", None),
 				"full_name": user.full_name,
 				"email_address": user.email,
+				"gender": getattr(user, "gender", None),
 				"phone_number": getattr(user, "mobile_no", None) or getattr(user, "phone", None),
 				"language": getattr(user, "language", None) or "English",
 			},
@@ -574,6 +588,7 @@ def update_profile(
 	phone_number: str | None = None,
 	language: str | None = None,
 	user_image: str | None = None,
+	gender: str | None = None,
 ):
 	"""
 	Updates the authenticated user's profile details.
@@ -593,6 +608,8 @@ def update_profile(
 		user.mobile_no = phone_number.strip()
 	if language is not None:
 		user.language = _resolve_language(language)
+	if gender is not None:
+		user.gender = gender.strip()
 	if user_image is not None:
 		user_image = user_image.strip()
 		if user.user_image and user.user_image != user_image:

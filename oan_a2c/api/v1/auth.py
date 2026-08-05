@@ -44,6 +44,9 @@ def create_user_account(
 	if frappe.db.exists("User", email):
 		return frappe.get_doc("User", email)
 
+	if frappe.db.exists("User", {"mobile_no": phone_number}):
+		return None
+
 	first_name, _sep, last_name = full_name.strip().partition(" ")
 
 	user_data = {
@@ -59,7 +62,15 @@ def create_user_account(
 		user_data["roles"] = [{"role": role}]
 
 	user = frappe.get_doc(user_data)
-	user.insert(ignore_permissions=True)
+
+	log_count = len(frappe.local.message_log) if getattr(frappe.local, "message_log", None) else 0
+	try:
+		user.insert(ignore_permissions=True)
+	except (frappe.UniqueValidationError, frappe.DuplicateEntryError):
+		frappe.db.rollback()
+		if hasattr(frappe.local, "message_log"):
+			frappe.local.message_log = frappe.local.message_log[:log_count]
+		return None
 
 	return user
 
@@ -81,4 +92,10 @@ def register_user(email: str, full_name: str, password: str, phone_number: str, 
 		phone_number=phone_number,
 		role=role,
 	)
-	return success_response(data={"message": _("Account registered successfully. You may now login.")})
+	return success_response(
+		data={
+			"message": _(
+				"If your email and phone number are not already registered, your account has been created successfully."
+			)
+		}
+	)
