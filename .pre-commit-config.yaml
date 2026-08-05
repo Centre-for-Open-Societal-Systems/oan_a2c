@@ -63,6 +63,7 @@ repos:
                 oan_a2c/public/js/lib/.*
             )$
 
+
 ci:
     autoupdate_schedule: weekly
     skip: []

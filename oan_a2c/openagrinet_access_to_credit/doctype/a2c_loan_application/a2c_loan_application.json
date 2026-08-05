@@ -13,6 +13,14 @@
   "current_step",
   "loan_officer",
   "credit_info_section",
+  "bank",
+  "loan_product",
+  "loan_product_name",
+  "requested_amount",
+  "approved_amount",
+  "interest_rate",
+  "tenure_months",
+  "term_snapshot",
   "loan_amount",
   "loan_type",
   "col_break_loan",
@@ -318,6 +326,55 @@
    "fieldtype": "Link",
    "label": "Consent ID",
    "options": "A2C Consent Request"
+  },
+  {
+   "fieldname": "bank",
+   "fieldtype": "Data",
+   "label": "Bank",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "loan_product",
+   "fieldtype": "Data",
+   "label": "Loan Product",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "loan_product_name",
+   "fieldtype": "Data",
+   "label": "Loan Product Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "requested_amount",
+   "fieldtype": "Currency",
+   "label": "Requested Amount",
+   "reqd": 1
+  },
+  {
+   "fieldname": "approved_amount",
+   "fieldtype": "Currency",
+   "label": "Approved Amount"
+  },
+  {
+   "fieldname": "interest_rate",
+   "fieldtype": "Percent",
+   "label": "Interest Rate",
+   "read_only": 1
+  },
+  {
+   "fieldname": "tenure_months",
+   "fieldtype": "Int",
+   "label": "Tenure (Months)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "term_snapshot",
+   "fieldtype": "Table",
+   "label": "Term Snapshot",
+   "options": "A2C Loan Application Term Snapshot",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
@@ -337,15 +394,20 @@
  "owner": "Administrator",
  "permissions": [
   {
-   "create": 1,
    "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Bank Agent",
-   "submit": 1,
-   "write": 1
+   "role": "A2C Bank Agent"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Bank Admin"
   },
   {
    "create": 1,
@@ -354,7 +416,7 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Development Agent",
+   "role": "A2C Development Agent",
    "write": 1
   },
   {
@@ -368,6 +430,21 @@
    "read": 1,
    "report": 1,
    "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Administrator",
    "share": 1,
    "submit": 1,
    "write": 1

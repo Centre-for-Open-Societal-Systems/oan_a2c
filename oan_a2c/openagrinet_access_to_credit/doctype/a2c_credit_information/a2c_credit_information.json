@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "lead",
+  "loan_product",
   "loan_type",
   "loan_amount",
   "purpose_message",
@@ -24,10 +25,18 @@
    "in_standard_filter": 1
   },
   {
+   "fieldname": "loan_product",
+   "fieldtype": "Link",
+   "label": "Loan Product",
+   "options": "A2C Loan Product",
+   "reqd": 1,
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
    "fieldname": "loan_type",
-   "fieldtype": "Select",
+   "fieldtype": "Data",
    "label": "Loan Type",
-   "options": "Input loan (seeds, agrochemicals)\nAgricultural term loan\nSmallholder short-term loan\nLand loan\nFarm equipment loan\nSmallholder farmer direct loan",
    "reqd": 1,
    "in_list_view": 1,
    "in_standard_filter": 1
@@ -71,19 +80,7 @@
    "print": 0,
    "read": 1,
    "report": 0,
-   "role": "Development Agent",
-   "share": 0,
-   "write": 1
-  },
-  {
-   "create": 0,
-   "delete": 0,
-   "email": 0,
-   "export": 0,
-   "print": 0,
-   "read": 1,
-   "report": 0,
-   "role": "Bank Agent",
+   "role": "A2C Development Agent",
    "share": 0,
    "write": 1
   },
@@ -96,6 +93,18 @@
    "read": 1,
    "report": 1,
    "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Administrator",
    "share": 1,
    "write": 1
   }

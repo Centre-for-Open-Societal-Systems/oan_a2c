@@ -1,0 +1,207 @@
+{
+ "actions": [],
+ "autoname": "format:PB-{####}",
+ "creation": "2026-07-20 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "bank_name",
+  "bank_code",
+  "entity_type",
+  "brand_name",
+  "website",
+  "status",
+  "registered_email",
+  "registered_phone",
+  "logo",
+  "registered_street",
+  "registered_kebele_village",
+  "registered_woreda_district",
+  "registered_city",
+  "registered_country",
+  "registered_postal_code",
+  "kyc_document",
+  "gro_name",
+  "gro_mobile",
+  "commission_rate",
+  "ops_name",
+  "ops_mobile"
+ ],
+ "fields": [
+  {
+   "fieldname": "bank_name",
+   "fieldtype": "Data",
+   "label": "Bank Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "bank_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Bank Code",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "entity_type",
+   "fieldtype": "Data",
+   "label": "Entity Type",
+   "reqd": 1
+  },
+  {
+   "fieldname": "brand_name",
+   "fieldtype": "Data",
+   "label": "Brand Name"
+  },
+  {
+   "fieldname": "website",
+   "fieldtype": "Data",
+   "label": "Website"
+  },
+  {
+   "default": "In Review",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "In Review\nActive\nSuspended"
+  },
+  {
+   "fieldname": "registered_email",
+   "fieldtype": "Data",
+   "label": "Registered Email",
+   "reqd": 1
+  },
+  {
+   "fieldname": "registered_phone",
+   "fieldtype": "Data",
+   "label": "Registered Phone",
+   "reqd": 1
+  },
+  {
+   "fieldname": "commission_rate",
+   "fieldtype": "Percent",
+   "label": "Commission Rate"
+  },
+  {
+   "fieldname": "logo",
+   "fieldtype": "Attach Image",
+   "label": "Logo"
+  },
+  {
+   "fieldname": "registered_street",
+   "fieldtype": "Data",
+   "label": "Registered Street"
+  },
+  {
+   "fieldname": "registered_kebele_village",
+   "fieldtype": "Data",
+   "label": "Registered Kebele/Village"
+  },
+  {
+   "fieldname": "registered_woreda_district",
+   "fieldtype": "Data",
+   "label": "Registered Woreda/District"
+  },
+  {
+   "fieldname": "registered_city",
+   "fieldtype": "Data",
+   "label": "Registered City",
+   "reqd": 1
+  },
+  {
+   "fieldname": "registered_country",
+   "fieldtype": "Data",
+   "label": "Registered Country",
+   "reqd": 1
+  },
+  {
+   "fieldname": "registered_postal_code",
+   "fieldtype": "Data",
+   "label": "Registered Postal Code"
+  },
+  {
+   "fieldname": "kyc_document",
+   "fieldtype": "Attach",
+   "label": "KYC Document"
+  },
+  {
+   "fieldname": "gro_name",
+   "fieldtype": "Data",
+   "label": "GRO Name"
+  },
+  {
+   "fieldname": "gro_mobile",
+   "fieldtype": "Data",
+   "label": "GRO Mobile"
+  },
+  {
+   "fieldname": "ops_name",
+   "fieldtype": "Data",
+   "label": "Ops Name"
+  },
+  {
+   "fieldname": "ops_mobile",
+   "fieldtype": "Data",
+   "label": "Ops Mobile"
+  }
+ ],
+ "links": [],
+ "modified": "2026-07-31 12:06:42.048439",
+ "modified_by": "Administrator",
+ "module": "A2C Marketplace",
+ "name": "A2C Participating Bank",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Bank Admin",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Bank Agent",
+   "share": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

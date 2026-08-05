@@ -1,92 +1,127 @@
-'''
-	  - Enforces JWT session validation via whitelist allow_guest=False.
-	  - Explicitly executes frappe.has_permission.
-	  - Leverages frappe.get_list() to ensure Frappe's RBAC and User Permissions (multi-tenant
-	    data isolation) are dynamically applied at the database query layer.
-'''
-import frappe
+"""
+- Enforces JWT session validation via whitelist allow_guest=False.
+- Explicitly executes frappe.has_permission.
+- Leverages frappe.get_list() to ensure Frappe's RBAC and User Permissions (multi-tenant
+  data isolation) are dynamically applied at the database query layer.
+"""
+
 import zlib
+from typing import Literal, Optional
+
+import frappe
 from frappe import _
 from frappe.utils import sanitize_html, strip_html
-from oan_a2c.api.utils import success_response, handle_api_errors, parse_multi_value, validate_request, SafeDate, SafeEmail, apply_status_transition
-from pydantic import BaseModel, Field, field_validator
-from typing import Optional, Literal
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from oan_a2c.a2c_marketplace.roles import BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
+from oan_a2c.api.utils import (
+	RequiredPhone,
+	SafeDate,
+	SafeEmail,
+	apply_status_transition,
+	handle_api_errors,
+	parse_multi_value,
+	success_response,
+	validate_request,
+)
+
 
 class GetLeadsSchema(BaseModel):
-	start: Optional[int] = Field(None, ge=0)
-	page_length: Optional[int] = Field(None, ge=1, le=100)
-	search_query: Optional[str] = None
-	status: Optional[str] = None
-	lead_source: Optional[str] = None
-	loan_type: Optional[str] = None
-	assigned_to: Optional[str] = None
+	start: int | None = Field(None, ge=0)
+	page_length: int | None = Field(None, ge=1, le=100)
+	search_query: str | None = Field(None, max_length=140)
+	status: str | None = Field(None, max_length=140)
+	lead_source: str | None = Field(None, max_length=140)
+	loan_type: str | None = Field(None, max_length=140)
+	assigned_to: str | None = Field(None, max_length=140)
 	start_date: SafeDate = None
 	end_date: SafeDate = None
-	min_loan_amount: Optional[float] = None
-	max_loan_amount: Optional[float] = None
+	min_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	sort_by: Literal["loan_amount", "creation"] | None = None
+	sort_order: Literal["asc", "desc"] | None = None
+
+	@model_validator(mode="after")
+	def validate_loan_amount_range(self):
+		if self.min_loan_amount is not None and self.max_loan_amount is not None:
+			if self.min_loan_amount > self.max_loan_amount:
+				raise ValueError("min_loan_amount cannot be greater than max_loan_amount.")
+		return self
 
 
 class CreateLeadSchema(BaseModel):
-	phone_number: str = Field(..., min_length=1)
-	first_name: Optional[str] = None
-	last_name: Optional[str] = None
+	phone_number: RequiredPhone
+	first_name: str | None = Field(None, max_length=140)
+	last_name: str | None = Field(None, max_length=140)
 	email: SafeEmail = None
-	lead_source: Optional[Literal["Missed Call", "IVR", "SMS", "Agent Entry"]] = None
-	external_id: Optional[str] = None
+	lead_source: Literal["Missed Call", "IVR", "SMS", "Agent Entry"] | None = None
+	external_id: str | None = Field(None, max_length=140)
+
 
 class AddLeadCreditInfoSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	loan_type: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	loan_type: str | None = Field(default=None, max_length=140)
 	loan_amount: float = Field(..., gt=0, le=999999999999.0)
-	purpose_message: str = Field(..., min_length=1)
+	purpose_message: str = Field(..., min_length=1, max_length=2000)
+	loan_product: str = Field(..., min_length=1, max_length=140)
+
 
 class LeadIDSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+
 
 class UpdateLeadStatusSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
 	status: Literal["Active", "Verified", "Processed", "Granted", "Rejected", "Dormant"]
-	reason: Optional[str] = None
+	reason: str | None = Field(None, max_length=2000)
+
 
 class GetAssignableUsersSchema(BaseModel):
-	search_query: Optional[str] = None
-	start: Optional[int] = Field(None, ge=0)
-	page_length: Optional[int] = Field(None, ge=1, le=100)
+	search_query: str | None = Field(None, max_length=140)
+	start: int | None = Field(None, ge=0)
+	page_length: int | None = Field(None, ge=1, le=100)
+
 
 class AssignLeadSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	assigned_to: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	assigned_to: str = Field(..., min_length=1, max_length=140)
+
 
 class AddLeadCommentSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	content: str = Field(..., min_length=1)
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	content: str = Field(..., min_length=1, max_length=2000)
+
 
 class GetLeadTimelineSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	event_type: Optional[str] = None
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	event_type: str | None = Field(None, max_length=140)
+
 
 class ScheduleVisitSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
-	visit_date: str = Field(..., min_length=1)
-	visit_time: str = Field(..., min_length=1)
-	region: str = Field(..., min_length=1)
-	zone: str = Field(..., min_length=1)
-	woreda: str = Field(..., min_length=1)
-	kebele: str = Field(..., min_length=1)
-	meeting_location: Optional[str] = None
-	notes: Optional[str] = None
+	lead_id: str = Field(..., min_length=1, max_length=140)
+	visit_date: str = Field(..., min_length=1, max_length=50)
+	visit_time: str = Field(..., min_length=1, max_length=50)
+	region: str = Field(..., min_length=1, max_length=140)
+	zone: str = Field(..., min_length=1, max_length=140)
+	woreda: str = Field(..., min_length=1, max_length=140)
+	kebele: str = Field(..., min_length=1, max_length=140)
+	meeting_location: str | None = Field(None, max_length=255)
+	notes: str | None = Field(None, max_length=2000)
+
 
 class GetVisitSchedulesSchema(BaseModel):
-	lead_id: Optional[str] = None
+	lead_id: str | None = None
 	start_date: SafeDate = None
 	end_date: SafeDate = None
-	status: Optional[str] = None
-	start: Optional[int] = Field(None, ge=0)
-	page_length: Optional[int] = Field(None, ge=1, le=100)
+	status: str | None = None
+	start: int | None = Field(None, ge=0)
+	page_length: int | None = Field(None, ge=1, le=100)
+
 
 class UpdateVisitScheduleStatusSchema(BaseModel):
 	schedule_id: str = Field(..., min_length=1)
 	status: Literal["Scheduled", "Completed", "Cancelled", "Missed"]
+
 
 @frappe.whitelist(allow_guest=False)
 @validate_request(GetLeadsSchema)
@@ -96,7 +131,7 @@ def get_leads(**kwargs):
 	Retrieves a paginated list of A2C Leads with multi-faceted search and filter configurations.
 
 	Security Specs:
-	  - Parametrizes all inputs to prevent SQL Injection.
+	        - Parametrizes all inputs to prevent SQL Injection.
 	"""
 	start = kwargs.get("start") or 0
 	page_length = kwargs.get("page_length") or 20
@@ -109,6 +144,13 @@ def get_leads(**kwargs):
 	end_date = kwargs.get("end_date")
 	min_loan_amount = kwargs.get("min_loan_amount")
 	max_loan_amount = kwargs.get("max_loan_amount")
+
+	# Sorting: sort_by is Literal-constrained to safe columns (both native to
+	# A2C Lead -- loan_amount is denormalized from Credit Information), so it can't
+	# inject into order_by. Defaults preserve the prior "newest first" behavior.
+	sort_by = kwargs.get("sort_by") or "creation"
+	sort_order = "asc" if kwargs.get("sort_order") == "asc" else "desc"
+	order_by = f"{sort_by} {sort_order}"
 
 	# 1. Enforce Role-Based Access Control
 	frappe.has_permission("A2C Lead", "read", throw=True)
@@ -134,17 +176,17 @@ def get_leads(**kwargs):
 	# Apply Assigned Agent Filter (single user, comma-separated users, or the literal
 	# "unassigned" to return leads with no agent). User values are not constrained to an
 	# allowlist here; an unknown user simply yields no matches.
+	# Assignment tab filter: exactly three options, matching get_lead_summary's
+	# tab_counts -- "all" (no filter), "my" (assigned to caller), "unassigned"
+	# (no assignee). Any other value is ignored (treated as "all").
 	if assigned_to:
-		agents = [a.strip() for a in str(assigned_to).split(",") if a.strip()]
-		if any(a.lower() == "unassigned" for a in agents):
-			named = [a for a in agents if a.lower() != "unassigned"]
-			if named:
-				# "unassigned" OR one of the named agents
-				filters.append(["assigned_to", "in", named + [""]])
-			else:
-				filters.append(["assigned_to", "in", ["", None]])
-		elif agents:
-			filters.append(["assigned_to", "in", agents])
+		tab = str(assigned_to).strip().lower()
+		if tab == "my":
+			filters.append(["assigned_to", "=", frappe.session.user])
+		elif tab == "unassigned":
+			filters.append(["assigned_to", "in", ["", None]])
+		elif tab != "all":
+			filters.append(["assigned_to", "=", assigned_to])
 
 	# Apply Creation Date Range Filter
 	if start_date and end_date:
@@ -159,30 +201,23 @@ def get_leads(**kwargs):
 	# in one subquery so a lead must satisfy all supplied credit criteria.
 	valid_loan_types = []
 	if loan_type:
-		allowed_loan_types = tuple(
-			o.strip()
-			for o in (frappe.get_meta("A2C Credit Information").get_field("loan_type").options or "").split("\n")
-			if o.strip()
-		)
-		valid_loan_types = parse_multi_value(loan_type, allowed_loan_types)
+		# loan_type is free-text (derived from product category), so accept any value.
+		valid_loan_types = parse_multi_value(loan_type)
 
 	if min_loan_amount is not None or max_loan_amount is not None or valid_loan_types:
 		credit_filters = {}
 		if min_loan_amount is not None and max_loan_amount is not None:
-			credit_filters['loan_amount'] = ("between", [min_loan_amount, max_loan_amount])
+			credit_filters["loan_amount"] = ("between", [min_loan_amount, max_loan_amount])
 		elif min_loan_amount is not None:
-			credit_filters['loan_amount'] = (">=", min_loan_amount)
+			credit_filters["loan_amount"] = (">=", min_loan_amount)
 		elif max_loan_amount is not None:
-			credit_filters['loan_amount'] = ("<=", max_loan_amount)
+			credit_filters["loan_amount"] = ("<=", max_loan_amount)
 
 		if valid_loan_types:
-			credit_filters['loan_type'] = ("in", valid_loan_types)
+			credit_filters["loan_type"] = ("in", valid_loan_types)
 
 		matching_credit_leads = frappe.get_all(
-			"A2C Credit Information",
-			filters=credit_filters,
-			pluck="lead",
-			distinct=True
+			"A2C Credit Information", filters=credit_filters, pluck="lead", distinct=True
 		)
 
 		if matching_credit_leads:
@@ -202,22 +237,30 @@ def get_leads(**kwargs):
 
 	# 5. Fetch Total Record Count (Respecting RBAC and User Permissions via get_list counted select)
 	count_res = frappe.get_list(
-		"A2C Lead",
-		filters=filters,
-		or_filters=or_filters or None,
-		fields=[{"COUNT": "*"}]
+		"A2C Lead", filters=filters, or_filters=or_filters or None, fields=[{"COUNT": "*"}]
 	)
 	total_count = count_res[0].get("COUNT(*)") if count_res else 0
 
 	# 6. Fetch Paginated Records
 	leads = frappe.get_list(
 		"A2C Lead",
-		fields=["name", "phone_number", "first_name", "last_name", "external_id", "lead_source", "status", "assigned_to", "assigned_date", "creation"],
+		fields=[
+			"name",
+			"phone_number",
+			"first_name",
+			"last_name",
+			"external_id",
+			"lead_source",
+			"status",
+			"assigned_to",
+			"assigned_date",
+			"creation",
+		],
 		filters=filters,
 		or_filters=or_filters or None,
 		limit_start=start,
 		page_length=page_length,
-		order_by="creation desc"
+		order_by=order_by,
 	)
 
 	# Fetch linked loan_type and loan_amount from Credit Information for each lead in a single query (resolving N+1 query issue)
@@ -227,7 +270,7 @@ def get_leads(**kwargs):
 			"A2C Credit Information",
 			filters={"lead": ["in", lead_names]},
 			fields=["lead", "loan_type", "loan_amount"],
-			order_by="creation desc"
+			order_by="creation desc",
 		)
 
 		latest_credit_map = {}
@@ -250,7 +293,7 @@ def get_leads(**kwargs):
 			"A2C Visit Schedule",
 			filters={"lead": ["in", lead_names]},
 			fields=["lead", "visit_date", "status"],
-			order_by="visit_date desc, visit_time desc"
+			order_by="visit_date desc, visit_time desc",
 		)
 
 		latest_visit_map = {}
@@ -272,14 +315,10 @@ def get_leads(**kwargs):
 		"limit": page_length,
 		"total": total_count,
 		"total_pages": total_pages,
-		"has_next": has_next
+		"has_next": has_next,
 	}
 
-	return success_response(
-		data=leads,
-		message="Leads retrieved successfully",
-		pagination=pagination
-	)
+	return success_response(data=leads, message="Leads retrieved successfully", pagination=pagination)
 
 
 @frappe.whitelist(allow_guest=False)
@@ -288,7 +327,7 @@ def get_leads(**kwargs):
 def create_lead(**kwargs):
 	"""
 	Natively creates a new A2C Lead document from the A2C application interface.
-	
+
 	Security Specs:
 	  - Enforces JWT session validation via whitelist allow_guest=False.
 	  - Validates role creation permissions natively.
@@ -312,12 +351,17 @@ def create_lead(**kwargs):
 	if phone_number:
 		frappe.db.sql("SELECT name FROM `tabA2C Lead` WHERE phone_number = %s FOR UPDATE", (phone_number,))
 		if frappe.db.exists("A2C Lead", {"phone_number": phone_number}):
-			frappe.throw(_("Lead with phone number {0} already exists").format(phone_number), frappe.DuplicateEntryError)
+			frappe.throw(
+				_("Lead with phone number {0} already exists").format(phone_number),
+				frappe.DuplicateEntryError,
+			)
 
 	if external_id:
 		frappe.db.sql("SELECT name FROM `tabA2C Lead` WHERE external_id = %s FOR UPDATE", (external_id,))
 		if frappe.db.exists("A2C Lead", {"external_id": external_id}):
-			frappe.throw(_("Lead with external ID {0} already exists").format(external_id), frappe.DuplicateEntryError)
+			frappe.throw(
+				_("Lead with external ID {0} already exists").format(external_id), frappe.DuplicateEntryError
+			)
 
 	lead = frappe.new_doc("A2C Lead")
 	lead.phone_number = phone_number
@@ -327,6 +371,10 @@ def create_lead(**kwargs):
 	lead.lead_source = lead_source
 	lead.external_id = external_id
 	lead.status = "Active"
+	# A lead belongs to whoever created it: auto-assign to the creator so it shows
+	# up as "my lead" and (per the edit rule) only they can edit it.
+	lead.assigned_to = frappe.session.user
+	lead.assigned_date = frappe.utils.nowdate()
 	lead.insert(ignore_permissions=False)
 
 	audit_event = frappe.new_doc("A2C Lead Audit Event")
@@ -348,9 +396,9 @@ def create_lead(**kwargs):
 				"lead_source": lead.lead_source,
 				"external_id": lead.external_id,
 				"status": lead.status,
-			}
+			},
 		},
-		message="Lead created successfully."
+		message="Lead created successfully.",
 	)
 
 
@@ -365,39 +413,46 @@ def get_lead_summary():
 	frappe.has_permission("A2C Lead", "read", throw=True)
 
 	allowed_statuses = ("Active", "Verified", "Processed", "Granted", "Rejected", "Dormant")
-	counts_by_status = {}
+	counts_by_status = {st: 0 for st in allowed_statuses}
 	total_count = 0
 
-	for status in allowed_statuses:
-		cnt_res = frappe.get_list(
-			"A2C Lead",
-			filters={"status": status},
-			fields=[{"COUNT": "*"}]
-		)
-		count = cnt_res[0].get("COUNT(*)") if cnt_res else 0
-		counts_by_status[status] = count
-		total_count += count
-
-	# Assignment split: a lead is "assigned" when assigned_to is set, else "unassigned".
-	assigned_res = frappe.get_list(
+	grouped = frappe.get_list(
 		"A2C Lead",
-		filters={"assigned_to": ["is", "set"]},
-		fields=[{"COUNT": "*"}]
+		filters={"status": ["in", list(allowed_statuses)]},
+		fields=["status", {"COUNT": "*"}],
+		group_by="status",
 	)
-	assigned_count = assigned_res[0].get("COUNT(*)") if assigned_res else 0
-	unassigned_count = total_count - assigned_count
+	for row in grouped:
+		st = row.get("status")
+		cnt = row.get("COUNT(*)", 0)
+		if st in counts_by_status:
+			counts_by_status[st] = cnt
+			total_count += cnt
+
+	# Assignment split, mirroring get_loan_summary's tab_counts: "my" = leads
+	# assigned to the caller, "unassigned" = leads with no assignee.
+	user = frappe.session.user
+	my_res = frappe.get_list(
+		"A2C Lead",
+		filters={"status": ["in", list(allowed_statuses)], "assigned_to": user},
+		fields=[{"COUNT": "*"}],
+	)
+	my_count = my_res[0].get("COUNT(*)") if my_res else 0
+
+	unassigned_res = frappe.get_list(
+		"A2C Lead",
+		filters={"status": ["in", list(allowed_statuses)], "assigned_to": ["in", ["", None]]},
+		fields=[{"COUNT": "*"}],
+	)
+	unassigned_count = unassigned_res[0].get("COUNT(*)") if unassigned_res else 0
 
 	return success_response(
 		data={
 			"total": total_count,
 			"by_status": counts_by_status,
-			"tab_counts": {
-				"all": total_count,
-				"assigned": assigned_count,
-				"unassigned": unassigned_count
-			}
+			"tab_counts": {"all": total_count, "my": my_count, "unassigned": unassigned_count},
 		},
-		message="Lead summary retrieved successfully"
+		message="Lead summary retrieved successfully",
 	)
 
 
@@ -426,15 +481,7 @@ def get_lead_metadata():
 	statuses = status_field.options.split("\n") if status_field else []
 	sources = source_field.options.split("\n") if source_field else []
 
-	credit_meta = frappe.get_meta("A2C Credit Information")
-	loan_type_field = credit_meta.get_field("loan_type")
-	loan_types = loan_type_field.options.split("\n") if loan_type_field else []
-
-	data = {
-		"statuses": statuses,
-		"sources": sources,
-		"loan_types": loan_types
-	}
+	data = {"statuses": statuses, "sources": sources}
 	frappe.cache().set_value(cache_key, data, expires_in_sec=3600)
 
 	return success_response(data=data, message="Lead metadata retrieved successfully")
@@ -446,7 +493,7 @@ def get_lead_metadata():
 def add_lead_credit_info(**kwargs):
 	"""
 	Creates a new A2C Credit Information record associated with a lead.
-	
+
 	Security & Validation:
 	  - Enforces JWT session validation via whitelist allow_guest=False.
 	  - Checks user has 'write' permission on the lead and 'create' permission on A2C Credit Information.
@@ -456,6 +503,7 @@ def add_lead_credit_info(**kwargs):
 	loan_type = kwargs.get("loan_type")
 	loan_amount = kwargs.get("loan_amount")
 	purpose_message = kwargs.get("purpose_message")
+	loan_product = kwargs.get("loan_product")
 
 	if purpose_message:
 		purpose_message = strip_html(purpose_message)
@@ -467,18 +515,40 @@ def add_lead_credit_info(**kwargs):
 	if not frappe.db.exists("A2C Lead", lead_id):
 		frappe.throw(_("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
 
-	# Validate loan_type Select field input
-	meta = frappe.get_meta("A2C Credit Information")
-	loan_type_field = meta.get_field("loan_type")
-	allowed_types = loan_type_field.options.split("\n") if loan_type_field else []
-	if loan_type not in allowed_types:
-		frappe.throw(_("Invalid loan type: {0}").format(loan_type), frappe.ValidationError)
+	if not loan_product:
+		frappe.throw(_("Loan Product is required for Credit Information."), frappe.ValidationError)
+
+	if not frappe.db.exists("A2C Loan Product", loan_product):
+		frappe.throw(_("Loan Product {0} not found").format(loan_product), frappe.DoesNotExistError)
+
+	if not loan_type:
+		category = frappe.db.get_value(
+			"A2C Term Relationship",
+			{"loan_product": loan_product, "term_type": "Category"},
+			"term_category",
+		)
+		if not category:
+			frappe.throw(
+				_("Loan Product {0} has no category to derive a loan type from.").format(loan_product),
+				frappe.ValidationError,
+			)
+
+		# term_category stores the taxonomy term ID; resolve to the human-readable
+		# term name, which is what we store as the loan_type.
+		term = frappe.db.get_value("A2C Term Category", category, "term")
+		loan_type = frappe.db.get_value("A2C Term", term, "term_name") if term else None
+		if not loan_type:
+			frappe.throw(
+				_("Could not resolve a loan type from the product's category."),
+				frappe.ValidationError,
+			)
 
 	credit_info = frappe.new_doc("A2C Credit Information")
 	credit_info.lead = lead_id
 	credit_info.loan_type = loan_type
 	credit_info.loan_amount = loan_amount
 	credit_info.purpose_message = purpose_message
+	credit_info.loan_product = loan_product
 	credit_info.insert(ignore_permissions=False)
 
 	# Insert Audit Event
@@ -492,8 +562,7 @@ def add_lead_credit_info(**kwargs):
 	audit_event.insert()
 
 	return success_response(
-		data={"credit_info_id": credit_info.name},
-		message="Credit information added successfully."
+		data={"credit_info_id": credit_info.name}, message="Credit information added successfully."
 	)
 
 
@@ -514,13 +583,10 @@ def get_lead_credit_infos(**kwargs):
 		"A2C Credit Information",
 		fields=["name", "loan_type", "loan_amount", "purpose_message", "created_by", "creation"],
 		filters={"lead": lead_id},
-		order_by="creation desc"
+		order_by="creation desc",
 	)
 
-	return success_response(
-		data=results,
-		message="Lead credit information retrieved successfully"
-	)
+	return success_response(data=results, message="Lead credit information retrieved successfully")
 
 
 @frappe.whitelist(allow_guest=False)
@@ -569,11 +635,7 @@ def update_lead_status(**kwargs):
 	audit_event.insert()
 
 	return success_response(
-		data={
-			"lead_id": lead_id,
-			"new_status": status
-		},
-		message="Lead status updated successfully."
+		data={"lead_id": lead_id, "new_status": status}, message="Lead status updated successfully."
 	)
 
 
@@ -596,30 +658,40 @@ def get_assignable_users(**kwargs):
 	# do not have permission to read/query the Has Role doctype.
 	role_users = frappe.get_list(
 		"Has Role",
-		filters={"role": ["in", ["Development Agent", "Bank Agent"]]},
+		filters={"role": ["in", [DEVELOPMENT_AGENT_ROLE, BANK_AGENT_ROLE]]},
 		pluck="parent",
-		ignore_permissions=True
+		ignore_permissions=True,
 	)
 
 	if not role_users:
 		return success_response(
 			data=[],
 			message="Assignable users retrieved successfully",
-			pagination={
-				"start": start_idx,
-				"page_length": page_len,
-				"total_count": 0,
-				"has_next": False
-			}
+			pagination={"start": start_idx, "page_length": page_len, "total_count": 0, "has_next": False},
 		)
 
-	# TODO: Implement tenant/bank isolation context checks if scoped assignment requirements are introduced in the future.
-	# TODO: Create or use a dedicated Bank Agent mapping/relation table for get and assignable tasks in the future.
+	# Implement tenant/bank isolation: filter users to caller's bank if applicable
+	user_bank = frappe.db.get_value(
+		"User Permission", {"user": frappe.session.user, "allow": "A2C Participating Bank"}, "for_value"
+	)
+	if user_bank:
+		bank_users = frappe.get_all(
+			"User Permission",
+			filters={"allow": "A2C Participating Bank", "for_value": user_bank},
+			pluck="user",
+			ignore_permissions=True,
+		)
+		role_users = list(set(role_users).intersection(set(bank_users)))
+
+		if not role_users:
+			return success_response(
+				data=[],
+				message="Assignable users retrieved successfully",
+				pagination={"start": start_idx, "page_length": page_len, "total_count": 0, "has_next": False},
+			)
+
 	# Construct DB query filters
-	user_filters = {
-		"name": ["in", list(set(role_users))],
-		"enabled": 1
-	}
+	user_filters = {"name": ["in", list(set(role_users))], "enabled": 1}
 
 	# If search_query is supplied, perform fuzzy matching
 	or_filters = []
@@ -636,7 +708,7 @@ def get_assignable_users(**kwargs):
 		filters=user_filters,
 		or_filters=or_filters or None,
 		fields=[{"COUNT": "*"}],
-		ignore_permissions=True
+		ignore_permissions=True,
 	)
 	total_count = count_res[0].get("COUNT(*)") if count_res else 0
 
@@ -650,7 +722,7 @@ def get_assignable_users(**kwargs):
 		order_by="full_name asc",
 		limit_start=start_idx,
 		page_length=page_len,
-		ignore_permissions=True
+		ignore_permissions=True,
 	)
 
 	# Format response properties to match UI mockup requirements (agent_id and region)
@@ -661,12 +733,14 @@ def get_assignable_users(**kwargs):
 		# Map user's location as their region, fallback to Oromia if blank
 		region = u.location or "Oromia"
 
-		formatted_results.append({
-			"email": u.email or u.name,
-			"full_name": u.full_name or u.name,
-			"agent_id": agent_id,
-			"region": region
-		})
+		formatted_results.append(
+			{
+				"email": u.email or u.name,
+				"full_name": u.full_name or u.name,
+				"agent_id": agent_id,
+				"region": region,
+			}
+		)
 
 	has_next = (start_idx + page_len) < total_count
 	# Note: This pagination shape ({start, page_length, total_count, has_next}) is intentional
@@ -675,13 +749,11 @@ def get_assignable_users(**kwargs):
 		"start": start_idx,
 		"page_length": page_len,
 		"total_count": total_count,
-		"has_next": has_next
+		"has_next": has_next,
 	}
 
 	return success_response(
-		data=formatted_results,
-		message="Assignable users retrieved successfully",
-		pagination=pagination
+		data=formatted_results, message="Assignable users retrieved successfully", pagination=pagination
 	)
 
 
@@ -710,12 +782,19 @@ def assign_lead(**kwargs):
 	if not frappe.db.exists("User", {"email": assigned_to, "enabled": 1}):
 		# Fallback check by username/name
 		if not frappe.db.exists("User", {"name": assigned_to, "enabled": 1}):
-			frappe.throw(_("User '{0}' is not a valid active agent").format(assigned_to), frappe.DoesNotExistError)
+			frappe.throw(
+				_("User '{0}' is not a valid active agent").format(assigned_to), frappe.DoesNotExistError
+			)
 
 	# Retrieve user's full name for timeline logging
-	assignee_name = frappe.db.get_value("User", {"email": assigned_to}, "full_name") or frappe.db.get_value("User", assigned_to, "full_name") or assigned_to
+	assignee_name = (
+		frappe.db.get_value("User", {"email": assigned_to}, "full_name")
+		or frappe.db.get_value("User", assigned_to, "full_name")
+		or assigned_to
+	)
 
 	from frappe.utils import today
+
 	now_date = today()
 
 	lead_doc = frappe.get_doc("A2C Lead", lead_id)
@@ -732,12 +811,8 @@ def assign_lead(**kwargs):
 	audit_event.insert()
 
 	return success_response(
-		data={
-			"lead_id": lead_id,
-			"assigned_to": assigned_to,
-			"assigned_date": now_date
-		},
-		message="Lead assigned successfully."
+		data={"lead_id": lead_id, "assigned_to": assigned_to, "assigned_date": now_date},
+		message="Lead assigned successfully.",
 	)
 
 
@@ -764,10 +839,7 @@ def add_lead_comment(**kwargs):
 	audit_event.event_description = content
 	audit_event.insert(ignore_permissions=False)
 
-	return success_response(
-		data={"comment_id": audit_event.name},
-		message="Comment added successfully."
-	)
+	return success_response(data={"comment_id": audit_event.name}, message="Comment added successfully.")
 
 
 @frappe.whitelist(allow_guest=False)
@@ -793,15 +865,17 @@ def get_lead_timeline(**kwargs):
 		"A2C Lead Audit Event",
 		fields=["name", "event_type", "event_title", "event_description", "creation", "owner"],
 		filters=filters,
-		order_by="creation desc"
+		order_by="creation desc",
 	)
 
+	from oan_a2c.api.utils import to_tz_aware_iso
+
+	for event in timeline:
+		if event.get("creation"):
+			event["creation"] = to_tz_aware_iso(event["creation"])
+
 	return success_response(
-		data={
-			"lead_id": lead_id,
-			"timeline": timeline
-		},
-		message="Lead timeline retrieved successfully"
+		data={"lead_id": lead_id, "timeline": timeline}, message="Lead timeline retrieved successfully"
 	)
 
 
@@ -835,18 +909,20 @@ def get_lead_call_logs(**kwargs):
 				key, val = part.split(":", 1)
 				log_entry[key.strip().lower().replace(" ", "_")] = val.strip()
 		if log_entry:
+			from oan_a2c.api.utils import to_tz_aware_iso
+
 			# Always expose both time keys so the frontend has a stable shape.
 			# Fall back to the reliable server time when the reported one is absent.
 			log_entry.setdefault("received", None)
 			log_entry.setdefault("timestamp", log_entry.get("received"))
+			# Only normalize the server-recorded time; timestamp is caller-reported
+			# and may already carry timezone info — pass it through verbatim.
+			if log_entry.get("received"):
+				log_entry["received"] = to_tz_aware_iso(log_entry["received"])
 			parsed_logs.append(log_entry)
 
 	return success_response(
-		data={
-			"lead_id": lead_id,
-			"call_logs": parsed_logs
-		},
-		message="Lead call logs retrieved successfully"
+		data={"lead_id": lead_id, "call_logs": parsed_logs}, message="Lead call logs retrieved successfully"
 	)
 
 
@@ -899,15 +975,10 @@ def schedule_visit(**kwargs):
 	audit_event.lead = lead_id
 	audit_event.event_type = "Visit Scheduled"
 	audit_event.event_title = "Visit Scheduled"
-	audit_event.event_description = _("Visit scheduled for {0} at {1}.").format(
-		visit_date, visit_time
-	)
+	audit_event.event_description = _("Visit scheduled for {0} at {1}.").format(visit_date, visit_time)
 	audit_event.insert()
 
-	return success_response(
-		data={"schedule_id": schedule.name},
-		message="Visit scheduled successfully."
-	)
+	return success_response(data={"schedule_id": schedule.name}, message="Visit scheduled successfully.")
 
 
 @frappe.whitelist(allow_guest=False)
@@ -944,24 +1015,29 @@ def get_visit_schedules(**kwargs):
 	elif end_date:
 		filters.append(["visit_date", "<=", end_date])
 
-	count_res = frappe.get_list(
-		"A2C Visit Schedule",
-		filters=filters,
-		fields=[{"COUNT": "*"}]
-	)
+	count_res = frappe.get_list("A2C Visit Schedule", filters=filters, fields=[{"COUNT": "*"}])
 	total_count = count_res[0].get("COUNT(*)") if count_res else 0
 
 	schedules = frappe.get_list(
 		"A2C Visit Schedule",
 		fields=[
-			"name", "lead", "visit_date", "visit_time",
-			"meeting_location", "region", "zone",
-			"woreda", "kebele", "status", "scheduled_by", "creation"
+			"name",
+			"lead",
+			"visit_date",
+			"visit_time",
+			"meeting_location",
+			"region",
+			"zone",
+			"woreda",
+			"kebele",
+			"status",
+			"scheduled_by",
+			"creation",
 		],
 		filters=filters,
 		limit_start=start,
 		page_length=page_length,
-		order_by="visit_date desc, visit_time desc"
+		order_by="visit_date desc, visit_time desc",
 	)
 
 	total_pages = -(-total_count // page_length)
@@ -972,13 +1048,11 @@ def get_visit_schedules(**kwargs):
 		"limit": page_length,
 		"total": total_count,
 		"total_pages": total_pages,
-		"has_next": has_next
+		"has_next": has_next,
 	}
 
 	return success_response(
-		data=schedules,
-		message="Visit schedules retrieved successfully",
-		pagination=pagination
+		data=schedules, message="Visit schedules retrieved successfully", pagination=pagination
 	)
 
 
@@ -1008,13 +1082,6 @@ def update_visit_schedule_status(**kwargs):
 	schedule.save(ignore_permissions=False)
 
 	return success_response(
-		data={
-			"schedule_id": schedule_id,
-			"new_status": status
-		},
-		message="Visit schedule status updated successfully."
+		data={"schedule_id": schedule_id, "new_status": status},
+		message="Visit schedule status updated successfully.",
 	)
-
-
-
-

@@ -808,9 +808,7 @@ We implement our JWT validation at the entry boundary. In `hooks.py`, we bind a 
 
 ```python
 # Pseudo-implementation within oan_a2c/hooks.py
-auth_hooks = [
-    "oan_a2c.api.auth.middleware.validate_jwt_request"
-]
+auth_hooks = ["oan_a2c.api.auth.middleware.validate_jwt_request"]
 ```
 
 #### **How the `validate_jwt_request` hook executes:**

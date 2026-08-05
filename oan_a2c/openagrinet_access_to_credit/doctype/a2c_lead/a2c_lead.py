@@ -4,13 +4,20 @@ from frappe.model.document import Document
 
 
 class A2CLead(Document):
+	# Committed/terminal states are read-only via a normal save. Legitimate status
+	# changes run through the workflow (apply_status_transition -> apply_workflow),
+	# which bypasses before_save, so any before_save hit on these states is an
+	# unintended field edit and is rejected.
+	LOCKED_STATUSES = ("Processed", "Granted", "Rejected")
+
 	def before_save(self):
 		if not self.is_new():
 			db_status = self.get_db_value("status")
-			if db_status == "Processed":
-				frappe.throw(_("Lead cannot be edited because it is already Processed"), frappe.ValidationError)
-			elif db_status == "Rejected" and self.status != "Rejected":
-				frappe.throw(_("Status is locked because the lead is Rejected"), frappe.ValidationError)
+			if db_status in self.LOCKED_STATUSES:
+				frappe.throw(
+					_("Lead cannot be edited because it is {0}.").format(_(db_status)),
+					frappe.ValidationError,
+				)
 			# Guard the transition *into* Verified: only fire when the status is
 			# actually changing to Verified (not on re-saves of an already
 			# Verified lead), so the prerequisites are enforced once, up front.
@@ -31,16 +38,21 @@ class A2CLead(Document):
 		has_approved_consent = frappe.db.exists(
 			"A2C Consent Request", {"lead": self.name, "status": "Approved"}
 		)
+		has_scheduled_visit = frappe.db.exists(
+			"A2C Visit Schedule", {"lead": self.name, "status": ["in", ["Scheduled", "Completed"]]}
+		)
 
 		missing = []
 		if not has_credit:
 			missing.append(_("credit information"))
 		if not has_approved_consent:
 			missing.append(_("an approved consent request"))
+		if not has_scheduled_visit:
+			missing.append(_("a scheduled visit"))
 
 		if missing:
 			frappe.throw(
-				_("Lead cannot be Verified until {0} exists.").format(_(" and ").join(missing)),
+				_("Lead cannot be Verified until {0} exists.").format(f" {_('and')} ".join(missing)),
 				frappe.ValidationError,
 			)
 
@@ -59,17 +71,16 @@ class A2CLead(Document):
 		associated with the 'A2C Lead' DocType to maintain real-time aggregates.
 		"""
 		try:
-			cards = frappe.get_all(
-				"Number Card",
-				filters={"document_type": "A2C Lead"},
-				pluck="name"
-			)
+			cards = frappe.get_all("Number Card", filters={"document_type": "A2C Lead"}, pluck="name")
 			for card in cards:
 				cache_key = f"number_card_data:{card}"
 				frappe.cache().delete_value(cache_key)
 		except Exception:
-			# Fail close. Never allow cache clearance anomalies to block core lead transactions.
-			pass
+			# Fail close. Never allow cache clearance anomalies to block core lead
+			# transactions — but leave a trace so silent cache drift is diagnosable.
+			frappe.logger().warning(
+				f"Number Card cache invalidation failed for lead {self.name}: {frappe.get_traceback(with_context=False)}"
+			)
 
 	def _enforce_external_id_uniqueness(self):
 		"""
@@ -89,9 +100,9 @@ class A2CLead(Document):
 		)
 		if existing:
 			frappe.throw(
-				_(
-					"A lead ({0}) already exists with External Reference ID {1}."
-				).format(existing, self.external_id),
+				_("A lead ({0}) already exists with External Reference ID {1}.").format(
+					existing, self.external_id
+				),
 				frappe.DuplicateEntryError,
 			)
 

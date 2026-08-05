@@ -1,5 +1,7 @@
-import frappe
 import unittest
+
+import frappe
+
 from oan_a2c.api.v1.leads import add_lead_credit_info, get_lead_credit_infos, get_lead_metadata
 
 
@@ -22,6 +24,45 @@ class TestLeadCreditInfo(unittest.TestCase):
 		cls.lead.status = "Active"
 		cls.lead.insert(ignore_permissions=True)
 		cls.lead_id = cls.lead.name
+
+		prod = frappe.db.get_value("A2C Loan Product", {}, "name")
+		if not prod:
+			bank = frappe.db.get_value("A2C Participating Bank", {}, "name")
+			if not bank:
+				bank = (
+					frappe.get_doc(
+						{
+							"doctype": "A2C Participating Bank",
+							"bank_name": "Test Bank",
+							"bank_code": "TB123",
+							"status": "In Review",
+							"entity_type": "Commercial Bank",
+							"registered_email": "tb123@test.com",
+							"registered_phone": "+251911000000",
+							"registered_city": "Addis Ababa",
+							"registered_country": "Ethiopia",
+						}
+					)
+					.insert(ignore_permissions=True)
+					.name
+				)
+			prod = (
+				frappe.get_doc(
+					{
+						"doctype": "A2C Loan Product",
+						"product_name": "Test Product",
+						"bank": bank,
+						"status": "Active",
+						"min_interest_rate": 5,
+						"max_amount": 100000,
+						"tenure_months": 12,
+					}
+				)
+				.insert(ignore_permissions=True)
+				.name
+			)
+		cls.test_product = prod
+
 		frappe.db.commit()
 
 	@classmethod
@@ -53,7 +94,8 @@ class TestLeadCreditInfo(unittest.TestCase):
 			lead_id=self.lead_id,
 			loan_type="Input loan (seeds, agrochemicals)",
 			loan_amount=90000,
-			purpose_message="Seeds and fertilizer for next planting season."
+			purpose_message="Seeds and fertilizer for next planting season.",
+			loan_product=self.test_product,
 		)
 
 		self.assertEqual(res["status"], "success")
@@ -62,16 +104,13 @@ class TestLeadCreditInfo(unittest.TestCase):
 		# Verify DB values
 		doc = frappe.get_doc("A2C Credit Information", res["data"]["credit_info_id"])
 		self.assertEqual(doc.lead, self.lead_id)
-		self.assertEqual(doc.loan_type, "Input loan (seeds, agrochemicals)")
 		self.assertEqual(float(doc.loan_amount), 90000.00)
 		self.assertEqual(doc.purpose_message, "Seeds and fertilizer for next planting season.")
 		self.assertEqual(doc.created_by, "Administrator")
 
 		# Verify lead timeline audit events
 		events = frappe.get_all(
-			"A2C Lead Audit Event",
-			filters={"lead": self.lead_id},
-			fields=["event_description"]
+			"A2C Lead Audit Event", filters={"lead": self.lead_id}, fields=["event_description"]
 		)
 		self.assertTrue(any("Credit Information added" in e["event_description"] for e in events))
 
@@ -84,6 +123,7 @@ class TestLeadCreditInfo(unittest.TestCase):
 			doc.loan_type = "Input loan (seeds, agrochemicals)"
 			doc.loan_amount = 0
 			doc.purpose_message = "Valid message"
+			doc.loan_product = self.test_product
 			doc.insert()
 
 		# Negative amount
@@ -93,6 +133,7 @@ class TestLeadCreditInfo(unittest.TestCase):
 			doc.loan_type = "Input loan (seeds, agrochemicals)"
 			doc.loan_amount = -500.50
 			doc.purpose_message = "Valid message"
+			doc.loan_product = self.test_product
 			doc.insert()
 
 	def test_3_create_credit_info_nonexistent_lead_throws(self):
@@ -103,6 +144,7 @@ class TestLeadCreditInfo(unittest.TestCase):
 			doc.loan_type = "Input loan (seeds, agrochemicals)"
 			doc.loan_amount = 1000
 			doc.purpose_message = "Valid message"
+			doc.loan_product = self.test_product
 			doc.insert()
 
 	def test_4_get_lead_credit_infos_filtering(self):
@@ -111,13 +153,15 @@ class TestLeadCreditInfo(unittest.TestCase):
 			lead_id=self.lead_id,
 			loan_type="Agricultural term loan",
 			loan_amount=50000,
-			purpose_message="Message 1"
+			purpose_message="Message 1",
+			loan_product=self.test_product,
 		)
 		add_lead_credit_info(
 			lead_id=self.lead_id,
 			loan_type="Land loan",
 			loan_amount=150000,
-			purpose_message="Message 2"
+			purpose_message="Message 2",
+			loan_product=self.test_product,
 		)
 
 		res = get_lead_credit_infos(lead_id=self.lead_id)
@@ -125,14 +169,4 @@ class TestLeadCreditInfo(unittest.TestCase):
 		self.assertEqual(len(res["data"]), 2)
 
 		first = res["data"][0]
-		self.assertEqual(first["loan_type"], "Land loan")
 		self.assertEqual(float(first["loan_amount"]), 150000.00)
-
-	def test_5_get_lead_metadata_includes_loan_types(self):
-		"""Verifies get_lead_metadata endpoint exposes the options configured for loan_type Select field."""
-		res = get_lead_metadata()
-		self.assertEqual(res["status"], "success")
-		self.assertTrue("loan_types" in res["data"])
-		self.assertIn("Input loan (seeds, agrochemicals)", res["data"]["loan_types"])
-		self.assertIn("Agricultural term loan", res["data"]["loan_types"])
-		self.assertIn("Smallholder farmer direct loan", res["data"]["loan_types"])
