@@ -2,7 +2,7 @@ from typing import Literal
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, sanitize_html
 from pydantic import BaseModel, Field, model_validator
 
 from oan_a2c.api.utils import (
@@ -94,6 +94,7 @@ class DeleteSupportingDocumentSchema(BaseModel):
 class UpdateLoanStatusSchema(BaseModel):
 	application_id: str = Field(..., min_length=1, max_length=140)
 	status: Literal["Draft", "Processing", "Approved", "Rejected"]
+	reason: str | None = Field(None, max_length=2000)
 
 
 class UpdateLoanStepSchema(BaseModel):
@@ -890,6 +891,10 @@ def update_loan_status(**kwargs):
 	"""
 	application_id = kwargs.get("application_id")
 	status = kwargs.get("status")
+	reason = kwargs.get("reason")
+
+	if reason:
+		reason = sanitize_html(reason)
 
 	# Read (not write) is the gate here: Bank Agent is a read-only role on loan
 	# applications but is authorised to change *status* only. Authorisation for the
@@ -905,6 +910,20 @@ def update_loan_status(**kwargs):
 	# legal transitions and per-role gating, and submits the doc (docstatus 1) on
 	# Approve/Reject. Illegal/unauthorised targets raise ValidationError.
 	apply_status_transition(doc, status)
+
+	# Insert Loan Application Audit Event
+	description = _("Changed to {0}").format(status)
+	if reason:
+		description += f"\nReason: {reason}"
+	description += f"\nUpdated by: {frappe.session.user}"
+
+	audit_event = frappe.new_doc("A2C Loan Application Audit Event")
+	audit_event.loan_application = application_id
+	audit_event.event_type = "Status Changed"
+	audit_event.event_title = "Status Updated"
+	audit_event.event_description = description
+	audit_event.insert()
+
 	return success_response(message=_("Loan status updated to {0}.").format(status))
 
 
