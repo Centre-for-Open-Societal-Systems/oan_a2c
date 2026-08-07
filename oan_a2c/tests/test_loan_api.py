@@ -384,6 +384,16 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertEqual(res_after["status"], "success")
 		self.assertEqual(len(res_after["data"]), 0)
 
+		# 5. Check audit event
+		audit_events = frappe.get_all(
+			"A2C Loan Application Audit Event",
+			filters={"loan_application": self.app_id, "event_type": "Document Deleted"},
+			fields=["event_type", "event_title", "event_description"],
+		)
+		self.assertEqual(len(audit_events), 1)
+		self.assertEqual(audit_events[0]["event_type"], "Document Deleted")
+		self.assertIn("Deleted document: test_doc.png", audit_events[0]["event_description"])
+
 	def test_6_update_loan_step(self):
 		# Ensure it starts at 1
 		frappe.db.set_value("A2C Loan Application", self.app_id, "current_step", 1)

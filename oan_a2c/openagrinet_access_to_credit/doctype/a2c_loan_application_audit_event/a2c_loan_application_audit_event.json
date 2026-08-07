@@ -26,7 +26,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Event Type",
-   "options": "Status Changed",
+   "options": "Status Changed\nDocument Uploaded\nDocument Deleted",
    "reqd": 1
   },
   {
