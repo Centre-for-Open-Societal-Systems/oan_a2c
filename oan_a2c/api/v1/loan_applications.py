@@ -676,6 +676,18 @@ def upload_supporting_documents(**kwargs):
 			{"name": file_doc.name, "file_url": file_doc.file_url, "file_name": file_doc.file_name}
 		)
 
+	if uploaded_files:
+		filenames = ", ".join(f["file_name"] for f in uploaded_files)
+		description = _("Uploaded {0} document(s): {1}\nUpdated by: {2}").format(
+			len(uploaded_files), filenames, frappe.session.user
+		)
+		audit_event = frappe.new_doc("A2C Loan Application Audit Event")
+		audit_event.loan_application = application_id
+		audit_event.event_type = "Document Uploaded"
+		audit_event.event_title = "Document Uploaded"
+		audit_event.event_description = description
+		audit_event.insert()
+
 	return success_response(
 		data={"uploaded_files": uploaded_files}, message="Supporting documents uploaded successfully"
 	)
@@ -757,7 +769,17 @@ def delete_supporting_document(**kwargs):
 	):
 		frappe.throw(_("File not found or not attached to this application"), frappe.DoesNotExistError)
 
+	file_name = frappe.db.get_value("File", file_id, "file_name")
 	frappe.delete_doc("File", file_id, ignore_permissions=False)
+
+	description = _("Deleted document: {0}\nUpdated by: {1}").format(file_name, frappe.session.user)
+	audit_event = frappe.new_doc("A2C Loan Application Audit Event")
+	audit_event.loan_application = application_id
+	audit_event.event_type = "Document Deleted"
+	audit_event.event_title = "Document Deleted"
+	audit_event.event_description = description
+	audit_event.insert()
+
 	return success_response(message=_("Document deleted successfully."))
 
 
