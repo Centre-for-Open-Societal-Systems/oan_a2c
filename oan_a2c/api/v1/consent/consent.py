@@ -5,7 +5,7 @@ from frappe import _
 from frappe.utils import now_datetime
 from pydantic import BaseModel, Field
 
-from oan_a2c.api.utils import SafeDate, handle_api_errors, success_response, to_tz_aware_iso, validate_request
+from oan_a2c.api.utils import SafeDate, check_rate_limit, handle_api_errors, success_response, to_tz_aware_iso, validate_request
 from oan_a2c.api.v1.webhook_consent_data import validate_and_enqueue_consent
 
 from .openg2p_client import OpenG2PConsentClient
@@ -57,24 +57,7 @@ class GetConsentAllowedFieldsSchema(BaseModel):
 # ─── Rate Limiting & Helpers ──────────────────────────────────────────────────
 
 
-def check_rate_limit(key: str, limit: int, window: int):
-	"""
-	Apply rate limits using Redis counter.
-	key    — unique per user+endpoint
-	limit  — max calls allowed in window
-	window — seconds
-	"""
-	cache = frappe.cache()
-	count = cache.get_value(key) or 0
 
-	if int(count) >= limit:
-		frappe.response.status_code = 429
-		frappe.throw(_("Rate limit exceeded. Try again later."), frappe.ValidationError)
-
-	pipeline = cache.pipeline()
-	pipeline.incr(key)
-	pipeline.expire(key, window)
-	pipeline.execute()
 
 
 def _get_farmer_preview_from_lead(lead_id):

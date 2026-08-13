@@ -258,13 +258,34 @@ def error_response(message, code="GENERIC_ERROR", details=None):  # pyright: ign
 	return res
 
 
-def check_rate_limit(key: str, limit: int, window: int):
+def check_rate_limit(key: str, limit: int = None, window: int = None):
 	"""
 	Apply rate limits using Redis counter.
-	key    — unique per user+endpoint
-	limit  — max calls allowed in window
-	window — seconds
+	key    — unique per user+endpoint (expected format: rl:action:identity)
+	limit  — max calls allowed in window (fallback if not in json)
+	window — seconds (fallback if not in json)
 	"""
+	try:
+		action = key.split(":")[1] if ":" in key else None
+		if action:
+			if not hasattr(frappe.local, "api_rate_limits"):
+				import json
+				import os
+				file_path = os.path.join(os.path.dirname(__file__), "..", "rate_limits.json")
+				try:
+					with open(file_path, "r") as f:
+						frappe.local.api_rate_limits = json.load(f)
+				except Exception:
+					frappe.local.api_rate_limits = {}
+			config = frappe.local.api_rate_limits.get(action, {})
+			limit = config.get("limit", limit or 10)
+			window = config.get("window", window or 60)
+	except Exception:
+		pass
+
+	limit = limit or 10
+	window = window or 60
+
 	cache = frappe.cache()
 	count = cache.get_value(key) or 0
 

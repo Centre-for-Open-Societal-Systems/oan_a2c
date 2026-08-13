@@ -1,0 +1,38 @@
+{
+  "search_farmer": {
+    "limit": 20,
+    "window": 60
+  },
+  "request_otp": {
+    "limit": 5,
+    "window": 60
+  },
+  "register_user": {
+    "limit": 5,
+    "window": 60
+  },
+  "login": {
+    "limit": 10,
+    "window": 60
+  },
+  "forgot_pwd": {
+    "limit": 5,
+    "window": 60
+  },
+  "reset_pwd": {
+    "limit": 5,
+    "window": 300
+  },
+  "refresh": {
+    "limit": 30,
+    "window": 60
+  },
+  "logout": {
+    "limit": 30,
+    "window": 60
+  },
+  "change_pwd": {
+    "limit": 5,
+    "window": 300
+  }
+}
