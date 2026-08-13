@@ -421,6 +421,8 @@ def logout(refresh_token: str):
 	"""
 	Revokes the provided refresh token by deleting it from the database.
 	"""
+	check_rate_limit(f"rl:logout:{getattr(frappe.local, 'request_ip', 'guest')}", limit=30, window=60)
+
 	token_hash = hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
 
 	token_records = frappe.get_all(
@@ -429,6 +431,9 @@ def logout(refresh_token: str):
 
 	if token_records:
 		frappe.delete_doc("A2C User Refresh Token", token_records[0]["name"], ignore_permissions=True)
+
+	if hasattr(frappe.local, "login_manager"):
+		frappe.local.login_manager.logout()
 
 	return success_response(message=_("Logged out successfully."))
 

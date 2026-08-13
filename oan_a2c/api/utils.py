@@ -369,7 +369,8 @@ def handle_api_errors(func):
 				message = res.get("message", "Success")
 				pagination = res.get("pagination")
 				meta = res.get("meta")
-
+            
+			frappe.local.message_log = []
 			return _envelope_success(data=data, message=message, pagination=pagination, meta=meta)
 		except BankNotOnboarded:
 			# Distinct from a plain 403: the user is authenticated and role-correct
