@@ -97,12 +97,14 @@
   },
   {
    "fieldname": "registered_kebele_village",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
+   "options": "A2C Kebele",
    "label": "Registered Kebele/Village"
   },
   {
    "fieldname": "registered_woreda_district",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
+   "options": "A2C Woreda",
    "label": "Registered Woreda/District"
   },
   {

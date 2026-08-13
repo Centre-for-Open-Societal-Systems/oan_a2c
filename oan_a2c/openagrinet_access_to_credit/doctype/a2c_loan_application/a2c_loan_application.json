@@ -182,19 +182,22 @@
   },
   {
    "fieldname": "region",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
+   "options": "A2C Region",
    "label": "Region",
    "in_list_view": 1
   },
   {
    "fieldname": "woreda",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
+   "options": "A2C Woreda",
    "label": "Woreda",
    "in_list_view": 1
   },
   {
    "fieldname": "kebele",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
+   "options": "A2C Kebele",
    "label": "Kebele",
    "in_list_view": 1
   },

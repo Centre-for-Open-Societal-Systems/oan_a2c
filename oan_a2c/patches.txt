@@ -8,3 +8,4 @@ oan_a2c.patches.create_lead_loan_workflows
 oan_a2c.patches.rename_a2c_roles
 oan_a2c.patches.cleanup_stale_plain_roles
 oan_a2c.patches.backfill_lead_loan_amount
+oan_a2c.patches.seed_location_data

@@ -1,0 +1,72 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "hash",
+ "creation": "2026-08-13 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "kebele_name",
+  "kebele_code",
+  "woreda",
+  "zone",
+  "region"
+ ],
+ "fields": [
+  {
+   "fieldname": "kebele_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kebele Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "kebele_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Kebele Code"
+  },
+  {
+   "fieldname": "woreda",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Woreda",
+   "options": "A2C Woreda",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "woreda.zone",
+   "fieldname": "zone",
+   "fieldtype": "Link",
+   "label": "Zone",
+   "options": "A2C Zone",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "woreda.region",
+   "fieldname": "region",
+   "fieldtype": "Link",
+   "label": "Region",
+   "options": "A2C Region",
+   "read_only": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-13 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "OpenAgriNet Access to Credit",
+ "name": "A2C Kebele",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {"create": 1, "delete": 1, "email": 1, "export": 1, "print": 1, "read": 1, "report": 1, "role": "System Manager", "share": 1, "write": 1},
+  {"read": 1, "role": "A2C Bank Admin"},
+  {"read": 1, "role": "A2C Bank Agent"},
+  {"read": 1, "role": "A2C Development Agent"}
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "kebele_name"
+}
