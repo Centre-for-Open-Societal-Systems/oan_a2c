@@ -50,7 +50,7 @@ class TestNotifications(unittest.TestCase):
 					"entity_type": "Commercial Bank",
 					"registered_email": "notif@test.com",
 					"registered_phone": "+251911000000",
-					"registered_city": "Addis Ababa",
+					"registered_region": "Addis Ababa",
 					"registered_country": "Ethiopia",
 				}
 			).insert(ignore_permissions=True)
@@ -71,7 +71,7 @@ class TestNotifications(unittest.TestCase):
 			filters["document_type"] = doctype
 		return frappe.get_all("Notification Log", filters=filters, fields=["subject", "document_name"])
 
-	def _make_product(self, status="Draft"):
+	def _make_product(self, status="Pending Approval"):
 		return frappe.get_doc(
 			{
 				"doctype": "A2C Loan Product",
@@ -87,17 +87,17 @@ class TestNotifications(unittest.TestCase):
 	# --- Loan product ------------------------------------------------------
 
 	def test_product_insert_notifies_bank_admin(self):
-		"""after_insert on a Draft product notifies Bank Admins only."""
+		"""after_insert on a Pending Approval product notifies Bank Admins only."""
 		frappe.set_user("Administrator")
 		self._make_product()
 		self.assertTrue(self._logs_for(ADMIN_USER, "A2C Loan Product"))
-		# Agents are not notified about a new Draft product.
+		# Agents are not notified about a new Pending Approval product.
 		self.assertFalse(self._logs_for(AGENT_USER, "A2C Loan Product"))
 
 	def test_product_status_change_notifies_team(self):
-		"""on_update notifies admins + agents when status changes (Draft -> Active)."""
+		"""on_update notifies admins + agents when status changes (Pending Approval -> Active)."""
 		frappe.set_user("Administrator")
-		product = self._make_product(status="Draft")
+		product = self._make_product(status="Pending Approval")
 		frappe.db.delete("Notification Log", {"for_user": ["in", [ADMIN_USER, AGENT_USER]]})
 		frappe.db.commit()
 

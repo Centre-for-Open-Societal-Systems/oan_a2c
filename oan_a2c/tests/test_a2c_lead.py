@@ -22,7 +22,7 @@ def _make_lead_verifiable(lead_id):
 			"entity_type": "Commercial Bank",
 			"registered_email": f"vtb{suffix}@test.com",
 			"registered_phone": "+251911000000",
-			"registered_city": "Addis Ababa",
+			"registered_region": "Addis Ababa",
 			"registered_country": "Ethiopia",
 		}
 	).insert(ignore_permissions=True)
@@ -1046,7 +1046,7 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 				"entity_type": "Commercial Bank",
 				"registered_email": f"xss{suffix}@test.com",
 				"registered_phone": "+251911000000",
-				"registered_city": "Addis Ababa",
+				"registered_region": "Addis Ababa",
 				"registered_country": "Ethiopia",
 			}
 		).insert(ignore_permissions=True)

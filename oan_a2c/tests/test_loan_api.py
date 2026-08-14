@@ -480,9 +480,7 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertEqual(res["status"], "error")
 
 		# No additional audit event should be created for the failed transition
-		audit_count = frappe.db.count(
-			"A2C Loan Application Audit Event", {"loan_application": self.app_id}
-		)
+		audit_count = frappe.db.count("A2C Loan Application Audit Event", {"loan_application": self.app_id})
 		self.assertEqual(audit_count, 2)
 
 		# The submitted record is frozen: a direct edit + save is blocked by docstatus.
@@ -520,7 +518,7 @@ class TestLoansV1API(unittest.TestCase):
 					"entity_type": "Commercial Bank",
 					"registered_email": "loanapi@test.com",
 					"registered_phone": "+251911000000",
-					"registered_city": "Addis Ababa",
+					"registered_region": "Addis Ababa",
 					"registered_country": "Ethiopia",
 				}
 			).insert(ignore_permissions=True)

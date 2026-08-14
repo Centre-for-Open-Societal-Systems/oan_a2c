@@ -39,7 +39,7 @@ class TestLeadCreditInfo(unittest.TestCase):
 							"entity_type": "Commercial Bank",
 							"registered_email": "tb123@test.com",
 							"registered_phone": "+251911000000",
-							"registered_city": "Addis Ababa",
+							"registered_region": "Addis Ababa",
 							"registered_country": "Ethiopia",
 						}
 					)
