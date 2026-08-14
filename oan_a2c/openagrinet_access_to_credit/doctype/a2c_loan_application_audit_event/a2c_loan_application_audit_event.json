@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "loan_application",
+  "bank",
   "event_type",
   "event_title",
   "event_description"
@@ -20,6 +21,14 @@
    "label": "Loan Application",
    "options": "A2C Loan Application",
    "reqd": 1
+  },
+  {
+   "fieldname": "bank",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Bank",
+   "options": "A2C Participating Bank"
   },
   {
    "fieldname": "event_type",
@@ -45,7 +54,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-06-07 13:50:47.383048",
+ "modified": "2026-08-14 06:52:00.000000",
  "modified_by": "Administrator",
  "module": "OpenAgriNet Access to Credit",
  "name": "A2C Loan Application Audit Event",
@@ -85,6 +94,22 @@
    "role": "A2C Administrator",
    "share": 1,
    "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Bank Admin"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Bank Agent"
   }
  ],
  "row_format": "Dynamic",

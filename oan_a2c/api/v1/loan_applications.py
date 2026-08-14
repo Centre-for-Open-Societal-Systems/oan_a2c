@@ -683,6 +683,7 @@ def upload_supporting_documents(**kwargs):
 		)
 		audit_event = frappe.new_doc("A2C Loan Application Audit Event")
 		audit_event.loan_application = application_id
+		audit_event.bank = doc.bank
 		audit_event.event_type = "Document Uploaded"
 		audit_event.event_title = "Document Uploaded"
 		audit_event.event_description = description
@@ -775,6 +776,7 @@ def delete_supporting_document(**kwargs):
 	description = _("Deleted document: {0}\nUpdated by: {1}").format(file_name, frappe.session.user)
 	audit_event = frappe.new_doc("A2C Loan Application Audit Event")
 	audit_event.loan_application = application_id
+	audit_event.bank = frappe.db.get_value("A2C Loan Application", application_id, "bank")
 	audit_event.event_type = "Document Deleted"
 	audit_event.event_title = "Document Deleted"
 	audit_event.event_description = description
@@ -941,6 +943,7 @@ def update_loan_status(**kwargs):
 
 	audit_event = frappe.new_doc("A2C Loan Application Audit Event")
 	audit_event.loan_application = application_id
+	audit_event.bank = doc.bank
 	audit_event.event_type = "Status Changed"
 	audit_event.event_title = "Status Updated"
 	audit_event.event_description = description
