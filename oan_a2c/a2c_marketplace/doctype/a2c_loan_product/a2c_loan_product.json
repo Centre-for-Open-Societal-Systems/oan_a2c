@@ -46,22 +46,26 @@
    "fieldname": "min_interest_rate",
    "fieldtype": "Percent",
    "label": "Min Interest Rate",
+   "precision": "2",
    "reqd": 1
   },
   {
    "fieldname": "max_interest_rate",
    "fieldtype": "Percent",
-   "label": "Max Interest Rate"
+   "label": "Max Interest Rate",
+   "precision": "2"
   },
   {
    "fieldname": "min_amount",
    "fieldtype": "Currency",
-   "label": "Min Amount (ETB)"
+   "label": "Min Amount (ETB)",
+   "precision": "2"
   },
   {
    "fieldname": "max_amount",
    "fieldtype": "Currency",
    "label": "Max Amount (ETB)",
+   "precision": "2",
    "reqd": 1
   },
   {

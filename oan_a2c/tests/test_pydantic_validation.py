@@ -123,6 +123,36 @@ class TestPydanticValidation(unittest.TestCase):
 			)
 		self.assertIn("min_amount cannot be greater than max_amount", str(ctx.exception))
 
+		# interest rate > 20% capped
+		with self.assertRaises(ValidationError) as ctx:
+			CreateProductSchema(
+				product_name="Test Loan",
+				min_interest_rate=21.0,
+				max_amount=5000.0,
+				tenure_months=12,
+			)
+		self.assertIn("min_interest_rate", str(ctx.exception))
+
+		# amount > 6 digits (> 999,999.99) capped
+		with self.assertRaises(ValidationError) as ctx:
+			CreateProductSchema(
+				product_name="Test Loan",
+				min_interest_rate=5.0,
+				max_amount=1000000.0,
+				tenure_months=12,
+			)
+		self.assertIn("max_amount", str(ctx.exception))
+
+		# interest rate with > 2 decimal places
+		with self.assertRaises(ValidationError) as ctx:
+			CreateProductSchema(
+				product_name="Test Loan",
+				min_interest_rate=15.123,
+				max_amount=5000.0,
+				tenure_months=12,
+			)
+		self.assertIn("min_interest_rate", str(ctx.exception))
+
 	def test_create_lead_schema_max_length(self):
 		from pydantic import ValidationError
 

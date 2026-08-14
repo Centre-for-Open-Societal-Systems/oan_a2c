@@ -21,6 +21,34 @@ class A2CLoanProduct(Document):
 			docname=self.name,
 		)
 
+	def validate(self):
+		from pydantic import ValidationError
+
+		from oan_a2c.a2c_marketplace.doctype_schemas import SingleProductSchema
+
+		data = {
+			"product_name": self.product_name,
+			"min_interest_rate": self.min_interest_rate,
+			"max_interest_rate": self.max_interest_rate,
+			"min_amount": self.min_amount,
+			"max_amount": self.max_amount,
+			"tenure_months": self.tenure_months,
+			"description": self.description,
+			"image": self.image,
+		}
+
+		try:
+			SingleProductSchema.model_validate(data)
+		except ValidationError as exc:
+			messages = []
+			for err in exc.errors():
+				msg = err.get("msg", "")
+				if msg.startswith("Value error, "):
+					msg = msg[len("Value error, ") :]
+				loc = ".".join([str(l) for l in err.get("loc", [])])
+				messages.append(f"{loc}: {msg}" if loc else msg)
+			frappe.throw("; ".join(messages), frappe.ValidationError)
+
 	# Content fields whose edit invalidates a prior approval — changing any of
 	# these on an already-approved product forces it back to Draft for re-review.
 	CONTENT_FIELDS = (
