@@ -38,7 +38,7 @@ class ProductMetaSchema(BaseModel):
 	meta_value: str = Field(..., min_length=1, max_length=2000)
 
 
-class CreateProductSchema(BaseModel):
+class SingleProductSchema(BaseModel):
 	product_name: str = Field(..., min_length=1, max_length=140)
 	min_interest_rate: float = Field(..., ge=0, le=100)
 	max_interest_rate: float | None = Field(None, ge=0, le=100)
@@ -51,6 +51,42 @@ class CreateProductSchema(BaseModel):
 
 	@model_validator(mode="after")
 	def validate_min_max_ordering(self):
+		if self.min_interest_rate is not None and self.max_interest_rate is not None:
+			if self.min_interest_rate > self.max_interest_rate:
+				raise ValueError("min_interest_rate cannot be greater than max_interest_rate.")
+		if self.min_amount is not None and self.max_amount is not None:
+			if self.min_amount > self.max_amount:
+				raise ValueError("min_amount cannot be greater than max_amount.")
+		return self
+
+
+class CreateProductSchema(BaseModel):
+	product_name: str | None = Field(None, min_length=1, max_length=140)
+	min_interest_rate: float | None = Field(None, ge=0, le=100)
+	max_interest_rate: float | None = Field(None, ge=0, le=100)
+	min_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	max_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	tenure_months: int | None = Field(None, ge=1, le=1200)
+	description: str | None = Field(None, max_length=2000)
+	image: str | None = Field(None, max_length=500)
+	product_meta: list[ProductMetaSchema] | None = None
+
+	products: list[SingleProductSchema] | None = None
+
+	@model_validator(mode="after")
+	def check_payload(self):
+		if self.products:
+			if len(self.products) > 10:
+				raise ValueError("A maximum of 10 products can be created at once in bulk.")
+			return self
+		if (
+			not self.product_name
+			or self.min_interest_rate is None
+			or self.max_amount is None
+			or self.tenure_months is None
+		):
+			raise ValueError("Either 'products' array or single product required fields must be provided")
+
 		if self.min_interest_rate is not None and self.max_interest_rate is not None:
 			if self.min_interest_rate > self.max_interest_rate:
 				raise ValueError("min_interest_rate cannot be greater than max_interest_rate.")
@@ -100,26 +136,32 @@ def create_product(**kwargs):
 	frappe.has_permission("A2C Loan Product", "create", throw=True)
 	assert_bank_active(kwargs.get("bank"))
 
-	product_meta = kwargs.get("product_meta")
+	products_data = kwargs.get("products") or [kwargs]
+	created_ids = []
+	bank = kwargs.get("bank")
 
-	doc = frappe.new_doc("A2C Loan Product")
-	doc.product_name = kwargs.get("product_name")
-	doc.bank = kwargs.get("bank")
-	doc.min_interest_rate = kwargs.get("min_interest_rate")
-	doc.max_interest_rate = kwargs.get("max_interest_rate")
-	doc.min_amount = kwargs.get("min_amount")
-	doc.max_amount = kwargs.get("max_amount")
-	doc.tenure_months = kwargs.get("tenure_months")
-	doc.description = kwargs.get("description")
-	doc.image = kwargs.get("image")
-	doc.status = "Draft"
+	for p_data in products_data:
+		doc = frappe.new_doc("A2C Loan Product")
+		doc.product_name = p_data.get("product_name")
+		doc.bank = bank
+		doc.min_interest_rate = p_data.get("min_interest_rate")
+		doc.max_interest_rate = p_data.get("max_interest_rate")
+		doc.min_amount = p_data.get("min_amount")
+		doc.max_amount = p_data.get("max_amount")
+		doc.tenure_months = p_data.get("tenure_months")
+		doc.description = p_data.get("description")
+		doc.image = p_data.get("image")
+		doc.status = "Draft"
 
-	if product_meta:
-		for meta in product_meta:
-			doc.append("product_meta", {"meta_key": meta["meta_key"], "meta_value": meta["meta_value"]})
+		p_meta = p_data.get("product_meta")
+		if p_meta:
+			for meta in p_meta:
+				doc.append("product_meta", {"meta_key": meta["meta_key"], "meta_value": meta["meta_value"]})
 
-	doc.insert(ignore_permissions=False)
-	return success_response(data={"message": _("Product created"), "product_id": doc.name})
+		doc.insert(ignore_permissions=False)
+		created_ids.append(doc.name)
+
+	return success_response(data={"message": _("Products created"), "product_ids": created_ids})
 
 
 @frappe.whitelist()
