@@ -176,7 +176,7 @@ class TestPydanticValidation(unittest.TestCase):
 				bank_code="TB01",
 				entity_type="X",
 				registered_street="Street 1",
-				registered_city="Addis",
+				registered_region="Addis",
 				registered_country="Ethiopia",
 				registered_postal_code="1000",
 				registered_email="test@bank.com",
@@ -198,3 +198,31 @@ class TestPydanticValidation(unittest.TestCase):
 		with self.assertRaises(ValidationError) as ctx:
 			BrowseProductsSchema(min_amount=50000.0, max_amount=1000.0)
 		self.assertIn("min_amount cannot be greater than max_amount", str(ctx.exception))
+
+	def test_active_product_edit_blocked(self):
+		from oan_a2c.a2c_marketplace.doctype.a2c_loan_product.a2c_loan_product import A2CLoanProduct
+
+		doc = A2CLoanProduct(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": "Active Loan",
+				"min_interest_rate": 10.0,
+				"status": "Active",
+			}
+		)
+		doc.is_new = lambda: False
+
+		before_doc = frappe._dict(
+			{
+				"status": "Active",
+				"min_interest_rate": 10.0,
+				"product_name": "Active Loan",
+			}
+		)
+		doc.get_doc_before_save = lambda: before_doc
+
+		# Changing min_interest_rate from 10.0 -> 12.0 on an Active product
+		doc.min_interest_rate = 12.0
+
+		with self.assertRaises(frappe.PermissionError):
+			doc.before_save()

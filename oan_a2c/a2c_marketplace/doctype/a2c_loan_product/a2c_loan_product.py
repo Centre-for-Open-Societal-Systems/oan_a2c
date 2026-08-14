@@ -12,7 +12,7 @@ from oan_a2c.api.v1.notifications import notify_users
 
 class A2CLoanProduct(Document):
 	def after_insert(self):
-		"""Notify Bank Admins that a new (Draft) product needs activation."""
+		"""Notify Bank Admins that a new (Pending Approval) product needs activation."""
 		notify_users(
 			get_bank_members(self.bank, roles=[BANK_ADMIN_ROLE]),
 			subject="New loan product created",
@@ -50,7 +50,7 @@ class A2CLoanProduct(Document):
 			frappe.throw("; ".join(messages), frappe.ValidationError)
 
 	# Content fields whose edit invalidates a prior approval — changing any of
-	# these on an already-approved product forces it back to Draft for re-review.
+	# these on an already-approved product forces it back to Pending Approval for re-review.
 	CONTENT_FIELDS = (
 		"product_name",
 		"min_interest_rate",
@@ -63,20 +63,19 @@ class A2CLoanProduct(Document):
 	)
 
 	def before_save(self):
-		# Revert to Draft when the product's content is edited after approval, so
-		# an Active/Archived product must be re-activated. A pure status change
-		# (e.g. set_product_status activating the product) touches no content
-		# field, so it is left untouched.
+		# Editing content fields on an approved (Active) product is forbidden.
+		# A product must be changed back to Pending Approval/Rejected via set_product_status first.
 		before = self.get_doc_before_save()
-		if not self.is_new() and before and self.status != "Draft":
+		if not self.is_new() and before and before.status == "Active":
 			for f in self.CONTENT_FIELDS:
 				if self.has_value_changed(f):
-					# Ignore empty→empty normalization (None vs "" vs 0); a real
-					# edit like 5→0 still reverts because the old value is truthy.
+					# Ignore empty->empty normalization (None vs "" vs 0)
 					if not before.get(f) and not self.get(f):
 						continue
-					self.status = "Draft"
-					break
+					frappe.throw(
+						frappe._("Cannot edit a loan product once it is approved (Active)."),
+						frappe.PermissionError,
+					)
 
 		if self.product_name:
 			base_slug = frappe.scrub(self.product_name).replace("_", "-")

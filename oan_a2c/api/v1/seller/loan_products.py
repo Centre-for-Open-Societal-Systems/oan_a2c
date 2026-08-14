@@ -97,7 +97,7 @@ class UpdateProductSchema(BaseModel):
 
 class SetProductStatusSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
-	status: str = Field(..., pattern="^(Draft|Active|Archived)$")
+	status: str = Field(..., pattern="^(Pending Approval|Active|Rejected)$")
 
 
 class GetProductSchema(BaseModel):
@@ -127,7 +127,7 @@ def create_product(**kwargs):
 		doc.tenure_months = p_data.get("tenure_months")
 		doc.description = p_data.get("description")
 		doc.image = p_data.get("image")
-		doc.status = "Draft"
+		doc.status = "Pending Approval"
 
 		p_meta = p_data.get("product_meta")
 		if p_meta:
@@ -152,6 +152,8 @@ def update_product(**kwargs):
 		assert_bank_active(get_user_bank())
 
 	doc = frappe.get_doc("A2C Loan Product", product_id)
+	if doc.status == "Active":
+		frappe.throw(_("Cannot edit a loan product once it is approved (Active)."), frappe.PermissionError)
 
 	direct_fields = [
 		"product_name",
