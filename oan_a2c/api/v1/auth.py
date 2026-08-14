@@ -85,6 +85,20 @@ def register_user(email: str, full_name: str, password: str, phone_number: str, 
 	if role not in SELF_REGISTERABLE_ROLES:
 		frappe.throw(_("Invalid role."), frappe.ValidationError)
 
+	if frappe.db.exists("User", email):
+		return success_response(
+			data={
+				"message": _("You already have an account. Please log in."),
+				"already_exists": True,
+			}
+		)
+
+	if frappe.db.exists("User", {"mobile_no": phone_number}):
+		frappe.throw(
+			_("A user with this name or phone number is already registered."),
+			frappe.ValidationError,
+		)
+
 	create_user_account(
 		email=email,
 		full_name=full_name,
@@ -92,10 +106,4 @@ def register_user(email: str, full_name: str, password: str, phone_number: str, 
 		phone_number=phone_number,
 		role=role,
 	)
-	return success_response(
-		data={
-			"message": _(
-				"If your email and phone number are not already registered, your account has been created successfully."
-			)
-		}
-	)
+	return success_response(data={"message": _("Account created successfully.")})
