@@ -109,7 +109,7 @@ Retrieves aggregated statistics for the bank's loan products and applications. T
 ## 4. Endpoint Reference: Loan Products (`api/v1/seller/loan_products.py`)
 
 ### 4.1 `POST /api/method/oan_a2c.api.v1.seller.loan_products.create_product`
-Creates new loan product(s) under the caller's bank in `Draft` status. Supports both single product creation and bulk creation via a `products` array.
+Creates new loan product(s) under the caller's bank in `Pending Approval` status. Supports both single product creation and bulk creation via a `products` array.
 
 **Authentication & Permissions:** Requires JWT Bearer token and `create` permission on `A2C Loan Product`.
 **Parameters (JSON Body):**
@@ -210,7 +210,7 @@ Transitions the lifecycle status of a loan product.
 | Param | Type | Required | Default | Notes |
 | :--- | :--- | :--- | :--- | :--- |
 | **`product_id`** | string | Yes | — | The document name/ID of the loan product |
-| **`status`** | string | Yes | — | Exactly one of: `Draft`, `Active`, `Archived` (enforced via regex `^(Draft|Active|Archived)$`) |
+| **`status`** | string | Yes | — | Exactly one of: `Pending Approval`, `Active`, `Rejected` (enforced via regex `^(Pending Approval|Active|Rejected)$`) |
 
 **Success Response (HTTP 200):**
 ```json
@@ -224,7 +224,7 @@ Transitions the lifecycle status of a loan product.
 ```
 
 **Error Cases:**
-- **400 `VALIDATION_ERROR`**: `status` is not exactly `Draft`, `Active`, or `Archived`, or missing `product_id`.
+- **400 `VALIDATION_ERROR`**: `status` is not exactly `Pending Approval`, `Active`, or `Rejected`, or missing `product_id`.
 - **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user.
 - **403 `PERMISSION_DENIED`**: Caller lacks `write` access on the product.
 - **404 `NOT_FOUND`**: Specified `product_id` does not exist.
@@ -239,7 +239,7 @@ Retrieves a paginated list of loan products scoped to the caller's bank, with op
 **Parameters (Query):**
 | Param | Type | Required | Default | Notes |
 | :--- | :--- | :--- | :--- | :--- |
-| `status` | string | No | null | Filter by status (e.g., `Active`, `Draft`, `Archived`) |
+| `status` | string | No | null | Filter by status (e.g., `Active`, `Pending Approval`, `Rejected`) |
 | `search` | string | No | null | Substring match against `product_name` |
 | `category` | string | No | null | Filter products associated with a matching term category |
 | `tag` | string | No | null | Filter products associated with a matching term tag |
@@ -609,7 +609,8 @@ Registers a new participating bank entity and binds the authenticated caller as 
 | **`registered_street`** | string | Yes | — | Min length 2 characters |
 | `registered_kebele_village` | string | No | null | Kebele or village |
 | `registered_woreda_district` | string | No | null | Woreda or district |
-| **`registered_city`** | string | Yes | — | Min length 2 characters |
+| `registered_zone` | string | No | null | Zone |
+| **`registered_region`** | string | Yes | — | Min length 2 characters |
 | **`registered_country`** | string | Yes | — | Min length 2 characters |
 | **`registered_postal_code`** | string | Yes | — | Min length 2 characters |
 | **`registered_email`** | string | Yes | — | Valid email address format |
@@ -716,7 +717,8 @@ Retrieves the full seller organization profile for the caller's mapped bank, inc
     "registered_street": "Bole Road",
     "registered_kebele_village": "Kebele 01",
     "registered_woreda_district": "Bole",
-    "registered_city": "Addis Ababa",
+    "registered_zone": "Bole Zone",
+    "registered_region": "Addis Ababa",
     "registered_country": "Ethiopia",
     "registered_postal_code": "1000",
     "registered_email": "ops@examplebank.com",
@@ -760,7 +762,8 @@ Updates the organization details and branding profile of the caller's bank.
 | `registered_street` | string | No | null | Min length 2 characters |
 | `registered_kebele_village` | string | No | null | |
 | `registered_woreda_district` | string | No | null | |
-| `registered_city` | string | No | null | Min length 2 characters |
+| `registered_zone` | string | No | null | |
+| `registered_region` | string | No | null | Min length 2 characters |
 | `registered_country` | string | No | null | Min length 2 characters |
 | `registered_postal_code` | string | No | null | Min length 2 characters |
 | `registered_email` | string | No | null | Valid email address format |

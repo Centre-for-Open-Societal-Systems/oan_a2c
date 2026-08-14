@@ -398,7 +398,7 @@
         },
         "body": {
          "mode": "raw",
-         "raw": "{\n    \"bank_name\": \"{{bank_name}}\",\n    \"bank_code\": \"{{bank_code}}\",\n    \"entity_type\": \"{{entity_type}}\",\n    \"registered_street\": \"{{registered_street}}\",\n    \"registered_city\": \"{{registered_city}}\",\n    \"registered_country\": \"{{registered_country}}\",\n    \"registered_postal_code\": \"{{registered_postal_code}}\",\n    \"registered_email\": \"{{registered_email}}\",\n    \"registered_phone\": \"{{registered_phone}}\"\n}",
+         "raw": "{\n    \"bank_name\": \"{{bank_name}}\",\n    \"bank_code\": \"{{bank_code}}\",\n    \"entity_type\": \"{{entity_type}}\",\n    \"registered_street\": \"{{registered_street}}\",\n    \"registered_region\": \"{{registered_region}}\",\n    \"registered_country\": \"{{registered_country}}\",\n    \"registered_postal_code\": \"{{registered_postal_code}}\",\n    \"registered_email\": \"{{registered_email}}\",\n    \"registered_phone\": \"{{registered_phone}}\"\n}",
          "options": {
           "raw": {
            "language": "json"
@@ -5368,8 +5368,8 @@
    "value": "123 Test St"
   },
   {
-   "key": "registered_city",
-   "value": "Test City"
+   "key": "registered_region",
+   "value": "Addis Ababa"
   },
   {
    "key": "registered_country",

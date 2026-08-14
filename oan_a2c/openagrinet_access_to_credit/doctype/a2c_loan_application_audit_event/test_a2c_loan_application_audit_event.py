@@ -27,7 +27,7 @@ class IntegrationTestA2CLoanApplicationAuditEvent(IntegrationTestCase):
 						"bank_name": f"Test Bank {b_name}",
 						"entity_type": "Commercial Bank",
 						"registered_street": "123 Test St",
-						"registered_city": "City",
+						"registered_region": "Region",
 						"registered_country": "Country",
 						"registered_postal_code": "1000",
 						"registered_email": f"{b_name.lower()}@test.com",

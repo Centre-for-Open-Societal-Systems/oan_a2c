@@ -27,7 +27,7 @@ def _ensure_bank(code):
 				"entity_type": "Bank",
 				"registered_email": f"{code.lower()}@example.com",
 				"registered_phone": "+251900000000",
-				"registered_city": "Addis Ababa",
+				"registered_region": "Addis Ababa",
 				"registered_country": "Ethiopia",
 			}
 		)

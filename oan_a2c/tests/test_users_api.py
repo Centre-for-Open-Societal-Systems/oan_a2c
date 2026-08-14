@@ -20,7 +20,7 @@ def _create_test_bank(bank_code: str, bank_name: str) -> str:
 			"bank_name": bank_name,
 			"entity_type": "Commercial Bank",
 			"registered_street": "123 Test St",
-			"registered_city": "Addis Ababa",
+			"registered_region": "Addis Ababa",
 			"registered_country": "Ethiopia",
 			"registered_postal_code": "1000",
 			"registered_email": f"{bank_code.lower()}@test.com",
