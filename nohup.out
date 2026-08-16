@@ -392,3 +392,11 @@
 08:29:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:29:16] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.set_product_status HTTP/1.1[0m" 400 -
 08:29:26 web.1      | 192.168.107.1 - - [16/Aug/2026 08:29:26] "POST /api/method/oan_a2c.api.v1.seller.loan_products.set_product_status HTTP/1.1" 200 -
 08:29:30 web.1      | 192.168.107.1 - - [16/Aug/2026 08:29:30] "POST /api/method/oan_a2c.api.v1.seller.loan_products.get_product_comment HTTP/1.1" 200 -
+08:31:52 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:31:52 web.1      |  * Restarting with stat
+08:31:53 web.1      |  * Debugger is active!
+08:31:53 web.1      |  * Debugger PIN: 359-597-622
+08:32:15 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:32:15 web.1      |  * Restarting with stat
+08:32:16 web.1      |  * Debugger is active!
+08:32:16 web.1      |  * Debugger PIN: 359-597-622
