@@ -21,10 +21,12 @@ from oan_a2c.a2c_marketplace.roles import (
 	FARMER_ROLE,
 )
 from oan_a2c.api.utils import (
+	PasswordChangeRequired,
 	SafeEmail,
 	check_rate_limit,
 	handle_api_errors,
 	success_response,
+	validate_password_complexity,
 	validate_phone_string,
 	validate_request,
 )
@@ -112,13 +114,18 @@ class ChangePasswordSchema(BaseModel):
 	@field_validator("new_password")
 	@classmethod
 	def validate_new_password(cls, v: str) -> str:
-		if not any(c.isalpha() for c in v):
-			raise ValueError("Password must contain at least one letter.")
-		if not any(c.isdigit() for c in v):
-			raise ValueError("Password must contain at least one number.")
-		if not any(not c.isalnum() for c in v):
-			raise ValueError("Password must contain at least one special character.")
-		return v
+		return validate_password_complexity(v)
+
+
+class SetInitialPasswordSchema(BaseModel):
+	usr: str = Field(..., min_length=1)
+	current_password: str = Field(..., min_length=1)
+	new_password: str = Field(..., min_length=8, max_length=64)
+
+	@field_validator("new_password")
+	@classmethod
+	def validate_new_password(cls, v: str) -> str:
+		return validate_password_complexity(v)
 
 
 def _classify_user_type(roles: list[str]) -> str:
@@ -250,6 +257,15 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 		frappe.clear_messages()
 		raise frappe.AuthenticationError(_("Incorrect email or password."))
 
+	# The credentials are valid, but an admin-issued temporary password must not
+	# open a session. No token and no refresh token are minted here; the client
+	# sends the user to set_initial_password and back to the login screen.
+	if frappe.db.get_value("User", usr, "a2c_must_change_password"):
+		frappe.throw(
+			_("You must set your own password before signing in."),
+			PasswordChangeRequired,
+		)
+
 	user = frappe.get_doc("User", usr)
 	roles = [d.role for d in user.roles]
 
@@ -294,14 +310,18 @@ def forgot_password(email: str):
 	"""
 	check_rate_limit(f"rl:forgot_pwd:{getattr(frappe.local, 'request_ip', 'guest')}", limit=5, window=60)
 
-	otp = None
 	try:
 		user = frappe.db.get_value("User", {"email": email}, "name")
 		if user:
 			otp = "".join(secrets.choice(string.digits) for _ in range(6))
 			expiry = int(time.time()) + 900  # 15 minutes expiry
 			frappe.db.set_value("User", user, "reset_password_key", f"{otp}:{expiry}")
-			# SMS and Email sending bypassed for simple implementation per user instruction
+			# SMS/email delivery is still not wired up. The OTP is deliberately NOT
+			# returned in the response: while it was, any anonymous caller could mint
+			# a reset key for any address and take the account over through
+			# reset_password. Until a delivery channel exists this endpoint is inert
+			# by design — bank agents recover through their Bank Admin, who reissues
+			# a temporary password (seller.onboarding.reset_member_password).
 	except Exception:
 		frappe.logger().warning(
 			f"forgot_password: OTP reset flow raised: {frappe.get_traceback(with_context=False)}"
@@ -309,7 +329,6 @@ def forgot_password(email: str):
 
 	return success_response(
 		message=_("If your email is registered, a password reset OTP has been generated."),
-		data={"otp": otp} if otp else None,
 	)
 
 
@@ -361,6 +380,58 @@ def reset_password(email: str, key: str, new_password: str):
 	return success_response(message=_("Your password has been successfully updated. You may now login."))
 
 
+# nosemgrep: guest-whitelisted-method -- reviewed: gated on the temporary password itself plus the
+# must-change flag, rate-limited, enumeration-safe
+@frappe.whitelist(allow_guest=True)
+@validate_request(SetInitialPasswordSchema)
+@handle_api_errors
+def set_initial_password(usr: str, current_password: str, new_password: str):
+	"""Rotate an admin-issued temporary password into one only the user knows.
+
+	Guest-accessible by necessity: the account cannot hold a session until this
+	call succeeds (login refuses to mint a token while the must-change flag is
+	set), so there is no JWT to authorize it with. The temporary password is
+	re-verified here, which is exactly the proof login itself would demand.
+	"""
+	check_rate_limit(
+		f"rl:set_initial_pwd:{getattr(frappe.local, 'request_ip', 'guest')}", limit=5, window=300
+	)
+
+	usr = _resolve_login_id(usr)
+
+	# LoginManager (rather than a bare check_password) so a brute-force attempt
+	# here trips the same account-lock counters as one against login.
+	try:
+		LoginManager().authenticate(usr, current_password)
+	except frappe.exceptions.AuthenticationError:
+		frappe.clear_messages()
+		raise frappe.AuthenticationError(_("Incorrect email or password."))
+
+	# Same generic failure for "wrong password" and "account isn't in the
+	# must-change state": neither should tell an anonymous caller which accounts
+	# exist, nor which of them are sitting on a temporary password. It also keeps
+	# this from becoming an unauthenticated change-password endpoint for the site.
+	if not frappe.db.get_value("User", usr, "a2c_must_change_password"):
+		frappe.clear_messages()
+		raise frappe.AuthenticationError(_("Incorrect email or password."))
+
+	if new_password == current_password:
+		frappe.throw(
+			_("Choose a password different from the temporary one."),
+			frappe.ValidationError,
+		)
+
+	from frappe.utils.password import update_password as update_password_db
+
+	update_password_db(user=usr, pwd=new_password, logout_all_sessions=True)
+	frappe.db.set_value("User", usr, "a2c_must_change_password", 0)
+	# Nothing should hold a refresh token for a user who could not log in, but
+	# clear any that predate the flag rather than leave a live session behind.
+	frappe.db.delete("A2C User Refresh Token", {"user": usr})
+
+	return success_response(message=_("Password set successfully. Please sign in with your new password."))
+
+
 # nosemgrep: guest-whitelisted-method -- reviewed: public token-rotation endpoint, gated on refresh token
 @frappe.whitelist(allow_guest=True)
 @validate_request(RefreshTokenSchema)
@@ -393,12 +464,25 @@ def refresh(refresh_token: str):
 		frappe.db.commit()
 		raise frappe.AuthenticationError(_("Refresh token has expired."))
 
-	user_enabled = frappe.db.get_value("User", record["user"], "enabled")
-	if not user_enabled:
+	user_state = frappe.db.get_value(
+		"User", record["user"], ["enabled", "a2c_must_change_password"], as_dict=True
+	)
+	if not user_state or not user_state.enabled:
 		frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)
 		# nosemgrep: frappe-manual-commit -- reviewed: persist token deletion before the raise rolls back
 		frappe.db.commit()
 		raise frappe.AuthenticationError(_("User is disabled or does not exist."))
+
+	# An admin reissued a temporary password since this token was handed out —
+	# the old session must not outlive the credential it was issued against.
+	if user_state.a2c_must_change_password:
+		frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)
+		# nosemgrep: frappe-manual-commit -- reviewed: persist token deletion before the raise rolls back
+		frappe.db.commit()
+		frappe.throw(
+			_("You must set your own password before signing in."),
+			PasswordChangeRequired,
+		)
 
 	# Token Rotation: Delete the used token
 	frappe.delete_doc("A2C User Refresh Token", record["name"], ignore_permissions=True)

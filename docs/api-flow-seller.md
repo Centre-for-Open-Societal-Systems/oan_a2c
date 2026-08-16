@@ -33,6 +33,38 @@ Uploads a Base64-encoded image (e.g., bank logo or product image) and returns it
 
 ---
 
+### 6.13 `POST /api/method/oan_a2c.api.v1.seller.onboarding.reset_member_password`
+
+Issues a fresh temporary password for a Bank Agent in the caller's bank — the recovery path for an agent who has forgotten theirs.
+
+The agent cannot sign in with it: the account is re-flagged must-change, so `login` returns `403 PASSWORD_CHANGE_REQUIRED` until they rotate it through `7.9 set_initial_password`. Any session the agent currently holds ends immediately — their refresh tokens are deleted and the JWT middleware rejects their existing access token.
+
+**Authentication & Permissions:** Requires JWT Bearer token and the `A2C Bank Admin` role. The target must be a Bank Agent in the caller's own bank. Rate limited to 10 calls per 5 minutes per admin.
+**Parameters (JSON Body):**
+
+| Param              | Type   | Required | Default | Notes                                                          |
+| :----------------- | :----- | :------- | :------ | :------------------------------------------------------------- |
+| **`email`**  | string | Yes      | —      | Email of the Bank Agent whose password is being reissued        |
+| **`password`** | string | Yes      | —      | Temporary password. 8–64 chars, at least one letter and one digit |
+
+**Success Response (HTTP 200):**
+
+```json
+{
+  "status": "success",
+  "message": "Temporary password issued. The agent must set their own password at next login.",
+  "data": null
+}
+```
+
+**Error Cases:**
+
+- **400 `VALIDATION_ERROR`**: Invalid email, password too short/simple, or the target is the caller's own account.
+- **403 `PERMISSION_DENIED`**: Caller is not a Bank Admin; or the target is not a Bank Agent, belongs to another bank, or is at an equal/higher privilege level.
+- **404 `NOT_FOUND`**: No such user.
+
+---
+
 ## 7. Endpoint Reference: Authentication & Identity Gateway (`api/auth.py`)
 
 ### 7.1 `POST /api/method/oan_a2c.api.auth.login`
@@ -71,13 +103,16 @@ Authenticates seller credentials and returns a short-lived access JWT (15-min ex
 
 - **400 `VALIDATION_ERROR`**: Missing `usr` or `pwd`.
 - **401 `AUTHENTICATION_ERROR`**: Incorrect email/password (`Incorrect email or password.`), or account disabled/locked.
+- **403 `PASSWORD_CHANGE_REQUIRED`**: The credentials are correct, but the password was issued by an admin (invite or reset) and must be rotated first. **No `token` or `refresh_token` is returned** — the response carries no `data` at all. Send the user to `7.9 set_initial_password`, then back to the login screen. See §7.9.
 - **500 `INTERNAL_ERROR`**: System configuration error (missing `encryption_key`) or database error.
 
 ---
 
 ### 7.2 `POST /api/method/oan_a2c.api.auth.forgot_password`
 
-Generates a 6-digit OTP for password recovery and sends it via SMS (if mobile number exists) or email.
+Generates a 6-digit OTP for password recovery and stores it against the account.
+
+> **Delivery is not implemented.** No SMS or email is sent, and the OTP is **not** returned in the response — while it was, any anonymous caller could POST an address here, read the key out of the JSON and take the account over through `7.3 reset_password`. Until a delivery channel exists this endpoint cannot complete a recovery on its own. Bank Agents recover through their Bank Admin instead (`6.13 reset_member_password`).
 
 **Authentication & Permissions:** Guest accessible (`allow_guest=True`).
 **Parameters (JSON Body):**
@@ -91,17 +126,17 @@ Generates a 6-digit OTP for password recovery and sends it via SMS (if mobile nu
 ```json
 {
   "status": "success",
-  "message": "If your email is registered, a password reset OTP has been sent via email or SMS.",
+  "message": "If your email is registered, a password reset OTP has been generated.",
   "data": null
 }
 ```
 
-*(Note: Unknown email addresses return success silently without sending an email/SMS to prevent account enumeration).*
+*(Note: Unknown email addresses return the same success response, to prevent account enumeration.)*
 
 **Error Cases:**
 
 - **400 `VALIDATION_ERROR`**: Invalid email format.
-- **500 `INTERNAL_ERROR`**: Mail or SMS transport failure.
+- **500 `INTERNAL_ERROR`**: Database failure while storing the key.
 
 ---
 
@@ -281,3 +316,38 @@ Updates the personal profile details of the authenticated user.
 
 - **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user.
 - **500 `INTERNAL_ERROR`**: Database save failure.
+
+---
+
+### 7.9 `POST /api/method/oan_a2c.api.auth.set_initial_password`
+
+Rotates an admin-issued temporary password into one only the user knows. This is the only action available to an account that `login` has answered with `403 PASSWORD_CHANGE_REQUIRED`.
+
+Guest accessible by necessity: such an account cannot hold a session until this call succeeds, so there is no JWT to authorize it with. The temporary password is re-verified here — the same proof `login` itself demands.
+
+On success the flag is cleared, every session for the user is invalidated (including any refresh tokens), and the user signs in normally with the new password.
+
+**Authentication & Permissions:** Guest accessible (`allow_guest=True`). Rate limited to 5 calls per 5 minutes per IP.
+**Parameters (JSON Body):**
+
+| Param                      | Type   | Required | Default | Notes                                                                       |
+| :------------------------- | :----- | :------- | :------ | :-------------------------------------------------------------------------- |
+| **`usr`**            | string | Yes      | —      | Email address (or phone number, resolved the same way as`login`)            |
+| **`current_password`** | string | Yes      | —      | The temporary password issued by the Bank Admin                             |
+| **`new_password`**   | string | Yes      | —      | 8–64 chars, and must contain at least one letter, one digit and one symbol |
+
+**Success Response (HTTP 200):**
+
+```json
+{
+  "status": "success",
+  "message": "Password set successfully. Please sign in with your new password.",
+  "data": null
+}
+```
+
+**Error Cases:**
+
+- **400 `VALIDATION_ERROR`**: New password fails the complexity rule, or is the same as the temporary one (`Choose a password different from the temporary one.`).
+- **401 `AUTHENTICATION_ERROR`**: Wrong temporary password — **or** the account is not in the must-change state. The two are deliberately indistinguishable (`Incorrect email or password.`) so the endpoint reveals neither which accounts exist nor which are holding a temporary password.
+- **429**: Rate limit exceeded.
