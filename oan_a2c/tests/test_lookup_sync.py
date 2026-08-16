@@ -60,7 +60,7 @@ class TestLoanProductLookupSync(unittest.TestCase):
 				frappe.delete_doc("A2C Loan Product", name, ignore_permissions=True, force=True)
 		frappe.db.commit()
 
-	def _make_product(self, bank=None, status="Draft"):
+	def _make_product(self, bank=None, status="Pending Approval"):
 		if not bank:
 			bank = self.BANK_A_ID
 		doc = frappe.get_doc(
@@ -90,7 +90,7 @@ class TestLoanProductLookupSync(unittest.TestCase):
 		self.assertEqual(lookup.accepting_applications, 1)
 
 	def test_lookup_reflects_status_change(self):
-		product = self._make_product(status="Draft")
+		product = self._make_product(status="Pending Approval")
 		self.assertEqual(self._lookup(product.name).accepting_applications, 0)
 
 		product.status = "Active"

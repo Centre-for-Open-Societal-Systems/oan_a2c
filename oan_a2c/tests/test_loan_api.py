@@ -33,6 +33,29 @@ class TestLoansV1API(unittest.TestCase):
 			"DELETE FROM `tabA2C Loan Application Audit Event` WHERE loan_application IN "
 			"(SELECT name FROM `tabA2C Loan Application` WHERE lead_id='TEST_LEAD_999')"
 		)
+
+		if not frappe.db.exists("A2C Participating Bank", "Test Bank"):
+			bank_doc = frappe.get_doc(
+				{
+					"doctype": "A2C Participating Bank",
+					"bank_name": "Test Bank Name",
+					"bank_code": "TEST_BANK_999",
+					"status": "In Review",
+					"entity_type": "Commercial Bank",
+					"registered_email": "testbank@test.com",
+					"registered_phone": "+251911000000",
+					"registered_region": "Addis Ababa",
+					"registered_country": "Ethiopia",
+					"kyc_document": "/private/files/test_kyc.pdf",
+					"gro_name": "Test GRO",
+					"ops_name": "Test Ops",
+				}
+			)
+			bank_doc.insert(ignore_permissions=True)
+			frappe.db.sql(
+				"UPDATE `tabA2C Participating Bank` SET name='Test Bank' WHERE name=%s", bank_doc.name
+			)
+
 		frappe.db.commit()
 
 	def setUp(self):
