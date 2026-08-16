@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class ProductMetaSchema(BaseModel):
@@ -8,14 +8,21 @@ class ProductMetaSchema(BaseModel):
 
 class SingleProductSchema(BaseModel):
 	product_name: str = Field(..., min_length=1, max_length=140)
-	min_interest_rate: float = Field(..., ge=0, le=20.0, decimal_places=2)
-	max_interest_rate: float | None = Field(None, ge=0, le=20.0, decimal_places=2)
-	min_amount: float | None = Field(None, ge=0, le=999999.99, decimal_places=2)
-	max_amount: float = Field(..., ge=0, le=999999.99, decimal_places=2)
+	min_interest_rate: float = Field(..., ge=0, le=20.0)
+	max_interest_rate: float | None = Field(None, ge=0, le=20.0)
+	min_amount: int | None = Field(None, ge=0, le=999999)
+	max_amount: int = Field(..., ge=0, le=999999)
 	tenure_months: int = Field(..., ge=1, le=1200)
 	description: str | None = Field(None, max_length=2000)
 	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None
+
+	@field_validator("min_interest_rate", "max_interest_rate")
+	@classmethod
+	def validate_decimals(cls, v):
+		if v is not None and round(v, 2) != v:
+			raise ValueError("Interest rate must have at most 2 decimal places.")
+		return v
 
 	@model_validator(mode="after")
 	def validate_min_max_ordering(self):

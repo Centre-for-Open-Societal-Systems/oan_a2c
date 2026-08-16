@@ -63,19 +63,27 @@ class A2CLoanProduct(Document):
 	)
 
 	def before_save(self):
-		# Editing content fields on an approved (Active) product is forbidden.
-		# A product must be changed back to Pending Approval/Rejected via set_product_status first.
 		before = self.get_doc_before_save()
-		if not self.is_new() and before and before.status == "Active":
-			for f in self.CONTENT_FIELDS:
-				if self.has_value_changed(f):
-					# Ignore empty->empty normalization (None vs "" vs 0)
-					if not before.get(f) and not self.get(f):
-						continue
-					frappe.throw(
-						frappe._("Cannot edit a loan product once it is approved (Active)."),
-						frappe.PermissionError,
-					)
+		if not self.is_new() and before:
+			# 1. Editing content fields on an approved (Active) product is forbidden.
+			if before.status == "Active":
+				for f in self.CONTENT_FIELDS:
+					if self.has_value_changed(f):
+						# Ignore empty->empty normalization (None vs "" vs 0)
+						if not before.get(f) and not self.get(f):
+							continue
+						frappe.throw(
+							frappe._("Cannot edit a loan product once it is approved (Active)."),
+							frappe.PermissionError,
+						)
+
+			# 2. Editing a Rejected product resubmits it for approval (Pending Approval)
+			if before.status == "Rejected":
+				has_content_changes = any(
+					self.has_value_changed(f) and (before.get(f) or self.get(f)) for f in self.CONTENT_FIELDS
+				)
+				if has_content_changes:
+					self.status = "Pending Approval"
 
 		if self.product_name:
 			base_slug = frappe.scrub(self.product_name).replace("_", "-")
@@ -94,13 +102,42 @@ class A2CLoanProduct(Document):
 	def on_update(self):
 		refresh_product_lookups(self)
 
-		# Notify the bank team only on an actual status change (on_update fires on
-		# every save, including after insert where _doc_before_save is None).
-		if self.get_doc_before_save() and self.has_value_changed("status"):
-			notify_users(
-				get_bank_members(self.bank, roles=BANK_ROLES),
-				subject=f"Loan product {self.product_name} is now {self.status}",
-				message=f"Loan product {self.product_name} ({self.bank}) is now {self.status}",
-				doctype="A2C Loan Product",
-				docname=self.name,
-			)
+		before = self.get_doc_before_save()
+		if before:
+			status_changed = before.status != self.status
+			changed_fields = {}
+			for f in self.CONTENT_FIELDS:
+				if self.has_value_changed(f):
+					old_val = before.get(f)
+					new_val = self.get(f)
+					if str(old_val or "") != str(new_val or ""):
+						changed_fields[f] = (old_val, new_val)
+
+			if status_changed or changed_fields:
+				from oan_a2c.a2c_marketplace.doctype.a2c_loan_product_audit_event.a2c_loan_product_audit_event import (
+					log_product_audit_event,
+				)
+
+				log_product_audit_event(
+					product_doc=self,
+					event_type="Status Changed" if status_changed else "Product Updated",
+					from_status=before.status if status_changed else None,
+					to_status=self.status if status_changed else None,
+					reason=getattr(self, "_status_reason", None),
+					changed_fields=changed_fields,
+				)
+
+			# Notify the bank team on an actual status change
+			if status_changed:
+				msg = f"Loan product {self.product_name} ({self.bank}) is now {self.status}"
+				reason = getattr(self, "_status_reason", None)
+				if reason:
+					msg += f". Reason: {reason}"
+
+				notify_users(
+					get_bank_members(self.bank, roles=BANK_ROLES),
+					subject=f"Loan product {self.product_name} is now {self.status}",
+					message=msg,
+					doctype="A2C Loan Product",
+					docname=self.name,
+				)

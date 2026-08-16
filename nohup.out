@@ -1,0 +1,394 @@
+06:48:42 system     | web.1 started (pid=183985)
+06:48:42 system     | watch.1 started (pid=183993)
+06:48:42 system     | socketio.1 started (pid=183989)
+06:48:42 system     | schedule.1 started (pid=183996)
+06:48:42 system     | worker.1 started (pid=183999)
+06:48:42 socketio.1 | Realtime service listening on: ws://0.0.0.0:9000
+06:48:42 watch.1    | 
+06:48:42 watch.1    | yarn run v1.22.22
+06:48:42 watch.1    | $ node esbuild --watch --live-reload
+06:48:43 web.1      | [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+06:48:43 web.1      |  * Running on all addresses (0.0.0.0)
+06:48:43 web.1      |  * Running on http://127.0.0.1:8000
+06:48:43 web.1      |  * Running on http://192.168.107.3:8000
+06:48:43 web.1      | [33mPress CTRL+C to quit[0m
+06:48:43 web.1      |  * Restarting with stat
+06:48:43 web.1      |  * Debugger is active!
+06:48:43 web.1      |  * Debugger PIN: 359-597-622
+06:48:44 watch.1    | Browserslist: caniuse-lite is outdated. Please run:
+06:48:44 watch.1    |   npx update-browserslist-db@latest
+06:48:44 watch.1    |   Why you should do it regularly: https://github.com/browserslist/update-db#readme
+06:48:50 watch.1    | Watching for changes...
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.taxonomy.create_category HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.taxonomy.create_tag HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.taxonomy.create_attribute_term HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "GET /api/method/oan_a2c.api.v1.seller.onboarding.get_bank_profile HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_profile HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_image HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.onboarding.invite_user HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "GET /api/method/oan_a2c.api.v1.seller.taxonomy.get_categories HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "GET /api/method/oan_a2c.api.v1.seller.taxonomy.get_tags HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "GET /api/method/oan_a2c.api.v1.seller.taxonomy.get_attributes HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.taxonomy.set_product_categories HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.taxonomy.set_product_tags HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.taxonomy.set_product_attributes HTTP/1.1" 200 -
+06:48:56 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:56] "POST /api/method/oan_a2c.api.v1.seller.loan_products.update_product HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.seller.loan_products.set_product_status HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "GET /api/method/oan_a2c.api.v1.seller.loan_products.list_products HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.seller.loan_products.get_product HTTP/1.1" 200 -
+06:48:57 web.1      | Traceback (most recent call last):
+06:48:57 web.1      |   File "apps/frappe/frappe/handler.py", line 75, in execute_cmd
+06:48:57 web.1      |     method = get_attr(cmd)
+06:48:57 web.1      |   File "apps/frappe/frappe/handler.py", line 259, in get_attr
+06:48:57 web.1      |     method = frappe.get_attr(cmd)
+06:48:57 web.1      |   File "apps/frappe/frappe/__init__.py", line 1121, in get_attr
+06:48:57 web.1      |     return getattr(get_module(modulename), methodname)
+06:48:57 web.1      | AttributeError: module 'oan_a2c.api.v1.seller.loan_products' has no attribute 'get_product_timelines'. Did you mean: 'get_product_comment'?
+06:48:57 web.1      | 
+06:48:57 web.1      | During handling of the above exception, another exception occurred:
+06:48:57 web.1      | 
+06:48:57 web.1      | Traceback (most recent call last):
+06:48:57 web.1      |   File "apps/frappe/frappe/app.py", line 121, in application
+06:48:57 web.1      |     response = frappe.api.handle(request)
+06:48:57 web.1      |   File "apps/frappe/frappe/api/__init__.py", line 63, in handle
+06:48:57 web.1      |     data = endpoint(**arguments)
+06:48:57 web.1      |   File "apps/frappe/frappe/api/v1.py", line 40, in handle_rpc_call
+06:48:57 web.1      |     return frappe.handler.handle()
+06:48:57 web.1      |            ~~~~~~~~~~~~~~~~~~~~~^^
+06:48:57 web.1      |   File "apps/frappe/frappe/handler.py", line 53, in handle
+06:48:57 web.1      |     data = execute_cmd(cmd)
+06:48:57 web.1      |   File "apps/frappe/frappe/handler.py", line 77, in execute_cmd
+06:48:57 web.1      |     frappe.throw(_("Failed to get method for command {0} with {1}").format(cmd, str(e)))
+06:48:57 web.1      |     ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+06:48:57 web.1      |   File "apps/frappe/frappe/utils/messages.py", line 159, in throw
+06:48:57 web.1      |     msgprint(
+06:48:57 web.1      |     ~~~~~~~~^
+06:48:57 web.1      |     	msg,
+06:48:57 web.1      |      ^^^^
+06:48:57 web.1      |     ...<7 lines>...
+06:48:57 web.1      |     	allow_dangerous_html=allow_dangerous_html,
+06:48:57 web.1      |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+06:48:57 web.1      |     )
+06:48:57 web.1      |     ^
+06:48:57 web.1      |   File "apps/frappe/frappe/utils/messages.py", line 118, in msgprint
+06:48:57 web.1      |     _raise_exception()
+06:48:57 web.1      |     ~~~~~~~~~~~~~~~~^^
+06:48:57 web.1      |   File "apps/frappe/frappe/utils/messages.py", line 59, in _raise_exception
+06:48:57 web.1      |     raise exc
+06:48:57 web.1      | frappe.exceptions.ValidationError: Failed to get method for command oan_a2c.api.v1.seller.loan_products.get_product_timelines with module 'oan_a2c.api.v1.seller.loan_products' has no attribute 'get_product_timelines'
+06:48:57 web.1      | 
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.get_product_timelines HTTP/1.1[0m" 417 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.seller.onboarding.invite_user HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "GET /api/method/oan_a2c.api.v1.seller.onboarding.list_users HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.seller.onboarding.update_user HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.seller.onboarding.update_user HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "[31m[1mPOST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1[0m" 400 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.auth.forgot_password HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "[31m[1mPOST /api/method/oan_a2c.api.auth.reset_password HTTP/1.1[0m" 410 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.auth.refresh HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "[31m[1mPOST /api/method/oan_a2c.api.auth.change_password HTTP/1.1[0m" 401 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.auth.logout HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.leads.create_lead HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.leads.assign_lead HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.leads.add_lead_credit_info HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.leads.schedule_visit HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.leads.update_visit_schedule_status HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "POST /api/method/oan_a2c.api.v1.leads.add_lead_comment HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "GET /api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&start_date=&end_date= HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "GET /api/method/oan_a2c.api.v1.leads.get_lead_summary HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "GET /api/method/oan_a2c.api.v1.leads.get_lead_metadata HTTP/1.1" 200 -
+06:48:57 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:57] "GET /api/method/oan_a2c.api.v1.leads.get_lead_timeline?lead_id=LD-1223&event_type= HTTP/1.1" 200 -
+06:48:58 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:58] "GET /api/method/oan_a2c.api.v1.leads.get_lead_call_logs?lead_id=LD-1223 HTTP/1.1" 200 -
+06:48:58 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:58] "GET /api/method/oan_a2c.api.v1.leads.get_visit_schedules?lead_id=LD-1223&start=0&page_length=20 HTTP/1.1" 200 -
+06:48:58 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:58] "GET /api/method/oan_a2c.api.v1.leads.get_lead_credit_infos?lead_id=LD-1223 HTTP/1.1" 200 -
+06:48:58 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:58] "GET /api/method/oan_a2c.api.v1.leads.get_assignable_users?search_query=Test HTTP/1.1" 200 -
+06:48:58 web.1      | 192.168.107.1 - - [16/Aug/2026 06:48:58] "POST /api/method/oan_a2c.api.v1.webhooks.lead_inbound HTTP/1.1" 200 -
+06:49:00 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:00] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.get_partner_allowed_data_field_ids HTTP/1.1[0m" 400 -
+06:49:01 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:01] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.get_consent_reasons HTTP/1.1[0m" 400 -
+06:49:03 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:03] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.get_consent_allowed_fields HTTP/1.1[0m" 400 -
+06:49:06 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:06] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.search_farmer HTTP/1.1[0m" 400 -
+06:49:08 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:08] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.request_otp HTTP/1.1[0m" 400 -
+06:49:08 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:08] "[33mPOST /api/method/oan_a2c.api.v1.consent.consent.verify_otp HTTP/1.1[0m" 404 -
+06:49:09 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:09] "[33mPOST /api/method/oan_a2c.api.v1.consent.consent.submit_consent HTTP/1.1[0m" 404 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[31m[1mPOST /api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data HTTP/1.1[0m" 400 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[31m[1mGET /api/method/oan_a2c.api.v1.loan_applications.get_basic_profile?lead_id=LD-1223 HTTP/1.1[0m" 400 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[31m[1mPOST /api/method/oan_a2c.api.v1.loan_applications.update_basic_profile HTTP/1.1[0m" 400 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[31m[1mPOST /api/method/oan_a2c.api.v1.leads.update_lead_status HTTP/1.1[0m" 400 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[31m[1mPOST /api/method/oan_a2c.api.v1.loan_applications.create_loan_application HTTP/1.1[0m" 400 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[31m[1mPOST /api/method/oan_a2c.api.auth.login HTTP/1.1[0m" 401 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.update_loan_status HTTP/1.1[0m" 404 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[33mGET /api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id=APP-2026-00083 HTTP/1.1[0m" 404 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.update_loan_step HTTP/1.1[0m" 404 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.upload_supporting_documents?application_id=APP-2026-00083 HTTP/1.1[0m" 404 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[33mGET /api/method/oan_a2c.api.v1.loan_applications.get_supporting_documents?application_id=APP-2026-00083 HTTP/1.1[0m" 404 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[31m[1mGET /api/method/oan_a2c.api.v1.loan_applications.download_supporting_document?file_id=&view=0 HTTP/1.1[0m" 400 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[31m[1mPOST /api/method/oan_a2c.api.v1.loan_applications.delete_supporting_document HTTP/1.1[0m" 400 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.update_loan_status HTTP/1.1[0m" 404 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "GET /api/method/oan_a2c.api.v1.loan_applications.get_loan_metadata HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "GET /api/method/oan_a2c.api.v1.loan_applications.get_all_loans?status=Approved&page=1 HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "GET /api/method/oan_a2c.api.v1.loan_applications.get_loan_summary HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "GET /api/method/oan_a2c.api.v1.loan_applications.browse_products?limit=20&start=0 HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "GET /api/method/oan_a2c.api.v1.seller.dashboard.get_stats HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "GET /api/method/oan_a2c.api.v1.loan_applications.get_all_loans?page=1&page_size=20 HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[33mGET /api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id=test HTTP/1.1[0m" 404 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.assign_loan_officer HTTP/1.1[0m" 404 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "GET /api/method/oan_a2c.api.v1.notifications.get_notifications?read_status=all&limit=20&start=0 HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "POST /api/method/oan_a2c.api.v1.notifications.mark_read HTTP/1.1" 200 -
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "POST /api/method/oan_a2c.api.v1.notifications.clear HTTP/1.1" 200 -
+06:49:14 web.1      | Traceback (most recent call last):
+06:49:14 web.1      |   File "apps/frappe/frappe/app.py", line 104, in application
+06:49:14 web.1      |     validate_auth()
+06:49:14 web.1      |     ~~~~~~~~~~~~~^^
+06:49:14 web.1      |   File "apps/frappe/frappe/auth.py", line 644, in validate_auth
+06:49:14 web.1      |     raise frappe.AuthenticationError
+06:49:14 web.1      | frappe.exceptions.AuthenticationError
+06:49:14 web.1      | 
+06:49:14 web.1      | 192.168.107.1 - - [16/Aug/2026 06:49:14] "[31m[1mGET /api/resource/Notification%20Log?filters={"read":%200}&limit_page_length=50&order_by=creation%20desc HTTP/1.1[0m" 401 -
+06:57:01 web.1      | 192.168.107.1 - - [16/Aug/2026 06:57:01] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.onboarding.register_seller HTTP/1.1[0m" 401 -
+06:57:44 web.1      | 192.168.107.1 - - [16/Aug/2026 06:57:44] "[31m[1mPOST /api/method/oan_a2c.api.auth.login HTTP/1.1[0m" 401 -
+06:57:58 web.1      | 192.168.107.1 - - [16/Aug/2026 06:57:58] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.onboarding.register_seller HTTP/1.1[0m" 401 -
+08:00:33 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:33] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.onboarding.register_user HTTP/1.1[0m" 401 -
+08:00:57 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:57] "[31m[1mPOST /api/method/oan_a2c.api.auth.login HTTP/1.1[0m" 401 -
+08:00:57 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:57] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.taxonomy.create_category HTTP/1.1[0m" 401 -
+08:00:57 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:57] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.taxonomy.create_tag HTTP/1.1[0m" 401 -
+08:00:57 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:57] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.taxonomy.create_attribute_term HTTP/1.1[0m" 401 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "GET /api/method/oan_a2c.api.v1.seller.onboarding.get_bank_profile HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_profile HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_image HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.onboarding.invite_user HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "GET /api/method/oan_a2c.api.v1.seller.taxonomy.get_categories HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "GET /api/method/oan_a2c.api.v1.seller.taxonomy.get_tags HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "GET /api/method/oan_a2c.api.v1.seller.taxonomy.get_attributes HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.taxonomy.set_product_categories HTTP/1.1[0m" 400 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.taxonomy.set_product_tags HTTP/1.1[0m" 400 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.taxonomy.set_product_attributes HTTP/1.1[0m" 400 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.loan_products.update_product HTTP/1.1" 200 -
+08:00:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:58] "POST /api/method/oan_a2c.api.v1.seller.loan_products.set_product_status HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "GET /api/method/oan_a2c.api.v1.seller.loan_products.list_products HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.seller.loan_products.get_product HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.seller.loan_products.get_product_comment HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.seller.onboarding.invite_user HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "GET /api/method/oan_a2c.api.v1.seller.onboarding.list_users HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.seller.onboarding.update_user HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.seller.onboarding.update_user HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "[31m[1mPOST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1[0m" 400 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.auth.forgot_password HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "[31m[1mPOST /api/method/oan_a2c.api.auth.reset_password HTTP/1.1[0m" 410 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.auth.refresh HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "[31m[1mPOST /api/method/oan_a2c.api.auth.change_password HTTP/1.1[0m" 401 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.auth.logout HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.leads.create_lead HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.leads.assign_lead HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.leads.add_lead_credit_info HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.leads.schedule_visit HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.leads.update_visit_schedule_status HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "POST /api/method/oan_a2c.api.v1.leads.add_lead_comment HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "GET /api/method/oan_a2c.api.v1.leads.get_leads?start=0&page_length=20&search_query=&status=&lead_source=&start_date=&end_date= HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "GET /api/method/oan_a2c.api.v1.leads.get_lead_summary HTTP/1.1" 200 -
+08:00:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:00:59] "GET /api/method/oan_a2c.api.v1.leads.get_lead_metadata HTTP/1.1" 200 -
+08:01:00 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:00] "GET /api/method/oan_a2c.api.v1.leads.get_lead_timeline?lead_id=LD-1236&event_type= HTTP/1.1" 200 -
+08:01:00 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:00] "GET /api/method/oan_a2c.api.v1.leads.get_lead_call_logs?lead_id=LD-1236 HTTP/1.1" 200 -
+08:01:00 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:00] "GET /api/method/oan_a2c.api.v1.leads.get_visit_schedules?lead_id=LD-1236&start=0&page_length=20 HTTP/1.1" 200 -
+08:01:00 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:00] "GET /api/method/oan_a2c.api.v1.leads.get_lead_credit_infos?lead_id=LD-1236 HTTP/1.1" 200 -
+08:01:00 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:00] "GET /api/method/oan_a2c.api.v1.leads.get_assignable_users?search_query=Test HTTP/1.1" 200 -
+08:01:00 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:00] "POST /api/method/oan_a2c.api.v1.webhooks.lead_inbound HTTP/1.1" 200 -
+08:01:02 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:02] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.get_partner_allowed_data_field_ids HTTP/1.1[0m" 400 -
+08:01:04 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:04] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.get_consent_reasons HTTP/1.1[0m" 400 -
+08:01:05 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:05] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.get_consent_allowed_fields HTTP/1.1[0m" 400 -
+08:01:07 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:07] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.search_farmer HTTP/1.1[0m" 400 -
+08:01:09 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:09] "[31m[1mPOST /api/method/oan_a2c.api.v1.consent.consent.request_otp HTTP/1.1[0m" 400 -
+08:01:11 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:11] "[33mPOST /api/method/oan_a2c.api.v1.consent.consent.verify_otp HTTP/1.1[0m" 404 -
+08:01:11 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:11] "[33mPOST /api/method/oan_a2c.api.v1.consent.consent.submit_consent HTTP/1.1[0m" 404 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[31m[1mPOST /api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data HTTP/1.1[0m" 400 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[31m[1mGET /api/method/oan_a2c.api.v1.loan_applications.get_basic_profile?lead_id=LD-1236 HTTP/1.1[0m" 400 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[31m[1mPOST /api/method/oan_a2c.api.v1.loan_applications.update_basic_profile HTTP/1.1[0m" 400 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[31m[1mPOST /api/method/oan_a2c.api.v1.leads.update_lead_status HTTP/1.1[0m" 400 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[31m[1mPOST /api/method/oan_a2c.api.v1.loan_applications.create_loan_application HTTP/1.1[0m" 400 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[31m[1mPOST /api/method/oan_a2c.api.auth.login HTTP/1.1[0m" 401 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.update_loan_status HTTP/1.1[0m" 404 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[33mGET /api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id=APP-2026-00083 HTTP/1.1[0m" 404 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.update_loan_step HTTP/1.1[0m" 404 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.upload_supporting_documents?application_id=APP-2026-00083 HTTP/1.1[0m" 404 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[33mGET /api/method/oan_a2c.api.v1.loan_applications.get_supporting_documents?application_id=APP-2026-00083 HTTP/1.1[0m" 404 -
+08:01:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:16] "[31m[1mGET /api/method/oan_a2c.api.v1.loan_applications.download_supporting_document?file_id=&view=0 HTTP/1.1[0m" 400 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "[31m[1mPOST /api/method/oan_a2c.api.v1.loan_applications.delete_supporting_document HTTP/1.1[0m" 400 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.update_loan_status HTTP/1.1[0m" 404 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "GET /api/method/oan_a2c.api.v1.loan_applications.get_loan_metadata HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "GET /api/method/oan_a2c.api.v1.loan_applications.get_all_loans?status=Approved&page=1 HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "GET /api/method/oan_a2c.api.v1.loan_applications.get_loan_summary HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "GET /api/method/oan_a2c.api.v1.loan_applications.browse_products?limit=20&start=0 HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "GET /api/method/oan_a2c.api.v1.seller.dashboard.get_stats HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "GET /api/method/oan_a2c.api.v1.loan_applications.get_all_loans?page=1&page_size=20 HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "[33mGET /api/method/oan_a2c.api.v1.loan_applications.get_full_profile?application_id=test HTTP/1.1[0m" 404 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "[33mPOST /api/method/oan_a2c.api.v1.loan_applications.assign_loan_officer HTTP/1.1[0m" 404 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "GET /api/method/oan_a2c.api.v1.notifications.get_notifications?read_status=all&limit=20&start=0 HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "POST /api/method/oan_a2c.api.v1.notifications.mark_read HTTP/1.1" 200 -
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "POST /api/method/oan_a2c.api.v1.notifications.clear HTTP/1.1" 200 -
+08:01:17 web.1      | Traceback (most recent call last):
+08:01:17 web.1      |   File "apps/frappe/frappe/app.py", line 104, in application
+08:01:17 web.1      |     validate_auth()
+08:01:17 web.1      |     ~~~~~~~~~~~~~^^
+08:01:17 web.1      |   File "apps/frappe/frappe/auth.py", line 644, in validate_auth
+08:01:17 web.1      |     raise frappe.AuthenticationError
+08:01:17 web.1      | frappe.exceptions.AuthenticationError
+08:01:17 web.1      | 
+08:01:17 web.1      | 192.168.107.1 - - [16/Aug/2026 08:01:17] "[31m[1mGET /api/resource/Notification%20Log?filters={"read":%200}&limit_page_length=50&order_by=creation%20desc HTTP/1.1[0m" 401 -
+08:03:18 web.1      | 192.168.107.1 - - [16/Aug/2026 08:03:18] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+08:03:33 web.1      | 192.168.107.1 - - [16/Aug/2026 08:03:33] "[31m[1mPOST /api/method/oan_a2c.api.auth.login HTTP/1.1[0m" 401 -
+08:03:43 web.1      | 192.168.107.1 - - [16/Aug/2026 08:03:43] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+08:04:01 web.1      | 192.168.107.1 - - [16/Aug/2026 08:04:01] "POST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1" 200 -
+08:04:06 web.1      | 192.168.107.1 - - [16/Aug/2026 08:04:06] "POST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1" 200 -
+08:04:12 web.1      | 192.168.107.1 - - [16/Aug/2026 08:04:12] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1[0m" 400 -
+08:04:20 web.1      | 192.168.107.1 - - [16/Aug/2026 08:04:20] "POST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1" 200 -
+08:04:28 web.1      | 192.168.107.1 - - [16/Aug/2026 08:04:28] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1[0m" 400 -
+08:04:49 web.1      | 192.168.107.1 - - [16/Aug/2026 08:04:49] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1[0m" 400 -
+08:05:03 web.1      | 192.168.107.1 - - [16/Aug/2026 08:05:03] "POST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1" 200 -
+08:05:15 web.1      | 192.168.107.1 - - [16/Aug/2026 08:05:15] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1[0m" 400 -
+08:08:20 web.1      | 192.168.107.1 - - [16/Aug/2026 08:08:20] "POST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1" 200 -
+08:08:31 web.1      | 192.168.107.1 - - [16/Aug/2026 08:08:31] "POST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1" 200 -
+08:08:50 web.1      | 192.168.107.1 - - [16/Aug/2026 08:08:50] "POST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1" 200 -
+08:08:56 web.1      | 192.168.107.1 - - [16/Aug/2026 08:08:56] "[31m[1mPOST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1[0m" 400 -
+08:09:58 web.1      | 192.168.107.1 - - [16/Aug/2026 08:09:58] "[31m[1mPOST /api/method/oan_a2c.api.auth.login HTTP/1.1[0m" 401 -
+08:10:08 web.1      | 192.168.107.1 - - [16/Aug/2026 08:10:08] "[31m[1mPOST /api/method/oan_a2c.api.auth.login HTTP/1.1[0m" 401 -
+08:10:30 web.1      | 192.168.107.1 - - [16/Aug/2026 08:10:30] "[31m[1mPOST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1[0m" 400 -
+08:10:37 web.1      | 192.168.107.1 - - [16/Aug/2026 08:10:37] "POST /api/method/oan_a2c.api.v1.auth.register_user HTTP/1.1" 200 -
+08:10:43 web.1      | 192.168.107.1 - - [16/Aug/2026 08:10:43] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+08:10:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:10:59] "POST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank HTTP/1.1" 200 -
+08:12:51 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:12:51 web.1      |  * Restarting with stat
+08:12:52 web.1      |  * Debugger is active!
+08:12:52 web.1      |  * Debugger PIN: 359-597-622
+08:13:26 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:13:26 web.1      |  * Restarting with stat
+08:13:27 web.1      |  * Debugger is active!
+08:13:27 web.1      |  * Debugger PIN: 359-597-622
+08:15:05 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:15:05 web.1      |  * Restarting with stat
+08:15:06 web.1      |  * Debugger is active!
+08:15:06 web.1      |  * Debugger PIN: 359-597-622
+08:18:45 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:18:45 web.1      |  * Restarting with stat
+08:18:46 web.1      |  * Debugger is active!
+08:18:46 web.1      |  * Debugger PIN: 359-597-622
+08:18:53 web.1      | Traceback (most recent call last):
+08:18:53 web.1      |   File "env/lib/python3.14/site-packages/pydantic/_internal/_validators.py", line 321, in min_length_validator
+08:18:53 web.1      |     if not (len(x) >= min_length):
+08:18:53 web.1      |             ~~~^^^
+08:18:53 web.1      | TypeError: object of type 'int' has no len()
+08:18:53 web.1      | 
+08:18:53 web.1      | During handling of the above exception, another exception occurred:
+08:18:53 web.1      | 
+08:18:53 web.1      | Traceback (most recent call last):
+08:18:53 web.1      |   File "apps/frappe/frappe/app.py", line 121, in application
+08:18:53 web.1      |     response = frappe.api.handle(request)
+08:18:53 web.1      |   File "apps/frappe/frappe/api/__init__.py", line 63, in handle
+08:18:53 web.1      |     data = endpoint(**arguments)
+08:18:53 web.1      |   File "apps/frappe/frappe/api/v1.py", line 40, in handle_rpc_call
+08:18:53 web.1      |     return frappe.handler.handle()
+08:18:53 web.1      |            ~~~~~~~~~~~~~~~~~~~~~^^
+08:18:53 web.1      |   File "apps/frappe/frappe/handler.py", line 53, in handle
+08:18:53 web.1      |     data = execute_cmd(cmd)
+08:18:53 web.1      |   File "apps/frappe/frappe/handler.py", line 86, in execute_cmd
+08:18:53 web.1      |     return frappe.call(method, **frappe.form_dict)
+08:18:53 web.1      |            ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+08:18:53 web.1      |   File "apps/frappe/frappe/__init__.py", line 1131, in call
+08:18:53 web.1      |     return fn(*args, **newargs)
+08:18:53 web.1      |   File "apps/frappe/frappe/utils/typing_validations.py", line 36, in wrapper
+08:18:53 web.1      |     return func(*args, **kwargs)
+08:18:53 web.1      |   File "apps/oan_a2c/oan_a2c/api/utils.py", line 42, in wrapper
+08:18:53 web.1      |     validated = schema(**params)
+08:18:53 web.1      |   File "env/lib/python3.14/site-packages/pydantic/main.py", line 250, in __init__
+08:18:53 web.1      |     validated_self = self.__pydantic_validator__.validate_python(data, self_instance=self)
+08:18:53 web.1      |   File "env/lib/python3.14/site-packages/pydantic/_internal/_validators.py", line 327, in min_length_validator
+08:18:53 web.1      |     raise TypeError(f"Unable to apply constraint 'min_length' to supplied value {x}")
+08:18:53 web.1      | TypeError: Unable to apply constraint 'min_length' to supplied value 1234599000
+08:18:53 web.1      | 
+08:18:53 web.1      | 192.168.107.1 - - [16/Aug/2026 08:18:53] "[35m[1mPOST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank HTTP/1.1[0m" 500 -
+08:19:25 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:19:26 web.1      |  * Restarting with stat
+08:19:26 web.1      |  * Debugger is active!
+08:19:26 web.1      |  * Debugger PIN: 359-597-622
+08:19:55 web.1      | 192.168.107.1 - - [16/Aug/2026 08:19:55] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank HTTP/1.1[0m" 400 -
+08:20:38 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:20:38 web.1      |  * Restarting with stat
+08:20:39 web.1      |  * Debugger is active!
+08:20:39 web.1      |  * Debugger PIN: 359-597-622
+08:20:54 web.1      | 192.168.107.1 - - [16/Aug/2026 08:20:54] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank HTTP/1.1[0m" 400 -
+08:21:01 web.1      | 192.168.107.1 - - [16/Aug/2026 08:21:01] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank HTTP/1.1[0m" 400 -
+08:21:21 web.1      | 192.168.107.1 - - [16/Aug/2026 08:21:21] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.onboarding.register_bank HTTP/1.1[0m" 400 -
+08:21:29 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:21:29 web.1      |  * Restarting with stat
+08:21:29 web.1      |  * Debugger is active!
+08:21:29 web.1      |  * Debugger PIN: 359-597-622
+08:21:59 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/api/v1/seller/onboarding.py', reloading
+08:21:59 web.1      |  * Restarting with stat
+08:22:00 web.1      |  * Debugger is active!
+08:22:00 web.1      |  * Debugger PIN: 359-597-622
+08:26:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:26:16] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1[0m" 401 -
+08:26:21 web.1      | 192.168.107.1 - - [16/Aug/2026 08:26:21] "POST /api/method/oan_a2c.api.auth.login HTTP/1.1" 200 -
+08:26:26 web.1      | 192.168.107.1 - - [16/Aug/2026 08:26:26] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1[0m" 400 -
+08:26:37 web.1      | 192.168.107.1 - - [16/Aug/2026 08:26:37] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1[0m" 403 -
+08:26:46 web.1      | 192.168.107.1 - - [16/Aug/2026 08:26:46] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status HTTP/1.1[0m" 400 -
+08:26:52 web.1      | 192.168.107.1 - - [16/Aug/2026 08:26:52] "POST /api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts HTTP/1.1" 200 -
+08:26:55 web.1      | 192.168.107.1 - - [16/Aug/2026 08:26:55] "POST /api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document HTTP/1.1" 200 -
+08:26:59 web.1      | 192.168.107.1 - - [16/Aug/2026 08:26:59] "POST /api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status HTTP/1.1" 200 -
+08:27:09 web.1      | 192.168.107.1 - - [16/Aug/2026 08:27:09] "POST /api/method/oan_a2c.api.v1.seller.loan_products.create_product HTTP/1.1" 200 -
+08:27:41 web.1      | Traceback (most recent call last):
+08:27:41 web.1      |   File "apps/frappe/frappe/app.py", line 331, in make_form_dict
+08:27:41 web.1      |     args = orjson.loads(request_data)
+08:27:41 web.1      | orjson.JSONDecodeError: trailing comma is not allowed: line 3 column 23 (char 64)
+08:27:41 web.1      | 
+08:27:41 web.1      | During handling of the above exception, another exception occurred:
+08:27:41 web.1      | 
+08:27:41 web.1      | Traceback (most recent call last):
+08:27:41 web.1      |   File "apps/frappe/frappe/app.py", line 102, in application
+08:27:41 web.1      |     init_request(request)
+08:27:41 web.1      |     ~~~~~~~~~~~~^^^^^^^^^
+08:27:41 web.1      |   File "apps/frappe/frappe/app.py", line 203, in init_request
+08:27:41 web.1      |     make_form_dict(request)
+08:27:41 web.1      |     ~~~~~~~~~~~~~~^^^^^^^^^
+08:27:41 web.1      |   File "apps/frappe/frappe/app.py", line 333, in make_form_dict
+08:27:41 web.1      |     frappe.throw(_("Invalid request body"), frappe.DataError)
+08:27:41 web.1      |     ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+08:27:41 web.1      |   File "apps/frappe/frappe/utils/messages.py", line 159, in throw
+08:27:41 web.1      |     msgprint(
+08:27:41 web.1      |     ~~~~~~~~^
+08:27:41 web.1      |     	msg,
+08:27:41 web.1      |      ^^^^
+08:27:41 web.1      |     ...<7 lines>...
+08:27:41 web.1      |     	allow_dangerous_html=allow_dangerous_html,
+08:27:41 web.1      |      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+08:27:41 web.1      |     )
+08:27:41 web.1      |     ^
+08:27:41 web.1      |   File "apps/frappe/frappe/utils/messages.py", line 118, in msgprint
+08:27:41 web.1      |     _raise_exception()
+08:27:41 web.1      |     ~~~~~~~~~~~~~~~~^^
+08:27:41 web.1      |   File "apps/frappe/frappe/utils/messages.py", line 59, in _raise_exception
+08:27:41 web.1      |     raise exc
+08:27:41 web.1      | frappe.exceptions.DataError: Invalid request body
+08:27:41 web.1      | 
+08:27:41 web.1      | 192.168.107.1 - - [16/Aug/2026 08:27:41] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.set_product_status HTTP/1.1[0m" 417 -
+08:29:16 web.1      | 192.168.107.1 - - [16/Aug/2026 08:29:16] "[31m[1mPOST /api/method/oan_a2c.api.v1.seller.loan_products.set_product_status HTTP/1.1[0m" 400 -
+08:29:26 web.1      | 192.168.107.1 - - [16/Aug/2026 08:29:26] "POST /api/method/oan_a2c.api.v1.seller.loan_products.set_product_status HTTP/1.1" 200 -
+08:29:30 web.1      | 192.168.107.1 - - [16/Aug/2026 08:29:30] "POST /api/method/oan_a2c.api.v1.seller.loan_products.get_product_comment HTTP/1.1" 200 -

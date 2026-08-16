@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from oan_a2c.a2c_marketplace.permissions import (
 	BankNotActive,
@@ -38,16 +38,23 @@ from oan_a2c.a2c_marketplace.doctype_schemas import ProductMetaSchema, SinglePro
 
 class CreateProductSchema(BaseModel):
 	product_name: str | None = Field(None, min_length=1, max_length=140)
-	min_interest_rate: float | None = Field(None, ge=0, le=20.0, decimal_places=2)
-	max_interest_rate: float | None = Field(None, ge=0, le=20.0, decimal_places=2)
-	min_amount: float | None = Field(None, ge=0, le=999999.99, decimal_places=2)
-	max_amount: float | None = Field(None, ge=0, le=999999.99, decimal_places=2)
+	min_interest_rate: float | None = Field(None, ge=0, le=20.0)
+	max_interest_rate: float | None = Field(None, ge=0, le=20.0)
+	min_amount: int | None = Field(None, ge=0, le=999999)
+	max_amount: int | None = Field(None, ge=0, le=999999)
 	tenure_months: int | None = Field(None, ge=1, le=1200)
 	description: str | None = Field(None, max_length=2000)
 	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None
 
 	products: list[SingleProductSchema] | None = None
+
+	@field_validator("min_interest_rate", "max_interest_rate")
+	@classmethod
+	def validate_decimals(cls, v):
+		if v is not None and round(v, 2) != v:
+			raise ValueError("Interest rate must have at most 2 decimal places.")
+		return v
 
 	@model_validator(mode="after")
 	def check_payload(self):
@@ -75,14 +82,21 @@ class CreateProductSchema(BaseModel):
 class UpdateProductSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
 	product_name: str | None = Field(None, max_length=140)
-	min_interest_rate: float | None = Field(None, ge=0, le=20.0, decimal_places=2)
-	max_interest_rate: float | None = Field(None, ge=0, le=20.0, decimal_places=2)
-	min_amount: float | None = Field(None, ge=0, le=999999.99, decimal_places=2)
-	max_amount: float | None = Field(None, ge=0, le=999999.99, decimal_places=2)
+	min_interest_rate: float | None = Field(None, ge=0, le=20.0)
+	max_interest_rate: float | None = Field(None, ge=0, le=20.0)
+	min_amount: int | None = Field(None, ge=0, le=999999)
+	max_amount: int | None = Field(None, ge=0, le=999999)
 	tenure_months: int | None = Field(None, ge=1, le=1200)
 	description: str | None = Field(None, max_length=2000)
 	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None
+
+	@field_validator("min_interest_rate", "max_interest_rate")
+	@classmethod
+	def validate_decimals(cls, v):
+		if v is not None and round(v, 2) != v:
+			raise ValueError("Interest rate must have at most 2 decimal places.")
+		return v
 
 	@model_validator(mode="after")
 	def validate_min_max_ordering(self):
@@ -98,9 +112,20 @@ class UpdateProductSchema(BaseModel):
 class SetProductStatusSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
 	status: str = Field(..., pattern="^(Pending Approval|Active|Rejected)$")
+	reason: str | None = Field(None, max_length=2000)
+
+	@model_validator(mode="after")
+	def validate_reason_required_for_approval_or_rejection(self):
+		if self.status in ("Active", "Rejected") and not (self.reason and self.reason.strip()):
+			raise ValueError(f"Please provide a reason when setting status to '{self.status}'.")
+		return self
 
 
 class GetProductSchema(BaseModel):
+	product_id: str = Field(..., min_length=1, max_length=140)
+
+
+class GetProductCommentSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
 
 
@@ -152,8 +177,8 @@ def update_product(**kwargs):
 		assert_bank_active(get_user_bank())
 
 	doc = frappe.get_doc("A2C Loan Product", product_id)
-	if doc.status == "Active":
-		frappe.throw(_("Cannot edit a loan product once it is approved (Active)."), frappe.PermissionError)
+	if kwargs.get("reason"):
+		doc._status_reason = kwargs["reason"]
 
 	direct_fields = [
 		"product_name",
@@ -180,7 +205,13 @@ def update_product(**kwargs):
 			frappe.throw(_("min_amount cannot be greater than max_amount."), frappe.ValidationError)
 
 	doc.save(ignore_permissions=False)
-	return success_response(data={"message": _("Product updated"), "product_id": doc.name})
+	return success_response(
+		data={
+			"message": _("Product updated"),
+			"product_id": doc.name,
+			"status": doc.status,
+		}
+	)
 
 
 @frappe.whitelist()
@@ -189,6 +220,7 @@ def update_product(**kwargs):
 def set_product_status(**kwargs):
 	product_id = kwargs.get("product_id")
 	status = kwargs.get("status")
+	reason = kwargs.get("reason")
 	if not frappe.has_permission("A2C Loan Product", "write", product_id):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
@@ -202,10 +234,18 @@ def set_product_status(**kwargs):
 		assert_bank_active(get_user_bank())
 
 	doc = frappe.get_doc("A2C Loan Product", product_id)
+	if reason:
+		doc._status_reason = reason
 	doc.status = status
 	doc.save(ignore_permissions=False)
 
-	return success_response(data={"message": _("Product status updated to {}").format(status)})
+	return success_response(
+		data={
+			"message": _("Product status updated to {}").format(doc.status),
+			"product_id": doc.name,
+			"status": doc.status,
+		}
+	)
 
 
 @frappe.whitelist()
@@ -419,3 +459,37 @@ def get_product(**kwargs):
 	}
 
 	return success_response(data={"product": product_data})
+
+
+@frappe.whitelist()
+@validate_request(GetProductCommentSchema)
+@handle_api_errors
+def get_product_comment(**kwargs):
+	product_id = kwargs.get("product_id")
+	if not frappe.has_permission("A2C Loan Product", "read", product_id):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	filters = {"loan_product": product_id}
+
+	events = frappe.get_all(
+		"A2C Loan Product Audit Event",
+		filters=filters,
+		fields=[
+			"name",
+			"creation",
+			"event_type",
+			"from_status",
+			"to_status",
+			"event_title",
+			"event_description",
+			"reason",
+			"performed_by",
+		],
+		order_by="creation desc",
+		limit_page_length=1,
+	)
+
+	for event in events:
+		event.creation = to_tz_aware_iso(event.creation)
+
+	return success_response(data={"comment": events})

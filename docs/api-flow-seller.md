@@ -188,7 +188,8 @@ Updates fields and metadata of an existing loan product.
   "message": "Product updated",
   "data": {
     "message": "Product updated",
-    "product_id": "PROD-2026-0001"
+    "product_id": "PROD-2026-0001",
+    "status": "Pending Approval"
   }
 }
 ```
@@ -211,6 +212,7 @@ Transitions the lifecycle status of a loan product.
 | :--- | :--- | :--- | :--- | :--- |
 | **`product_id`** | string | Yes | — | The document name/ID of the loan product |
 | **`status`** | string | Yes | — | Exactly one of: `Pending Approval`, `Active`, `Rejected` (enforced via regex `^(Pending Approval|Active|Rejected)$`) |
+| **`reason`** | string | Yes (for Active/Rejected) | null | Mandatory reason/notes when setting status to `Active` or `Rejected`. Optional for `Pending Approval`. Logged to `A2C Loan Product Audit Event`. |
 
 **Success Response (HTTP 200):**
 ```json
@@ -218,7 +220,9 @@ Transitions the lifecycle status of a loan product.
   "status": "success",
   "message": "Product status updated to Active",
   "data": {
-    "message": "Product status updated to Active"
+    "message": "Product status updated to Active",
+    "product_id": "PROD-2026-0001",
+    "status": "Active"
   }
 }
 ```

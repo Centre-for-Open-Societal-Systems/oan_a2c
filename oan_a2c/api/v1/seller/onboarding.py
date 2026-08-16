@@ -61,23 +61,23 @@ class RegisterBankSchema(BaseModel):
 	registered_zone: str | None = Field(None, max_length=140)
 	registered_region: str = Field(..., min_length=2, max_length=140)
 	registered_country: str = Field(..., min_length=2, max_length=140)
-	registered_postal_code: str = Field(..., min_length=2, max_length=20)
+	registered_postal_code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d+$")
 	registered_email: SafeEmail
 	registered_phone: RequiredPhone
-	website: str | None = Field(None, max_length=255)
+	website: str | None = Field(None, max_length=255, pattern=r"^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$")
 
 
 class UpdateBankProfileSchema(BaseModel):
 	bank_name: str | None = Field(None, max_length=140)
 	brand_name: str | None = Field(None, max_length=140)
-	website: str | None = Field(None, max_length=255)
+	website: str | None = Field(None, max_length=255, pattern=r"^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$")
 	registered_street: str | None = Field(None, max_length=255)
 	registered_kebele_village: str | None = Field(None, max_length=140)
 	registered_woreda_district: str | None = Field(None, max_length=140)
 	registered_zone: str | None = Field(None, max_length=140)
 	registered_region: str | None = Field(None, max_length=140)
 	registered_country: str | None = Field(None, max_length=140)
-	registered_postal_code: str | None = Field(None, max_length=20)
+	registered_postal_code: str | None = Field(None, min_length=6, max_length=6, pattern=r"^\d+$")
 	registered_email: SafeEmail | None = None
 	registered_phone: RequiredPhone | None = None
 	logo: str | None = Field(None, max_length=255)
