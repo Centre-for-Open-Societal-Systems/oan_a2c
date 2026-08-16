@@ -16,6 +16,7 @@ def _create_test_bank(bank_code: str, bank_name: str) -> str:
 	doc = frappe.get_doc(
 		{
 			"doctype": "A2C Participating Bank",
+			"registered_city": "Test City",
 			"kyc_document": "/private/files/test_kyc.pdf",
 			"gro_name": "Test GRO",
 			"ops_name": "Test Ops",

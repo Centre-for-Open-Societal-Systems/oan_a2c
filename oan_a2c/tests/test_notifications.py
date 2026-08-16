@@ -44,6 +44,7 @@ class TestNotifications(unittest.TestCase):
 			bank = frappe.get_doc(
 				{
 					"doctype": "A2C Participating Bank",
+					"registered_city": "Test City",
 					"kyc_document": "/private/files/test_kyc.pdf",
 					"gro_name": "Test GRO",
 					"ops_name": "Test Ops",

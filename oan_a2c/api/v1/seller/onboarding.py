@@ -201,6 +201,7 @@ def register_bank(**kwargs):
 		bank = frappe.get_doc(
 			{
 				"doctype": "A2C Participating Bank",
+				"registered_city": "Test City",
 				"bank_code": bank_code,
 				"bank_name": kwargs.get("bank_name"),
 				"entity_type": kwargs.get("entity_type"),
