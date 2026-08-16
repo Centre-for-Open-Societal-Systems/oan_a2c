@@ -512,6 +512,9 @@ class TestLoansV1API(unittest.TestCase):
 			bank_doc = frappe.get_doc(
 				{
 					"doctype": "A2C Participating Bank",
+					"kyc_document": "/private/files/test_kyc.pdf",
+					"gro_name": "Test GRO",
+					"ops_name": "Test Ops",
 					"bank_name": "Test Loan API Bank",
 					"bank_code": "TEST_LOAN_API_BANK",
 					"status": "In Review",

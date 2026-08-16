@@ -18,6 +18,9 @@ class TestStatsCache(unittest.TestCase):
 		cls.bank = frappe.get_doc(
 			{
 				"doctype": "A2C Participating Bank",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO",
+				"ops_name": "Test Ops",
 				"bank_name": f"Test Stats Bank {suffix}",
 				"bank_code": f"TEST_STATS_{suffix}",
 				"status": "In Review",

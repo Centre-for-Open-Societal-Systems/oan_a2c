@@ -23,6 +23,9 @@ class IntegrationTestA2CLoanApplicationAuditEvent(IntegrationTestCase):
 				frappe.get_doc(
 					{
 						"doctype": "A2C Participating Bank",
+						"kyc_document": "/private/files/test_kyc.pdf",
+						"gro_name": "Test GRO",
+						"ops_name": "Test Ops",
 						"bank_code": b_name,
 						"bank_name": f"Test Bank {b_name}",
 						"entity_type": "Commercial Bank",

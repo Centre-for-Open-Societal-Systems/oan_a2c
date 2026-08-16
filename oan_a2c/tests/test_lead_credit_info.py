@@ -33,6 +33,9 @@ class TestLeadCreditInfo(unittest.TestCase):
 					frappe.get_doc(
 						{
 							"doctype": "A2C Participating Bank",
+							"kyc_document": "/private/files/test_kyc.pdf",
+							"gro_name": "Test GRO",
+							"ops_name": "Test Ops",
 							"bank_name": "Test Bank",
 							"bank_code": "TB123",
 							"status": "In Review",

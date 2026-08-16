@@ -400,3 +400,11 @@
 08:32:15 web.1      |  * Restarting with stat
 08:32:16 web.1      |  * Debugger is active!
 08:32:16 web.1      |  * Debugger PIN: 359-597-622
+08:34:03 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/patches/round_loan_product_values.py', reloading
+08:34:03 web.1      |  * Restarting with stat
+08:34:04 web.1      |  * Debugger is active!
+08:34:04 web.1      |  * Debugger PIN: 359-597-622
+08:47:51 web.1      |  * Detected change in '/workspace/development/frappe-bench-16/apps/oan_a2c/oan_a2c/a2c_marketplace/doctype/a2c_loan_product_audit_event/test_a2c_loan_product_audit_event.py', reloading
+08:47:52 web.1      |  * Restarting with stat
+08:47:52 web.1      |  * Debugger is active!
+08:47:52 web.1      |  * Debugger PIN: 359-597-622

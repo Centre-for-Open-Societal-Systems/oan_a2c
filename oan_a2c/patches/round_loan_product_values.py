@@ -5,7 +5,7 @@ def execute():
 	"""Round min_interest_rate, max_interest_rate, min_amount, and max_amount to 2 decimal places for all A2C Loan Products."""
 	frappe.reload_doc("a2c_marketplace", "doctype", "a2c_loan_product")
 
-	products = frappe.get_all(
+	products = frappe.get_all(  # bank-scope-exempt: running as patch
 		"A2C Loan Product",
 		fields=["name", "min_interest_rate", "max_interest_rate", "min_amount", "max_amount"],
 	)

@@ -22,6 +22,9 @@ def _ensure_bank(code):
 		doc = frappe.get_doc(
 			{
 				"doctype": "A2C Participating Bank",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO",
+				"ops_name": "Test Ops",
 				"bank_name": f"Test Lookup Bank {code}",
 				"bank_code": code,
 				"entity_type": "Bank",

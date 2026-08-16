@@ -16,6 +16,9 @@ def _make_lead_verifiable(lead_id):
 	bank = frappe.get_doc(
 		{
 			"doctype": "A2C Participating Bank",
+			"kyc_document": "/private/files/test_kyc.pdf",
+			"gro_name": "Test GRO",
+			"ops_name": "Test Ops",
 			"bank_name": f"Verifiable Test Bank {suffix}",
 			"bank_code": f"VTB{suffix}",
 			"status": "In Review",
@@ -1040,6 +1043,9 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 		cls._bank = frappe.get_doc(
 			{
 				"doctype": "A2C Participating Bank",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO",
+				"ops_name": "Test Ops",
 				"bank_name": f"XSS Test Bank {suffix}",
 				"bank_code": f"XSS{suffix}",
 				"status": "In Review",
