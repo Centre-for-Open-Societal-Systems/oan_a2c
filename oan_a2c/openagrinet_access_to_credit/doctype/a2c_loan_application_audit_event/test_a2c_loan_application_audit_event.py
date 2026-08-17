@@ -14,31 +14,38 @@ class IntegrationTestA2CLoanApplicationAuditEvent(IntegrationTestCase):
 		frappe.set_user("Administrator")
 
 	def test_audit_event_bank_scoping_and_permissions(self):
-		# Create test banks
-		bank1_name = "TEST_BANK_AUDIT_1"
-		bank2_name = "TEST_BANK_AUDIT_2"
+		# Create test banks. A2C Participating Bank autonames as PB-####, so the
+		# document name differs from bank_code — capture the real names to use as
+		# link values below.
+		bank_names = {}
+		for b_code in ["TEST_BANK_AUDIT_1", "TEST_BANK_AUDIT_2"]:
+			existing = frappe.db.get_value("A2C Participating Bank", {"bank_code": b_code}, "name")
+			if existing:
+				bank_names[b_code] = existing
+				continue
+			bank = frappe.get_doc(
+				{
+					"doctype": "A2C Participating Bank",
+					"registered_city": "Test City",
+					"kyc_document": "/private/files/test_kyc.pdf",
+					"gro_name": "Test GRO",
+					"ops_name": "Test Ops",
+					"bank_code": b_code,
+					"bank_name": f"Test Bank {b_code}",
+					"entity_type": "Commercial Bank",
+					"registered_street": "123 Test St",
+					"registered_region": "Region",
+					"registered_country": "Country",
+					"registered_postal_code": "1000",
+					"registered_email": f"{b_code.lower()}@test.com",
+					"registered_phone": "+251900000000",
+					"status": "Active",
+				}
+			).insert(ignore_permissions=True)
+			bank_names[b_code] = bank.name
 
-		for b_name in [bank1_name, bank2_name]:
-			if not frappe.db.exists("A2C Participating Bank", b_name):
-				frappe.get_doc(
-					{
-						"doctype": "A2C Participating Bank",
-						"registered_city": "Test City",
-						"kyc_document": "/private/files/test_kyc.pdf",
-						"gro_name": "Test GRO",
-						"ops_name": "Test Ops",
-						"bank_code": b_name,
-						"bank_name": f"Test Bank {b_name}",
-						"entity_type": "Commercial Bank",
-						"registered_street": "123 Test St",
-						"registered_region": "Region",
-						"registered_country": "Country",
-						"registered_postal_code": "1000",
-						"registered_email": f"{b_name.lower()}@test.com",
-						"registered_phone": "+251900000000",
-						"status": "Active",
-					}
-				).insert(ignore_permissions=True)
+		bank1_name = bank_names["TEST_BANK_AUDIT_1"]
+		bank2_name = bank_names["TEST_BANK_AUDIT_2"]
 
 		# Create test user for Bank 1 (Bank Admin)
 		user_email = "test_bank_admin_audit@example.com"
@@ -64,11 +71,25 @@ class IntegrationTestA2CLoanApplicationAuditEvent(IntegrationTestCase):
 				}
 			).insert(ignore_permissions=True)
 
+		# loan_application is a required Link — create a real application per bank.
+		def _make_loan_application():
+			app = frappe.new_doc("A2C Loan Application")
+			app.first_name = "Test"
+			app.last_name = "Farmer"
+			app.phone_number = "0912345678"
+			app.requested_amount = 5000
+			app.loan_type = "Input Loan"
+			app.insert(ignore_mandatory=True, ignore_links=True, ignore_permissions=True)
+			return app.name
+
+		app1_name = _make_loan_application()
+		app2_name = _make_loan_application()
+
 		# Create audit event for Bank 1
 		event1 = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Application Audit Event",
-				"loan_application": "APP-TEST-001",
+				"loan_application": app1_name,
 				"bank": bank1_name,
 				"event_type": "Status Changed",
 				"event_title": "Status Updated",
@@ -80,7 +101,7 @@ class IntegrationTestA2CLoanApplicationAuditEvent(IntegrationTestCase):
 		event2 = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Application Audit Event",
-				"loan_application": "APP-TEST-002",
+				"loan_application": app2_name,
 				"bank": bank2_name,
 				"event_type": "Status Changed",
 				"event_title": "Status Updated",
