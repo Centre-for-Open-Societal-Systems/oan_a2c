@@ -344,6 +344,7 @@ def list_products(
 			"product_name",
 			"slug",
 			"status",
+			"bank",
 			"min_interest_rate",
 			"max_interest_rate",
 			"min_amount",
@@ -379,9 +380,22 @@ def list_products(
 		)
 		counts_map = {row.loan_product: row.get("COUNT(*)") for row in app_counts}
 
+		# Batch resolve bank display names for the result rows. A2C Participating Bank
+		# is the public lender directory (not bank-scoped), so get_all is fine.
+		bank_ids = list({p["bank"] for p in products if p.get("bank")})
+		bank_name_map = {}
+		if bank_ids:
+			bank_rows = frappe.get_all(
+				"A2C Participating Bank",
+				filters={"name": ["in", bank_ids]},
+				fields=["name", "bank_name"],
+			)
+			bank_name_map = {row.name: row.bank_name for row in bank_rows}
+
 		for p in products:
 			p["categories"] = categories_map.get(p["name"], [])
 			p["applications_count"] = counts_map.get(p["name"], 0)
+			p["bank_name"] = bank_name_map.get(p.get("bank"))
 
 	total_pages = -(-total_records // page_size)
 	has_next = offset + page_size < total_records
