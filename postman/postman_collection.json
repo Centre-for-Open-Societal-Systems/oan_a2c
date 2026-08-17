@@ -398,7 +398,7 @@
         },
         "body": {
          "mode": "raw",
-         "raw": "{\n    \"bank_name\": \"{{bank_name}}\",\n    \"bank_code\": \"{{bank_code}}\",\n    \"entity_type\": \"{{entity_type}}\",\n    \"registered_street\": \"{{registered_street}}\",\n    \"registered_city\": \"{{registered_city}}\",\n    \"registered_country\": \"{{registered_country}}\",\n    \"registered_postal_code\": \"{{registered_postal_code}}\",\n    \"registered_email\": \"{{registered_email}}\",\n    \"registered_phone\": \"{{registered_phone}}\"\n}",
+         "raw": "{\n    \"bank_name\": \"{{bank_name}}\",\n    \"bank_code\": \"{{bank_code}}\",\n    \"entity_type\": \"{{entity_type}}\",\n    \"registered_street\": \"{{registered_street}}\",\n    \"registered_region\": \"{{registered_region}}\",\n    \"registered_country\": \"{{registered_country}}\",\n    \"registered_postal_code\": \"{{registered_postal_code}}\",\n    \"registered_email\": \"{{registered_email}}\",\n    \"registered_phone\": \"{{registered_phone}}\"\n}",
          "options": {
           "raw": {
            "language": "json"
@@ -955,10 +955,10 @@
            "if (pm.response.code === 200) {",
            "    var jsonData = pm.response.json();",
            "    var resData = jsonData.data || (jsonData.message && jsonData.message.data) || null;",
-           "    if (resData && resData.product_id) {",
-           "        pm.environment.set(\"loan_product\", resData.product_id);",
-           "        pm.collectionVariables.set(\"product_id\", resData.product_id);",
-           "        console.log(\"Saved product_id successfully:\", resData.product_id);",
+           "    if (resData && resData.product_ids && resData.product_ids.length > 0) {",
+           "        pm.environment.set(\"loan_product\", resData.product_ids[0]);",
+           "        pm.collectionVariables.set(\"product_id\", resData.product_ids[0]);",
+           "        console.log(\"Saved product_id successfully:\", resData.product_ids[0]);",
            "    }",
            "}"
           ],
@@ -1189,7 +1189,7 @@
         },
         "body": {
          "mode": "raw",
-         "raw": "{\n    \"product_id\": \"{{product_id}}\",\n    \"status\": \"{{product_status}}\"\n}",
+         "raw": "{\n    \"product_id\": \"{{product_id}}\",\n    \"status\": \"{{product_status}}\",\n    \"reason\": \"Status updated via API\"\n}",
          "options": {
           "raw": {
            "language": "json"
@@ -1278,6 +1278,53 @@
           "api",
           "method",
           "oan_a2c.api.v1.seller.loan_products.get_product"
+         ]
+        },
+        "body": {
+         "mode": "raw",
+         "raw": "{\n    \"product_id\": \"{{product_id}}\"\n}",
+         "options": {
+          "raw": {
+           "language": "json"
+          }
+         }
+        }
+       },
+       "response": [],
+       "event": [
+        {
+         "listen": "test",
+         "script": {
+          "exec": [
+           "pm.test(\"Status code is 200\", function () {",
+           "    pm.response.to.have.status(200);",
+           "});"
+          ],
+          "type": "text/javascript"
+         }
+        }
+       ]
+      },
+      {
+       "name": "12. Get Product Comment",
+       "request": {
+        "method": "POST",
+        "header": [
+         {
+          "key": "Authorization",
+          "value": "Bearer {{jwt_token}}",
+          "type": "text"
+         }
+        ],
+        "url": {
+         "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.loan_products.get_product_comment",
+         "host": [
+          "{{base_url}}"
+         ],
+         "path": [
+          "api",
+          "method",
+          "oan_a2c.api.v1.seller.loan_products.get_product_comment"
          ]
         },
         "body": {
@@ -5008,46 +5055,6 @@
         },
         "description": "Delete specific notification_ids, or set clear_all=true to delete all of the current user's notifications."
        }
-      },
-      {
-       "name": "4. Get Unread Notifications",
-       "request": {
-        "method": "GET",
-        "header": [
-         {
-          "key": "Authorization",
-          "value": "Bearer {{jwt_token}}",
-          "type": "text"
-         }
-        ],
-        "url": {
-         "raw": "{{base_url}}/api/resource/Notification Log?filters={\"read\": 0}&limit_page_length=50&order_by=creation desc",
-         "host": [
-          "{{base_url}}"
-         ],
-         "path": [
-          "api",
-          "resource",
-          "Notification Log"
-         ],
-         "query": [
-          {
-           "key": "filters",
-           "value": "{\"read\": 0}"
-          },
-          {
-           "key": "limit_page_length",
-           "value": "50"
-          },
-          {
-           "key": "order_by",
-           "value": "creation desc"
-          }
-         ]
-        },
-        "description": "Fetches unread Notification Log documents for the authenticated agent. This is used by the frontend to poll or display real-time alerts (e.g., when a new lead is assigned or an inbound webhook occurs)."
-       },
-       "response": []
       }
      ]
     }
@@ -5285,7 +5292,7 @@
   },
   {
    "key": "max_amount",
-   "value": "100000.0"
+   "value": "100000"
   },
   {
    "key": "tenure_months",
@@ -5297,7 +5304,7 @@
   },
   {
    "key": "min_amount",
-   "value": "10000.0"
+   "value": "10000"
   },
   {
    "key": "product_description",
@@ -5368,8 +5375,8 @@
    "value": "123 Test St"
   },
   {
-   "key": "registered_city",
-   "value": "Test City"
+   "key": "registered_region",
+   "value": "Addis Ababa"
   },
   {
    "key": "registered_country",

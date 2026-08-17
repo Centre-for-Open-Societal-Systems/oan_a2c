@@ -58,9 +58,9 @@ def _compute_from_db(bank: str) -> dict:
 		fields=["status", {"COUNT": "name", "as": "count"}],
 		group_by="status",
 	)
-	total_products = sum(item.count for item in product_counts if item.status != "Archived")
+	total_products = sum(item.count for item in product_counts if item.status != "Rejected")
 	active_products = sum(item.count for item in product_counts if item.status == "Active")
-	pending_products = sum(item.count for item in product_counts if item.status == "Draft")
+	pending_products = sum(item.count for item in product_counts if item.status == "Pending Approval")
 
 	app_counts = frappe.get_all(  # bank-scope-exempt: bank scoped explicitly via filters above
 		"A2C Loan Application",
@@ -130,11 +130,11 @@ def on_product_change(doc, event: str) -> None:
 		return
 
 	if event == "after_insert":
-		if doc.status != "Archived":
+		if doc.status != "Rejected":
 			_incr(bank, "total_products")
 		if doc.status == "Active":
 			_incr(bank, "active_products")
-		elif doc.status == "Draft":
+		elif doc.status == "Pending Approval":
 			_incr(bank, "pending_products")
 
 	elif event == "on_update":
@@ -142,27 +142,27 @@ def on_product_change(doc, event: str) -> None:
 		if before is None:
 			return  # after_insert already handled this
 		if before.status != doc.status:
-			if before.status != "Archived" and doc.status == "Archived":
+			if before.status != "Rejected" and doc.status == "Rejected":
 				_decr(bank, "total_products")
-			elif before.status == "Archived" and doc.status != "Archived":
+			elif before.status == "Rejected" and doc.status != "Rejected":
 				_incr(bank, "total_products")
 
 			if before.status == "Active":
 				_decr(bank, "active_products")
-			elif before.status == "Draft":
+			elif before.status == "Pending Approval":
 				_decr(bank, "pending_products")
 
 			if doc.status == "Active":
 				_incr(bank, "active_products")
-			elif doc.status == "Draft":
+			elif doc.status == "Pending Approval":
 				_incr(bank, "pending_products")
 
 	elif event == "on_trash":
-		if doc.status != "Archived":
+		if doc.status != "Rejected":
 			_decr(bank, "total_products")
 		if doc.status == "Active":
 			_decr(bank, "active_products")
-		elif doc.status == "Draft":
+		elif doc.status == "Pending Approval":
 			_decr(bank, "pending_products")
 
 

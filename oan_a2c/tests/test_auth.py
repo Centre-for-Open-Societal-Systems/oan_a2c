@@ -388,6 +388,37 @@ class TestAuthAPI(_RequestContextMixin, unittest.TestCase):
 		restore_resp = change_password(current_password=new_pwd, new_password=self.test_password)
 		self.assertEqual(restore_resp.get("status"), "success")
 
+	def test_15_register_user_duplicate_email(self):
+		from oan_a2c.api.v1.auth import register_user
+
+		resp = register_user(
+			email=self.test_email,
+			full_name="Test Agent",
+			password="TestPassword123!",
+			phone_number="+251911999999",
+		)
+		self.assertEqual(resp.get("status"), "success")
+		self.assertTrue(resp.get("data", {}).get("already_exists"))
+		self.assertIn("already have an account", resp.get("data", {}).get("message", ""))
+
+	def test_16_register_user_duplicate_phone(self):
+		from oan_a2c.api.v1.auth import register_user
+
+		# Set mobile_no for test_email user
+		frappe.db.set_value("User", self.test_email, "mobile_no", "+251911888888")
+
+		resp = register_user(
+			email="new_unique_email@test.com",
+			full_name="Test Agent",
+			password="TestPassword123!",
+			phone_number="+251911888888",
+		)
+		self.assertEqual(resp.get("status"), "error")
+		self.assertEqual(resp.get("code"), "VALIDATION_ERROR")
+		self.assertIn(
+			"already registered", resp.get("details", {}).get("phone_number", "") or resp.get("message", "")
+		)
+
 
 class TestMustChangePassword(_RequestContextMixin, unittest.TestCase):
 	"""An admin-issued temporary password authenticates but opens no session.

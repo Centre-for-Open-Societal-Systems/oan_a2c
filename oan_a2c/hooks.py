@@ -133,6 +133,7 @@ BANK_SCOPED = [
 	"A2C Loan Product Lookup",
 	"A2C Loan Product Attribute Lookup",
 	"A2C Loan Application",
+	"A2C Loan Application Audit Event",
 ]
 
 permission_query_conditions = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_query" for d in BANK_SCOPED}

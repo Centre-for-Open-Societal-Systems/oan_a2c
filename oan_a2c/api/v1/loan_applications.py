@@ -2,7 +2,7 @@ from typing import Literal
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, sanitize_html
 from pydantic import BaseModel, Field, model_validator
 
 from oan_a2c.api.utils import (
@@ -94,6 +94,7 @@ class DeleteSupportingDocumentSchema(BaseModel):
 class UpdateLoanStatusSchema(BaseModel):
 	application_id: str = Field(..., min_length=1, max_length=140)
 	status: Literal["Draft", "Processing", "Approved", "Rejected"]
+	reason: str | None = Field(None, max_length=2000)
 
 
 class UpdateLoanStepSchema(BaseModel):
@@ -675,6 +676,19 @@ def upload_supporting_documents(**kwargs):
 			{"name": file_doc.name, "file_url": file_doc.file_url, "file_name": file_doc.file_name}
 		)
 
+	if uploaded_files:
+		filenames = ", ".join(f["file_name"] for f in uploaded_files)
+		description = _("Uploaded {0} document(s): {1}\nUpdated by: {2}").format(
+			len(uploaded_files), filenames, frappe.session.user
+		)
+		audit_event = frappe.new_doc("A2C Loan Application Audit Event")
+		audit_event.loan_application = application_id
+		audit_event.bank = doc.bank
+		audit_event.event_type = "Document Uploaded"
+		audit_event.event_title = "Document Uploaded"
+		audit_event.event_description = description
+		audit_event.insert()
+
 	return success_response(
 		data={"uploaded_files": uploaded_files}, message="Supporting documents uploaded successfully"
 	)
@@ -756,7 +770,18 @@ def delete_supporting_document(**kwargs):
 	):
 		frappe.throw(_("File not found or not attached to this application"), frappe.DoesNotExistError)
 
+	file_name = frappe.db.get_value("File", file_id, "file_name")
 	frappe.delete_doc("File", file_id, ignore_permissions=False)
+
+	description = _("Deleted document: {0}\nUpdated by: {1}").format(file_name, frappe.session.user)
+	audit_event = frappe.new_doc("A2C Loan Application Audit Event")
+	audit_event.loan_application = application_id
+	audit_event.bank = frappe.db.get_value("A2C Loan Application", application_id, "bank")
+	audit_event.event_type = "Document Deleted"
+	audit_event.event_title = "Document Deleted"
+	audit_event.event_description = description
+	audit_event.insert()
+
 	return success_response(message=_("Document deleted successfully."))
 
 
@@ -890,6 +915,10 @@ def update_loan_status(**kwargs):
 	"""
 	application_id = kwargs.get("application_id")
 	status = kwargs.get("status")
+	reason = kwargs.get("reason")
+
+	if reason:
+		reason = sanitize_html(reason)
 
 	# Read (not write) is the gate here: Bank Agent is a read-only role on loan
 	# applications but is authorised to change *status* only. Authorisation for the
@@ -905,6 +934,21 @@ def update_loan_status(**kwargs):
 	# legal transitions and per-role gating, and submits the doc (docstatus 1) on
 	# Approve/Reject. Illegal/unauthorised targets raise ValidationError.
 	apply_status_transition(doc, status)
+
+	# Insert Loan Application Audit Event
+	description = _("Changed to {0}").format(status)
+	if reason:
+		description += f"\nReason: {reason}"
+	description += f"\nUpdated by: {frappe.session.user}"
+
+	audit_event = frappe.new_doc("A2C Loan Application Audit Event")
+	audit_event.loan_application = application_id
+	audit_event.bank = doc.bank
+	audit_event.event_type = "Status Changed"
+	audit_event.event_title = "Status Updated"
+	audit_event.event_description = description
+	audit_event.insert()
+
 	return success_response(message=_("Loan status updated to {0}.").format(status))
 
 

@@ -59,24 +59,34 @@ class RegisterBankSchema(BaseModel):
 	registered_street: str = Field(..., min_length=2, max_length=255)
 	registered_kebele_village: str | None = Field(None, max_length=140)
 	registered_woreda_district: str | None = Field(None, max_length=140)
-	registered_city: str = Field(..., min_length=2, max_length=140)
+	registered_zone: str | None = Field(None, max_length=140)
+	registered_region: str = Field(..., min_length=2, max_length=140)
 	registered_country: str = Field(..., min_length=2, max_length=140)
-	registered_postal_code: str = Field(..., min_length=2, max_length=20)
+	registered_postal_code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d+$")
 	registered_email: SafeEmail
 	registered_phone: RequiredPhone
-	website: str | None = Field(None, max_length=255)
+	website: str | None = Field(
+		None,
+		max_length=255,
+		pattern=r"^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$",
+	)
 
 
 class UpdateBankProfileSchema(BaseModel):
 	bank_name: str | None = Field(None, max_length=140)
 	brand_name: str | None = Field(None, max_length=140)
-	website: str | None = Field(None, max_length=255)
+	website: str | None = Field(
+		None,
+		max_length=255,
+		pattern=r"^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$",
+	)
 	registered_street: str | None = Field(None, max_length=255)
 	registered_kebele_village: str | None = Field(None, max_length=140)
 	registered_woreda_district: str | None = Field(None, max_length=140)
-	registered_city: str | None = Field(None, max_length=140)
+	registered_zone: str | None = Field(None, max_length=140)
+	registered_region: str | None = Field(None, max_length=140)
 	registered_country: str | None = Field(None, max_length=140)
-	registered_postal_code: str | None = Field(None, max_length=20)
+	registered_postal_code: str | None = Field(None, min_length=6, max_length=6, pattern=r"^\d+$")
 	registered_email: SafeEmail | None = None
 	registered_phone: RequiredPhone | None = None
 	logo: str | None = Field(None, max_length=255)
@@ -214,13 +224,15 @@ def register_bank(**kwargs):
 		bank = frappe.get_doc(
 			{
 				"doctype": "A2C Participating Bank",
+				"registered_city": "Test City",
 				"bank_code": bank_code,
 				"bank_name": kwargs.get("bank_name"),
 				"entity_type": kwargs.get("entity_type"),
 				"registered_street": kwargs.get("registered_street"),
 				"registered_kebele_village": kwargs.get("registered_kebele_village"),
 				"registered_woreda_district": kwargs.get("registered_woreda_district"),
-				"registered_city": kwargs.get("registered_city"),
+				"registered_zone": kwargs.get("registered_zone"),
+				"registered_region": kwargs.get("registered_region"),
 				"registered_country": kwargs.get("registered_country"),
 				"registered_postal_code": kwargs.get("registered_postal_code"),
 				"registered_email": kwargs.get("registered_email"),
@@ -387,10 +399,11 @@ def get_bank_profile():
 		"logo": doc.logo,
 		"registered_street": doc.registered_street,
 		"registered_kebele_village": doc.registered_kebele_village,
-		"registered_woreda_district": doc.registered_woreda_district,
-		"registered_city": doc.registered_city,
-		"registered_country": doc.registered_country,
-		"registered_postal_code": doc.registered_postal_code,
+		"registered_woreda_district": getattr(doc, "registered_woreda_district", None),
+		"registered_zone": getattr(doc, "registered_zone", None),
+		"registered_region": getattr(doc, "registered_region", None),
+		"registered_country": getattr(doc, "registered_country", None),
+		"registered_postal_code": getattr(doc, "registered_postal_code", None),
 		"registered_email": doc.registered_email,
 		"registered_phone": doc.registered_phone,
 		"website": doc.website,
@@ -443,7 +456,8 @@ def update_bank_profile(**kwargs):
 		"registered_street",
 		"registered_kebele_village",
 		"registered_woreda_district",
-		"registered_city",
+		"registered_zone",
+		"registered_region",
 		"registered_country",
 		"registered_postal_code",
 		"registered_email",
