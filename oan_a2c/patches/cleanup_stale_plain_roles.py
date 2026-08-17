@@ -5,7 +5,7 @@ Retire the pre-rename plain-named roles for good.
 
 `rename_a2c_roles` already renamed Bank Admin/Bank Agent/Development Agent to
 their A2C-prefixed names, but it runs once. The plain roles came back because
-invite_user/update_user_profile accepted an arbitrary client `role` string and
+invite_team_member/update_user_profile accepted an arbitrary client `role` string and
 re-created the Role + Has Role link (now gated by an allowlist). This patch
 merges any lingering plain role into its A2C counterpart — frappe.rename_doc
 with merge=True moves every link reference (Has Role, DocPerm, Workflow, Role

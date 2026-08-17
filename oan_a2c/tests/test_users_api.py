@@ -8,7 +8,12 @@ from oan_a2c.a2c_marketplace.roles import (
 	BANK_AGENT_ROLE,
 	DEVELOPMENT_AGENT_ROLE,
 )
-from oan_a2c.api.v1.seller.onboarding import update_user
+from oan_a2c.api.v1.seller.onboarding import (
+	invite_team_member,
+	list_users,
+	reset_member_password,
+	update_user,
+)
 
 
 def _create_test_bank(bank_code: str, bank_name: str) -> str:
@@ -128,7 +133,7 @@ class TestUpdateUser(unittest.TestCase):
 		frappe.db.commit()
 
 	def setUp(self):
-		frappe.local.response = {}
+		frappe.local.response = frappe._dict()
 		frappe.set_user("Administrator")
 
 	# ------------------------------------------------------------------
@@ -289,3 +294,191 @@ class TestUpdateUser(unittest.TestCase):
 		frappe.set_user(self.admin)
 		res = update_user(email=self.bank_agent_a)
 		self.assertEqual(res.get("status"), "success")
+
+
+class TestInviteTeamMember(unittest.TestCase):
+	"""Bank Admins staff their bank with Agents — and only Agents."""
+
+	@classmethod
+	def setUpClass(cls):
+		frappe.set_user("Administrator")
+		cls.suffix = frappe.generate_hash(length=6)
+
+		cls.bank = _create_test_bank(f"IU_BANK_{cls.suffix}", "Invite Users Bank")
+		cls.bank_admin = _create_test_user(
+			f"iu_bankadmin_{cls.suffix}@oan.test", "IU Bank Admin", BANK_ADMIN_ROLE, cls.bank
+		)
+		cls._users = [cls.bank_admin]
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		for email in cls._users:
+			if not frappe.db.exists("User", email):
+				continue
+			for perm in frappe.get_all("User Permission", filters={"user": email}, pluck="name"):
+				frappe.delete_doc("User Permission", perm, force=True, ignore_permissions=True)
+			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+		frappe.delete_doc("A2C Participating Bank", cls.bank, force=True, ignore_permissions=True)
+
+	def setUp(self):
+		frappe.local.response = frappe._dict()
+		frappe.set_user("Administrator")
+
+	def _invitee(self, tag: str) -> str:
+		email = f"iu_{tag}_{self.suffix}@oan.test"
+		type(self)._users.append(email)
+		return email
+
+	def test_invited_agent_starts_with_a_must_change_password(self):
+		invitee = self._invitee("agent")
+		frappe.set_user(self.bank_admin)
+
+		res = invite_team_member(email=invitee, full_name="New Agent", password="TempIssued1")
+
+		self.assertEqual(res.get("status"), "success")
+		self.assertTrue(frappe.db.exists("User", invitee))
+		self.assertIn(BANK_AGENT_ROLE, frappe.get_roles(invitee))
+		# The admin chose this password, so it may not survive first use.
+		self.assertEqual(frappe.db.get_value("User", invitee, "a2c_must_change_password"), 1)
+
+	def test_role_defaults_to_bank_agent_when_omitted(self):
+		invitee = self._invitee("default")
+		frappe.set_user(self.bank_admin)
+
+		res = invite_team_member(email=invitee, full_name="Default Role", password="TempIssued1")
+
+		self.assertEqual(res.get("status"), "success")
+		self.assertIn(BANK_AGENT_ROLE, frappe.get_roles(invitee))
+
+	def test_bank_admin_cannot_invite_another_bank_admin(self):
+		invitee = self._invitee("rogueadmin")
+		frappe.set_user(self.bank_admin)
+
+		res = invite_team_member(
+			email=invitee, full_name="Rogue Admin", role=BANK_ADMIN_ROLE, password="TempIssued1"
+		)
+
+		self.assertEqual(frappe.local.response.get("http_status_code"), 400)
+		self.assertEqual(res.get("code"), "VALIDATION_ERROR")
+		# Rejected before any account exists — not created-then-demoted.
+		self.assertFalse(frappe.db.exists("User", invitee))
+
+	def test_bank_admin_cannot_invite_a_platform_role(self):
+		invitee = self._invitee("devagent")
+		frappe.set_user(self.bank_admin)
+
+		res = invite_team_member(
+			email=invitee, full_name="Rogue Dev", role=DEVELOPMENT_AGENT_ROLE, password="TempIssued1"
+		)
+
+		self.assertEqual(res.get("code"), "VALIDATION_ERROR")
+		self.assertFalse(frappe.db.exists("User", invitee))
+
+	def test_team_list_flags_members_who_have_not_set_a_password(self):
+		invitee = self._invitee("listed")
+		frappe.set_user(self.bank_admin)
+		invite_team_member(email=invitee, full_name="Listed Agent", password="TempIssued1")
+
+		frappe.local.response = frappe._dict()
+		rows = list_users().get("data", {}).get("users", [])
+		row = next((u for u in rows if u.get("name") == invitee), None)
+
+		self.assertIsNotNone(row, "invited agent should appear in the bank's team list")
+		self.assertTrue(row.get("must_change_password"))
+
+
+class TestResetMemberPassword(unittest.TestCase):
+	"""A Bank Admin can reissue an agent's password — within their own bank only."""
+
+	@classmethod
+	def setUpClass(cls):
+		frappe.set_user("Administrator")
+		suffix = frappe.generate_hash(length=6)
+
+		cls.bank_a = _create_test_bank(f"RMP_BANK_A_{suffix}", "Reset Pwd Bank A")
+		cls.bank_b = _create_test_bank(f"RMP_BANK_B_{suffix}", "Reset Pwd Bank B")
+
+		cls.bank_admin_a = _create_test_user(
+			f"rmp_admin_a_{suffix}@oan.test", "RMP Admin A", BANK_ADMIN_ROLE, cls.bank_a
+		)
+		cls.bank_admin_b = _create_test_user(
+			f"rmp_admin_b_{suffix}@oan.test", "RMP Admin B", BANK_ADMIN_ROLE, cls.bank_b
+		)
+		cls.agent_a = _create_test_user(
+			f"rmp_agent_a_{suffix}@oan.test", "RMP Agent A", BANK_AGENT_ROLE, cls.bank_a
+		)
+		cls.agent_b = _create_test_user(
+			f"rmp_agent_b_{suffix}@oan.test", "RMP Agent B", BANK_AGENT_ROLE, cls.bank_b
+		)
+
+		cls._users = [cls.bank_admin_a, cls.bank_admin_b, cls.agent_a, cls.agent_b]
+		cls._banks = [cls.bank_a, cls.bank_b]
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		for email in cls._users:
+			frappe.db.delete("A2C User Refresh Token", {"user": email})
+			for perm in frappe.get_all("User Permission", filters={"user": email}, pluck="name"):
+				frappe.delete_doc("User Permission", perm, force=True, ignore_permissions=True)
+			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+		for bank in cls._banks:
+			frappe.delete_doc("A2C Participating Bank", bank, force=True, ignore_permissions=True)
+
+	def setUp(self):
+		frappe.local.response = frappe._dict()
+		frappe.set_user("Administrator")
+		frappe.db.set_value("User", self.agent_a, "a2c_must_change_password", 0)
+		for caller in (self.bank_admin_a, self.bank_admin_b, self.agent_a):
+			frappe.cache().delete_value(f"rl:reset_member_pwd:{caller}")
+
+	def test_reissuing_a_password_regates_the_account(self):
+		frappe.set_user(self.bank_admin_a)
+
+		res = reset_member_password(email=self.agent_a, password="ReIssued99")
+
+		self.assertEqual(res.get("status"), "success")
+		self.assertEqual(frappe.db.get_value("User", self.agent_a, "a2c_must_change_password"), 1)
+
+	def test_reissuing_kills_any_live_session(self):
+		"""The reason to reset is often a compromise — the old session must die."""
+		frappe.set_user("Administrator")
+		frappe.get_doc(
+			{
+				"doctype": "A2C User Refresh Token",
+				"user": self.agent_a,
+				"token_hash": frappe.generate_hash(length=64),
+				"expiry": frappe.utils.add_days(frappe.utils.now_datetime(), 1),
+			}
+		).insert(ignore_permissions=True)
+
+		frappe.set_user(self.bank_admin_a)
+		reset_member_password(email=self.agent_a, password="ReIssued99")
+
+		self.assertEqual(frappe.db.count("A2C User Refresh Token", {"user": self.agent_a}), 0)
+
+	def test_bank_admin_cannot_reset_an_agent_from_another_bank(self):
+		frappe.set_user(self.bank_admin_a)
+
+		res = reset_member_password(email=self.agent_b, password="ReIssued99")
+
+		self.assertEqual(frappe.local.response.get("http_status_code"), 403)
+		self.assertEqual(res.get("status"), "error")
+		self.assertEqual(frappe.db.get_value("User", self.agent_b, "a2c_must_change_password"), 0)
+
+	def test_bank_admin_cannot_reset_another_bank_admin(self):
+		frappe.set_user(self.bank_admin_a)
+
+		res = reset_member_password(email=self.bank_admin_b, password="ReIssued99")
+
+		self.assertEqual(frappe.local.response.get("http_status_code"), 403)
+		self.assertEqual(res.get("status"), "error")
+
+	def test_bank_agent_cannot_reset_anyone(self):
+		frappe.set_user(self.agent_a)
+
+		res = reset_member_password(email=self.agent_b, password="ReIssued99")
+
+		self.assertEqual(frappe.local.response.get("http_status_code"), 403)
+		self.assertEqual(res.get("status"), "error")

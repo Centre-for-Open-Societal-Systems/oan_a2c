@@ -747,14 +747,14 @@
          }
         ],
         "url": {
-         "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.invite_user",
+         "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.invite_team_member",
          "host": [
           "{{base_url}}"
          ],
          "path": [
           "api",
           "method",
-          "oan_a2c.api.v1.seller.onboarding.invite_user"
+          "oan_a2c.api.v1.seller.onboarding.invite_team_member"
          ]
         },
         "body": {
@@ -1369,14 +1369,14 @@
          }
         ],
         "url": {
-         "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.invite_user",
+         "raw": "{{base_url}}/api/method/oan_a2c.api.v1.seller.onboarding.invite_team_member",
          "host": [
           "{{base_url}}"
          ],
          "path": [
           "api",
           "method",
-          "oan_a2c.api.v1.seller.onboarding.invite_user"
+          "oan_a2c.api.v1.seller.onboarding.invite_team_member"
          ]
         },
         "body": {
@@ -1400,7 +1400,7 @@
            "});",
            "",
            "// The invited user is the new bank/loan agent. Make them the loan officer used",
-           "// by the Assign Loan Officer call. invite_user echoes no email, so reuse the",
+           "// by the Assign Loan Officer call. invite_team_member echoes no email, so reuse the",
            "// invited_user_email input on success.",
            "let ok = pm.response.code >= 200 && pm.response.code < 300;",
            "try {",
