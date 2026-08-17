@@ -16,13 +16,17 @@ def _make_lead_verifiable(lead_id):
 	bank = frappe.get_doc(
 		{
 			"doctype": "A2C Participating Bank",
+			"registered_city": "Test City",
+			"kyc_document": "/private/files/test_kyc.pdf",
+			"gro_name": "Test GRO",
+			"ops_name": "Test Ops",
 			"bank_name": f"Verifiable Test Bank {suffix}",
 			"bank_code": f"VTB{suffix}",
 			"status": "In Review",
 			"entity_type": "Commercial Bank",
 			"registered_email": f"vtb{suffix}@test.com",
 			"registered_phone": "+251911000000",
-			"registered_city": "Addis Ababa",
+			"registered_region": "Addis Ababa",
 			"registered_country": "Ethiopia",
 		}
 	).insert(ignore_permissions=True)
@@ -1040,13 +1044,17 @@ class TestLeadSanitizationXSS(unittest.TestCase):
 		cls._bank = frappe.get_doc(
 			{
 				"doctype": "A2C Participating Bank",
+				"registered_city": "Test City",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO",
+				"ops_name": "Test Ops",
 				"bank_name": f"XSS Test Bank {suffix}",
 				"bank_code": f"XSS{suffix}",
 				"status": "In Review",
 				"entity_type": "Commercial Bank",
 				"registered_email": f"xss{suffix}@test.com",
 				"registered_phone": "+251911000000",
-				"registered_city": "Addis Ababa",
+				"registered_region": "Addis Ababa",
 				"registered_country": "Ethiopia",
 			}
 		).insert(ignore_permissions=True)

@@ -29,6 +29,34 @@ class TestLoansV1API(unittest.TestCase):
 		)
 		frappe.db.sql("DELETE FROM `tabA2C Lead` WHERE name='TEST_LEAD_999'")
 		frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead='TEST_LEAD_999'")
+		frappe.db.sql(
+			"DELETE FROM `tabA2C Loan Application Audit Event` WHERE loan_application IN "
+			"(SELECT name FROM `tabA2C Loan Application` WHERE lead_id='TEST_LEAD_999')"
+		)
+
+		if not frappe.db.exists("A2C Participating Bank", "Test Bank"):
+			bank_doc = frappe.get_doc(
+				{
+					"doctype": "A2C Participating Bank",
+					"registered_city": "Test City",
+					"bank_name": "Test Bank Name",
+					"bank_code": "TEST_BANK_999",
+					"status": "In Review",
+					"entity_type": "Commercial Bank",
+					"registered_email": "testbank@test.com",
+					"registered_phone": "+251911000000",
+					"registered_region": "Addis Ababa",
+					"registered_country": "Ethiopia",
+					"kyc_document": "/private/files/test_kyc.pdf",
+					"gro_name": "Test GRO",
+					"ops_name": "Test Ops",
+				}
+			)
+			bank_doc.insert(ignore_permissions=True)
+			frappe.db.sql(
+				"UPDATE `tabA2C Participating Bank` SET name='Test Bank' WHERE name=%s", bank_doc.name
+			)
+
 		frappe.db.commit()
 
 	def setUp(self):
@@ -380,6 +408,16 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertEqual(res_after["status"], "success")
 		self.assertEqual(len(res_after["data"]), 0)
 
+		# 5. Check audit event
+		audit_events = frappe.get_all(
+			"A2C Loan Application Audit Event",
+			filters={"loan_application": self.app_id, "event_type": "Document Deleted"},
+			fields=["event_type", "event_title", "event_description"],
+		)
+		self.assertEqual(len(audit_events), 1)
+		self.assertEqual(audit_events[0]["event_type"], "Document Deleted")
+		self.assertIn("Deleted document: test_doc.png", audit_events[0]["event_description"])
+
 	def test_6_update_loan_step(self):
 		# Ensure it starts at 1
 		frappe.db.set_value("A2C Loan Application", self.app_id, "current_step", 1)
@@ -420,18 +458,54 @@ class TestLoansV1API(unittest.TestCase):
 	def test_7_rejected_loan_status_locked(self):
 		# Reject follows the legal workflow path Draft -> Processing -> Rejected. Rejection is a
 		# submit action, so the record ends at docstatus 1 (frozen).
+
+		# Clean up any pre-existing audit events for this application
+		frappe.db.sql(
+			"DELETE FROM `tabA2C Loan Application Audit Event` WHERE loan_application=%s",
+			self.app_id,
+		)
+		frappe.db.commit()
+
 		res = update_loan_status(application_id=self.app_id, status="Processing")
 		self.assertEqual(res["status"], "success")
-		res = update_loan_status(application_id=self.app_id, status="Rejected")
+		res = update_loan_status(
+			application_id=self.app_id,
+			status="Rejected",
+			reason="Insufficient collateral provided.",
+		)
 		self.assertEqual(res["status"], "success")
 
 		doc = frappe.get_doc("A2C Loan Application", self.app_id)
 		self.assertEqual(doc.status, "Rejected")
 		self.assertEqual(doc.docstatus, 1)
 
+		# Verify audit events were created for both transitions
+		audit_events = frappe.get_all(
+			"A2C Loan Application Audit Event",
+			filters={"loan_application": self.app_id},
+			fields=["event_type", "event_title", "event_description"],
+			order_by="creation asc",
+		)
+		self.assertEqual(len(audit_events), 2)
+
+		# First event: Draft -> Processing
+		self.assertEqual(audit_events[0]["event_type"], "Status Changed")
+		self.assertEqual(audit_events[0]["event_title"], "Status Updated")
+		self.assertIn("Changed to Processing", audit_events[0]["event_description"])
+		self.assertIn("Administrator", audit_events[0]["event_description"])
+
+		# Second event: Processing -> Rejected (with reason)
+		self.assertIn("Changed to Rejected", audit_events[1]["event_description"])
+		self.assertIn("Insufficient collateral provided.", audit_events[1]["event_description"])
+		self.assertIn("Administrator", audit_events[1]["event_description"])
+
 		# A further transition (e.g. to Approved) is illegal from a terminal state and rejected.
 		res = update_loan_status(application_id=self.app_id, status="Approved")
 		self.assertEqual(res["status"], "error")
+
+		# No additional audit event should be created for the failed transition
+		audit_count = frappe.db.count("A2C Loan Application Audit Event", {"loan_application": self.app_id})
+		self.assertEqual(audit_count, 2)
 
 		# The submitted record is frozen: a direct edit + save is blocked by docstatus.
 		doc.status = "Approved"
@@ -462,13 +536,17 @@ class TestLoansV1API(unittest.TestCase):
 			bank_doc = frappe.get_doc(
 				{
 					"doctype": "A2C Participating Bank",
+					"registered_city": "Test City",
+					"kyc_document": "/private/files/test_kyc.pdf",
+					"gro_name": "Test GRO",
+					"ops_name": "Test Ops",
 					"bank_name": "Test Loan API Bank",
 					"bank_code": "TEST_LOAN_API_BANK",
 					"status": "In Review",
 					"entity_type": "Commercial Bank",
 					"registered_email": "loanapi@test.com",
 					"registered_phone": "+251911000000",
-					"registered_city": "Addis Ababa",
+					"registered_region": "Addis Ababa",
 					"registered_country": "Ethiopia",
 				}
 			).insert(ignore_permissions=True)

@@ -123,6 +123,36 @@ class TestPydanticValidation(unittest.TestCase):
 			)
 		self.assertIn("min_amount cannot be greater than max_amount", str(ctx.exception))
 
+		# interest rate > 20% capped
+		with self.assertRaises(ValidationError) as ctx:
+			CreateProductSchema(
+				product_name="Test Loan",
+				min_interest_rate=21.0,
+				max_amount=5000.0,
+				tenure_months=12,
+			)
+		self.assertIn("min_interest_rate", str(ctx.exception))
+
+		# amount > 6 digits (> 999,999.99) capped
+		with self.assertRaises(ValidationError) as ctx:
+			CreateProductSchema(
+				product_name="Test Loan",
+				min_interest_rate=5.0,
+				max_amount=1000000.0,
+				tenure_months=12,
+			)
+		self.assertIn("max_amount", str(ctx.exception))
+
+		# interest rate with > 2 decimal places
+		with self.assertRaises(ValidationError) as ctx:
+			CreateProductSchema(
+				product_name="Test Loan",
+				min_interest_rate=15.123,
+				max_amount=5000.0,
+				tenure_months=12,
+			)
+		self.assertIn("min_interest_rate", str(ctx.exception))
+
 	def test_create_lead_schema_max_length(self):
 		from pydantic import ValidationError
 
@@ -146,7 +176,7 @@ class TestPydanticValidation(unittest.TestCase):
 				bank_code="TB01",
 				entity_type="X",
 				registered_street="Street 1",
-				registered_city="Addis",
+				registered_region="Addis",
 				registered_country="Ethiopia",
 				registered_postal_code="1000",
 				registered_email="test@bank.com",
@@ -168,3 +198,31 @@ class TestPydanticValidation(unittest.TestCase):
 		with self.assertRaises(ValidationError) as ctx:
 			BrowseProductsSchema(min_amount=50000.0, max_amount=1000.0)
 		self.assertIn("min_amount cannot be greater than max_amount", str(ctx.exception))
+
+	def test_active_product_edit_blocked(self):
+		from oan_a2c.a2c_marketplace.doctype.a2c_loan_product.a2c_loan_product import A2CLoanProduct
+
+		doc = A2CLoanProduct(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": "Active Loan",
+				"min_interest_rate": 10.0,
+				"status": "Active",
+			}
+		)
+		doc.is_new = lambda: False
+
+		before_doc = frappe._dict(
+			{
+				"status": "Active",
+				"min_interest_rate": 10.0,
+				"product_name": "Active Loan",
+			}
+		)
+		doc.get_doc_before_save = lambda: before_doc
+
+		# Changing min_interest_rate from 10.0 -> 12.0 on an Active product
+		doc.min_interest_rate = 12.0
+
+		with self.assertRaises(frappe.PermissionError):
+			doc.before_save()
