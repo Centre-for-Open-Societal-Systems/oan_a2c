@@ -380,8 +380,8 @@ def reset_password(email: str, key: str, new_password: str):
 	return success_response(message=_("Your password has been successfully updated. You may now login."))
 
 
-# nosemgrep: guest-whitelisted-method -- reviewed: gated on the temporary password itself plus the
-# must-change flag, rate-limited, enumeration-safe
+# reviewed: gated on the temporary password itself plus the must-change flag, rate-limited, enumeration-safe
+# nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
 @frappe.whitelist(allow_guest=True)
 @validate_request(SetInitialPasswordSchema)
 @handle_api_errors

@@ -773,7 +773,9 @@ def delete_supporting_document(**kwargs):
 	file_name = frappe.db.get_value("File", file_id, "file_name")
 	frappe.delete_doc("File", file_id, ignore_permissions=False)
 
-	description = _("Deleted document: {0}\nUpdated by: {1}").format(file_name, frappe.session.user)
+	description = "{0}\n{1}".format(
+		_("Deleted document: {0}").format(file_name), _("Updated by: {0}").format(frappe.session.user)
+	)
 	audit_event = frappe.new_doc("A2C Loan Application Audit Event")
 	audit_event.loan_application = application_id
 	audit_event.bank = frappe.db.get_value("A2C Loan Application", application_id, "bank")
