@@ -1,4 +1,5 @@
 # api-flow-backend.md — OAN A2C Backend API Contract
+
 _Derived from direct source code analysis — `apps/oan_a2c/oan_a2c/api/` — 2026-06-14_
 _Last updated: 2026-06-14 (full reread of all source files)_
 
@@ -13,22 +14,26 @@ _Last updated: 2026-06-14 (full reread of all source files)_
 All endpoints under `/api/method/oan_a2c.*` require a Bearer JWT token unless explicitly listed in the exempt paths below.
 
 **Token spec:**
+
 - Algorithm: HS256
 - Secret: `frappe.conf.encryption_key`
 - Access Token Payload: `{ sub: email, iss: "oan_a2c_identity_gateway", iat, exp (now + 15 min), roles: [] }`
 - Header: `Authorization: Bearer <token>`
 
 **Refresh Token spec:**
+
 - Database-backed (`A2C User Refresh Token` DocType) using SHA-256 hash.
 - Expiration: 30 days if "Remember Me" is enabled, 1 day if disabled.
 - Rotation (RTR): The refresh token is rotated (invalidated and re-issued) upon every usage.
 
 **Middleware** (`api/middleware.py`, registered as `auth_hooks` in `hooks.py`):
+
 - Validates token cryptographically
 - Calls `frappe.set_user(payload.sub)` to wire Frappe RBAC for the request
 - Preserves `frappe.local.form_dict` across the `set_user()` call
 
 **JWT-exempt paths (no Bearer token required):**
+
 ```
 /api/method/oan_a2c.api.auth.login
 /api/method/oan_a2c.api.auth.forgot_password
@@ -51,12 +56,12 @@ Middleware errors are thrown before `handle_api_errors` runs — they are NOT in
 { "exc_type": "AuthenticationError", "exception": "...", "_server_messages": "..." }
 ```
 
-| Condition | HTTP | Message |
-|-----------|------|---------|
-| Missing `Authorization` header | 401 | `"Missing Authorization Header"` |
-| Token expired | 401 | `"Token has expired"` |
-| Token signature invalid | 401 | `"Invalid token"` |
-| `encryption_key` missing in site config | 401 | `"System encryption key missing"` |
+| Condition                               | HTTP | Message                           |
+| --------------------------------------- | ---- | --------------------------------- |
+| Missing `Authorization` header          | 401  | `"Missing Authorization Header"`  |
+| Token expired                           | 401  | `"Token has expired"`             |
+| Token signature invalid                 | 401  | `"Invalid token"`                 |
+| `encryption_key` missing in site config | 401  | `"System encryption key missing"` |
 
 ---
 
@@ -65,6 +70,7 @@ Middleware errors are thrown before `handle_api_errors` runs — they are NOT in
 **All endpoints** (auth, leads, loans, webhooks, consent) now use `@handle_api_errors` from `api/utils.py`. Every response goes through one of two shapes:
 
 ### 2.1 Success Envelope
+
 ```json
 {
   "status": "success",
@@ -74,9 +80,11 @@ Middleware errors are thrown before `handle_api_errors` runs — they are NOT in
   "pagination": null | { "page": 1, "limit": 20, "total": 100, "total_pages": 5, "has_next": true }
 }
 ```
+
 `pagination` key is **omitted entirely** when the endpoint does not paginate.
 
 ### 2.2 Error Envelope
+
 ```json
 {
   "status": "error",
@@ -88,13 +96,13 @@ Middleware errors are thrown before `handle_api_errors` runs — they are NOT in
 
 ### 2.3 Error Code Reference
 
-| HTTP | `code` | Frappe exception | When it fires |
-|------|--------|-----------------|---------------|
-| 401 | `AUTHENTICATION_ERROR` | `frappe.AuthenticationError` | Bad credentials, expired token (via `frappe.throw`) |
-| 403 | `PERMISSION_DENIED` | `frappe.PermissionError` | Missing role or document permission |
-| 404 | `NOT_FOUND` | `frappe.DoesNotExistError` | Document not found |
-| 400 | `VALIDATION_ERROR` | `frappe.ValidationError` | Invalid input, business rule violation |
-| 500 | `INTERNAL_ERROR` | Any other `Exception` | Unexpected server error (logged to Error Log) |
+| HTTP | `code`                 | Frappe exception             | When it fires                                       |
+| ---- | ---------------------- | ---------------------------- | --------------------------------------------------- |
+| 401  | `AUTHENTICATION_ERROR` | `frappe.AuthenticationError` | Bad credentials, expired token (via `frappe.throw`) |
+| 403  | `PERMISSION_DENIED`    | `frappe.PermissionError`     | Missing role or document permission                 |
+| 404  | `NOT_FOUND`            | `frappe.DoesNotExistError`   | Document not found                                  |
+| 400  | `VALIDATION_ERROR`     | `frappe.ValidationError`     | Invalid input, business rule violation              |
+| 500  | `INTERNAL_ERROR`       | Any other `Exception`        | Unexpected server error (logged to Error Log)       |
 
 > **Critical frontend note — `validate_lead()` quirk:** Endpoints that call `validate_lead(lead_id)` internally (`get_basic_profile`, `update_basic_profile`, `create_loan_application`) return a **malformed** error response when `lead_id` is missing or the lead doesn't exist. The HTTP status code is set correctly (400/404) but the envelope **incorrectly says `"status": "success"`** with `data: { "error": { "code": "...", "message": "..." } }`. Frontend must check HTTP status code first, not only the `status` field, for these endpoints.
 
@@ -118,40 +126,45 @@ Middleware errors are thrown before `handle_api_errors` runs — they are NOT in
 
 ## 3. DocType Reference
 
-| DocType | Key Fields |
-|---------|-----------|
-| A2C Lead | `phone_number`, `first_name`, `last_name`, `email`, `lead_source`, `status`, `assigned_to`, `assigned_date`, `external_id`, `call_notes`, `farmer_profile` |
-| A2C Lead Audit Event | `lead`, `event_type`, `event_title`, `event_description`, `creation`, `owner` |
-| A2C Farmer Profile | `first_name`, `last_name`, `phone_number`, `email`, `location`, `farmer_id`, `lead_id`, `consent_id`, `date_of_birth`, `gender`, `marital_status`, `family_size`, `education_level`, land fields, `soil_fertility_minerals`, `moisture_levels`, `certification_id`, `certification_photo_url` |
-| A2C Credit Information | `lead`, `loan_type`, `loan_amount`, `purpose_message` |
-| A2C Loan Application | `lead_id`, `status`, `current_step`, `farmer_profile`, `phone_number`, `location`, `farmer_id`, `consent_id`, `loan_type`, `loan_amount`, `loan_reason`, `loan_officer` + 20+ demographic/agricultural fields copied from Farmer Profile |
-| A2C Consent Request | `lead`, `farmer_fayda_id`, `partner`, `status`, `purpose`, `validity_from`, `validity_to`, `openg2p_consent_id`, `otp_transaction_id`, `otp_verified_at`, `consent_form_attachment`, `consent_receipt`, `websub_delivered`, `websub_delivered_at` |
-| A2C Consent Data | `field_name`, `field_value` (child table of Consent Request) |
-| A2C Visit Schedule | `lead`, `visit_date`, `visit_time`, `region`, `zone`, `woreda`, `kebele`, `meeting_location`, `notes`, `scheduled_by`, `status` |
+| DocType                | Key Fields                                                                                                                                                                                                                                                                                    |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A2C Lead               | `phone_number`, `first_name`, `last_name`, `email`, `lead_source`, `status`, `assigned_to`, `assigned_date`, `external_id`, `call_notes`, `farmer_profile`                                                                                                                                    |
+| A2C Lead Audit Event   | `lead`, `event_type`, `event_title`, `event_description`, `creation`, `owner`                                                                                                                                                                                                                 |
+| A2C Farmer Profile     | `first_name`, `last_name`, `phone_number`, `email`, `location`, `farmer_id`, `lead_id`, `consent_id`, `date_of_birth`, `gender`, `marital_status`, `family_size`, `education_level`, land fields, `soil_fertility_minerals`, `moisture_levels`, `certification_id`, `certification_photo_url` |
+| A2C Credit Information | `lead`, `loan_type`, `loan_amount`, `purpose_message`                                                                                                                                                                                                                                         |
+| A2C Loan Application   | `lead_id`, `status`, `current_step`, `farmer_profile`, `phone_number`, `location`, `farmer_id`, `consent_id`, `loan_type`, `loan_amount`, `loan_reason`, `loan_officer` + 20+ demographic/agricultural fields copied from Farmer Profile                                                      |
+| A2C Consent Request    | `lead`, `farmer_fayda_id`, `partner`, `status`, `purpose`, `validity_from`, `validity_to`, `openg2p_consent_id`, `otp_transaction_id`, `otp_verified_at`, `consent_form_attachment`, `consent_receipt`, `websub_delivered`, `websub_delivered_at`                                             |
+| A2C Consent Data       | `field_name`, `field_value` (child table of Consent Request)                                                                                                                                                                                                                                  |
+| A2C Visit Schedule     | `lead`, `visit_date`, `visit_time`, `region`, `zone`, `woreda`, `kebele`, `meeting_location`, `notes`, `scheduled_by`, `status`                                                                                                                                                               |
 
 ### Status Machines
 
 **A2C Lead `status`:**
+
 - Values: `Active`, `Verified`, `Processed`, `Granted`, `Rejected`, `Dormant`
 - **Terminal (immutable):** `Processed`, `Rejected`, `Granted`, `Dormant`
 - Attempting `update_lead_status` on a terminal status → 400 `VALIDATION_ERROR`
 
 **A2C Loan Application `status`:**
+
 - Values: `Draft`, `Processing`, `Approved`, `Rejected`
 - **Terminal (immutable):** `Approved`, `Rejected`
 - Attempting `update_loan_status` on a terminal status → 400 `VALIDATION_ERROR`
 
 **A2C Loan Application `current_step`:**
+
 - Valid values: `1`, `2`, `3`, `4`
 - Steps cannot be skipped: step N+2 is rejected if current step is N
 - Back-navigation (lower step numbers) is allowed
 
 **A2C Visit Schedule `status`:**
+
 - Values: `Scheduled`, `Completed`, `Cancelled`, `Missed`
 - **Terminal (immutable):** `Completed`, `Missed`
 - Attempting any status change on a Completed or Missed schedule → 400 `VALIDATION_ERROR`
 
 **A2C Consent Request `status`:**
+
 - Values: `Draft`, `Pending OTP`, `OTP Verified`, `Approved`, `Rejected`, `Failed` (set on error)
 
 ---
@@ -159,6 +172,7 @@ Middleware errors are thrown before `handle_api_errors` runs — they are NOT in
 ## 4. Endpoint Reference
 
 Convention for parameter tables:
+
 - **bold** = Required. Missing value raises 400 `VALIDATION_ERROR` or `MandatoryError`.
 - plain = Optional.
 - Invalid enum values are either silently coerced to a default (noted) or raise 400.
@@ -172,17 +186,19 @@ All auth endpoints use the standard envelope.
 ---
 
 #### `POST /api/method/oan_a2c.api.auth.login`
+
 No JWT required.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`usr`** | string | Yes | User email address |
-| **`pwd`** | string | Yes | User password |
-| `remember_me` | boolean | No | Extends refresh token expiry to 30 days if true (default is false, which expires in 1 day) |
+| Param         | Type    | Required | Notes                                                                                      |
+| ------------- | ------- | -------- | ------------------------------------------------------------------------------------------ |
+| **`usr`**     | string  | Yes      | User email address                                                                         |
+| **`pwd`**     | string  | Yes      | User password                                                                              |
+| `remember_me` | boolean | No       | Extends refresh token expiry to 30 days if true (default is false, which expires in 1 day) |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -204,23 +220,25 @@ No JWT required.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| Wrong credentials | 401 | `AUTHENTICATION_ERROR` | `"Incorrect email or password."` |
-| `encryption_key` missing in site config | 500 | `INTERNAL_ERROR` | `"An unexpected error occurred"` |
+| Condition                               | HTTP | code                   | message                          |
+| --------------------------------------- | ---- | ---------------------- | -------------------------------- |
+| Wrong credentials                       | 401  | `AUTHENTICATION_ERROR` | `"Incorrect email or password."` |
+| `encryption_key` missing in site config | 500  | `INTERNAL_ERROR`       | `"An unexpected error occurred"` |
 
 ---
 
 #### `POST /api/method/oan_a2c.api.auth.refresh`
+
 No JWT required.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`refresh_token`** | string | Yes | Raw refresh token string returned from login/refresh |
+| Param               | Type   | Required | Notes                                                |
+| ------------------- | ------ | -------- | ---------------------------------------------------- |
+| **`refresh_token`** | string | Yes      | Raw refresh token string returned from login/refresh |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -234,24 +252,26 @@ No JWT required.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| Token invalid/not found | 401 | `AUTHENTICATION_ERROR` | `"Invalid or expired refresh token."` |
-| Token expired | 401 | `AUTHENTICATION_ERROR` | `"Refresh token has expired."` |
-| User is disabled | 401 | `AUTHENTICATION_ERROR` | `"User is disabled or does not exist."` |
+| Condition               | HTTP | code                   | message                                 |
+| ----------------------- | ---- | ---------------------- | --------------------------------------- |
+| Token invalid/not found | 401  | `AUTHENTICATION_ERROR` | `"Invalid or expired refresh token."`   |
+| Token expired           | 401  | `AUTHENTICATION_ERROR` | `"Refresh token has expired."`          |
+| User is disabled        | 401  | `AUTHENTICATION_ERROR` | `"User is disabled or does not exist."` |
 
 ---
 
 #### `POST /api/method/oan_a2c.api.auth.logout`
+
 No JWT required.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`refresh_token`** | string | Yes | Raw refresh token string to revoke |
+| Param               | Type   | Required | Notes                              |
+| ------------------- | ------ | -------- | ---------------------------------- |
+| **`refresh_token`** | string | Yes      | Raw refresh token string to revoke |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -265,15 +285,17 @@ No JWT required.
 ---
 
 #### `POST /api/method/oan_a2c.api.auth.forgot_password`
+
 No JWT required.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`email`** | string | Yes | |
+| Param       | Type   | Required | Notes |
+| ----------- | ------ | -------- | ----- |
+| **`email`** | string | Yes      |       |
 
 **Success response** (HTTP 200): Always succeeds — no email enumeration.
+
 ```json
 {
   "status": "success",
@@ -287,17 +309,19 @@ No JWT required.
 ---
 
 #### `POST /api/method/oan_a2c.api.auth.reset_password`
+
 No JWT required.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`email`** | string | Yes | |
-| **`key`** | string | Yes | Reset token from email link |
-| **`new_password`** | string | Yes | |
+| Param              | Type   | Required | Notes                       |
+| ------------------ | ------ | -------- | --------------------------- |
+| **`email`**        | string | Yes      |                             |
+| **`key`**          | string | Yes      | Reset token from email link |
+| **`new_password`** | string | Yes      |                             |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -308,9 +332,9 @@ No JWT required.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| Token not found / email mismatch | 401 | `AUTHENTICATION_ERROR` | `"Invalid or expired reset token."` |
+| Condition                        | HTTP | code                   | message                             |
+| -------------------------------- | ---- | ---------------------- | ----------------------------------- |
+| Token not found / email mismatch | 401  | `AUTHENTICATION_ERROR` | `"Invalid or expired reset token."` |
 
 **Side effect:** Logs out all existing sessions for the user.
 
@@ -326,19 +350,19 @@ All endpoints use the standard envelope.
 
 **Parameters:**
 
-| Param | Type | Required | Default | Constraint |
-|-------|------|----------|---------|-----------|
-| `start` | int | No | 0 | Offset (clamped to ≥ 0) |
-| `page_length` | int | No | 20 | Clamped to [1, 100] |
-| `search_query` | string | No | — | `LIKE` match on `name`, `phone_number`, `external_id` |
-| `status` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
-| `lead_source` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped |
-| `loan_type` | string | No | — | Single value, **comma-separated** list, or **stringified JSON array**. Validated against `A2C Credit Information.loan_type` options. Filters via subquery on A2C Credit Information |
-| `assigned_to` | string | No | — | Filter by assigned agent (User). Single value or **comma-separated** list of users (`in` filter on `assigned_to`). The literal `unassigned` matches leads with no agent; it can be combined with named users (e.g. `unassigned,agent@bank.com`). Not allowlist-validated — an unknown user simply yields no matches |
-| `start_date` | string | No | — | ISO date. Used alone or with `end_date` |
-| `end_date` | string | No | — | ISO date. Used alone or with `start_date` |
-| `min_loan_amount` | float | No | — | Filters via subquery on A2C Credit Information |
-| `max_loan_amount` | float | No | — | Filters via subquery on A2C Credit Information |
+| Param             | Type   | Required | Default | Constraint                                                                                                                                                                                                                                                                                                          |
+| ----------------- | ------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start`           | int    | No       | 0       | Offset (clamped to ≥ 0)                                                                                                                                                                                                                                                                                             |
+| `page_length`     | int    | No       | 20      | Clamped to [1, 100]                                                                                                                                                                                                                                                                                                 |
+| `search_query`    | string | No       | —       | `LIKE` match on `name`, `phone_number`, `external_id`                                                                                                                                                                                                                                                               |
+| `status`          | string | No       | —       | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped                                                                                                                                                        |
+| `lead_source`     | string | No       | —       | Single value, **comma-separated** list, or **stringified JSON array**. Each value validated against allowlist (`in` filter). Invalid values silently dropped                                                                                                                                                        |
+| `loan_type`       | string | No       | —       | Single value, **comma-separated** list, or **stringified JSON array**. Validated against `A2C Credit Information.loan_type` options. Filters via subquery on A2C Credit Information                                                                                                                                 |
+| `assigned_to`     | string | No       | —       | Filter by assigned agent (User). Single value or **comma-separated** list of users (`in` filter on `assigned_to`). The literal `unassigned` matches leads with no agent; it can be combined with named users (e.g. `unassigned,agent@bank.com`). Not allowlist-validated — an unknown user simply yields no matches |
+| `start_date`      | string | No       | —       | ISO date. Used alone or with `end_date`                                                                                                                                                                                                                                                                             |
+| `end_date`        | string | No       | —       | ISO date. Used alone or with `start_date`                                                                                                                                                                                                                                                                           |
+| `min_loan_amount` | float  | No       | —       | Filters via subquery on A2C Credit Information                                                                                                                                                                                                                                                                      |
+| `max_loan_amount` | float  | No       | —       | Filters via subquery on A2C Credit Information                                                                                                                                                                                                                                                                      |
 
 **Status allowlist:** `Active`, `Verified`, `Processed`, `Granted`, `Rejected`, `Dormant`
 **Lead source allowlist:** `Missed Call`, `IVR`, `SMS`, `Agent Entry`
@@ -346,13 +370,14 @@ All endpoints use the standard envelope.
 
 > **Multi-value filters:** `status`, `lead_source`, and `loan_type` accept either a single value, a comma-separated list, or a stringified JSON array (e.g. `status=["Active","Verified"]`). Using a JSON array is the strongly recommended format to avoid delimiter conflicts when values contain commas. Values are split, de-duplicated, and matched against the allowlist; valid values are combined with an `in` filter.
 
-> **Important:** Invalid `status`, `lead_source`, or `loan_type` values are **silently dropped** — the filter is not applied (or, for a multi-value list, only the invalid entries are removed) rather than returning an error. No 400 is thrown. If a list contains *only* invalid values, that filter is skipped entirely.
+> **Important:** Invalid `status`, `lead_source`, or `loan_type` values are **silently dropped** — the filter is not applied (or, for a multi-value list, only the invalid entries are removed) rather than returning an error. No 400 is thrown. If a list contains _only_ invalid values, that filter is skipped entirely.
 
 > **Credit criteria intersection:** `loan_type`, `min_loan_amount`, and `max_loan_amount` share a single subquery against A2C Credit Information — a lead must satisfy all supplied credit criteria together to match.
 
 > **Assignee filter:** `assigned_to` accepts a single user, a comma-separated list of users, or the literal `unassigned` (leads with empty `assigned_to`). Unlike the allowlist filters, unknown users are **not** dropped or errored — they just match nothing. Combine with other filters for an agent's scoped queue, e.g. `assigned_to=agent@bank.com&status=Active`.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -389,10 +414,10 @@ All endpoints use the standard envelope.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| No `A2C Lead` read permission | 403 | `PERMISSION_DENIED` |
-| Unexpected DB error | 500 | `INTERNAL_ERROR` |
+| Condition                     | HTTP | code                |
+| ----------------------------- | ---- | ------------------- |
+| No `A2C Lead` read permission | 403  | `PERMISSION_DENIED` |
+| Unexpected DB error           | 500  | `INTERNAL_ERROR`    |
 
 ---
 
@@ -400,16 +425,17 @@ All endpoints use the standard envelope.
 
 **Parameters:**
 
-| Param | Type | Required | Default | Notes |
-|-------|------|----------|---------|-------|
-| **`phone_number`** | string | Yes | — | |
-| `first_name` | string | No | — | |
-| `last_name` | string | No | — | |
-| `email` | string | No | — | Validated format if provided |
-| `lead_source` | string | No | `"Agent Entry"` | Coerced to `"Agent Entry"` if invalid |
-| `external_id` | string | No | — | |
+| Param              | Type   | Required | Default         | Notes                                 |
+| ------------------ | ------ | -------- | --------------- | ------------------------------------- |
+| **`phone_number`** | string | Yes      | —               |                                       |
+| `first_name`       | string | No       | —               |                                       |
+| `last_name`        | string | No       | —               |                                       |
+| `email`            | string | No       | —               | Validated format if provided          |
+| `lead_source`      | string | No       | `"Agent Entry"` | Coerced to `"Agent Entry"` if invalid |
+| `external_id`      | string | No       | —               |                                       |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -434,11 +460,11 @@ All endpoints use the standard envelope.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `phone_number` missing | 400 | `VALIDATION_ERROR` | `"phone_number is required"` |
-| `email` invalid format | 400 | `VALIDATION_ERROR` | `"Invalid email address format"` |
-| No `A2C Lead` create permission | 403 | `PERMISSION_DENIED` | |
+| Condition                       | HTTP | code                | message                          |
+| ------------------------------- | ---- | ------------------- | -------------------------------- |
+| `phone_number` missing          | 400  | `VALIDATION_ERROR`  | `"phone_number is required"`     |
+| `email` invalid format          | 400  | `VALIDATION_ERROR`  | `"Invalid email address format"` |
+| No `A2C Lead` create permission | 403  | `PERMISSION_DENIED` |                                  |
 
 **Side effect:** Creates an `A2C Lead Audit Event` of type `"Created"`.
 
@@ -449,6 +475,7 @@ All endpoints use the standard envelope.
 No parameters.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -478,9 +505,9 @@ No parameters.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| No `A2C Lead` read permission | 403 | `PERMISSION_DENIED` |
+| Condition                     | HTTP | code                |
+| ----------------------------- | ---- | ------------------- |
+| No `A2C Lead` read permission | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -489,6 +516,7 @@ No parameters.
 No parameters. Reads DocType meta only — no DB rows queried.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -505,9 +533,9 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| No `A2C Lead` read permission | 403 | `PERMISSION_DENIED` |
+| Condition                     | HTTP | code                |
+| ----------------------------- | ---- | ------------------- |
+| No `A2C Lead` read permission | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -515,14 +543,15 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | Must exist |
-| **`loan_type`** | string | Yes | Validated against `A2C Credit Information.loan_type` options |
-| **`loan_amount`** | number | Yes | |
-| **`purpose_message`** | string | Yes | |
+| Param                 | Type   | Required | Notes                                                        |
+| --------------------- | ------ | -------- | ------------------------------------------------------------ |
+| **`lead_id`**         | string | Yes      | Must exist                                                   |
+| **`loan_type`**       | string | Yes      | Validated against `A2C Credit Information.loan_type` options |
+| **`loan_amount`**     | number | Yes      |                                                              |
+| **`purpose_message`** | string | Yes      |                                                              |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -533,13 +562,13 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| Any required param missing | 400 | `VALIDATION_ERROR` | `"X is required"` |
-| `lead_id` not found | 404 | `NOT_FOUND` | `"A2C Lead {lead_id} not found"` |
-| Invalid `loan_type` | 400 | `VALIDATION_ERROR` | `"Invalid loan type: {loan_type}"` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` | |
-| No create permission on Credit Info | 403 | `PERMISSION_DENIED` | |
+| Condition                           | HTTP | code                | message                            |
+| ----------------------------------- | ---- | ------------------- | ---------------------------------- |
+| Any required param missing          | 400  | `VALIDATION_ERROR`  | `"X is required"`                  |
+| `lead_id` not found                 | 404  | `NOT_FOUND`         | `"A2C Lead {lead_id} not found"`   |
+| Invalid `loan_type`                 | 400  | `VALIDATION_ERROR`  | `"Invalid loan type: {loan_type}"` |
+| No write permission on lead         | 403  | `PERMISSION_DENIED` |                                    |
+| No create permission on Credit Info | 403  | `PERMISSION_DENIED` |                                    |
 
 **Side effect:** Creates `A2C Lead Audit Event` of type `"Credit Info Added"`.
 
@@ -549,11 +578,12 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | |
+| Param         | Type   | Required | Notes |
+| ------------- | ------ | -------- | ----- |
+| **`lead_id`** | string | Yes      |       |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -573,11 +603,11 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| `lead_id` missing | 400 | `VALIDATION_ERROR` |
-| No read permission on lead | 403 | `PERMISSION_DENIED` |
-| No read permission on Credit Info | 403 | `PERMISSION_DENIED` |
+| Condition                         | HTTP | code                |
+| --------------------------------- | ---- | ------------------- |
+| `lead_id` missing                 | 400  | `VALIDATION_ERROR`  |
+| No read permission on lead        | 403  | `PERMISSION_DENIED` |
+| No read permission on Credit Info | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -585,15 +615,16 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | |
-| **`status`** | string | Yes | Must be in allowlist |
-| `reason` | string | No | Appended to audit event description |
+| Param         | Type   | Required | Notes                               |
+| ------------- | ------ | -------- | ----------------------------------- |
+| **`lead_id`** | string | Yes      |                                     |
+| **`status`**  | string | Yes      | Must be in allowlist                |
+| `reason`      | string | No       | Appended to audit event description |
 
 **Status allowlist:** `Active`, `Verified`, `Processed`, `Granted`, `Rejected`, `Dormant`
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -607,14 +638,14 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `lead_id` or `status` missing | 400 | `VALIDATION_ERROR` | `"X is required"` |
-| `lead_id` not found | 404 | `NOT_FOUND` | `"A2C Lead {lead_id} not found"` |
-| Current status is terminal | 400 | `VALIDATION_ERROR` | `"Lead status is locked and cannot be updated because its current state is '{status}'."` |
-| `status` = `Verified` but missing credit info or approved consent | 400 | `VALIDATION_ERROR` | (Workflow transition error) |
-| `status` not in allowlist | 400 | `VALIDATION_ERROR` | `"Invalid status: {status}"` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` | |
+| Condition                                                         | HTTP | code                | message                                                                                  |
+| ----------------------------------------------------------------- | ---- | ------------------- | ---------------------------------------------------------------------------------------- |
+| `lead_id` or `status` missing                                     | 400  | `VALIDATION_ERROR`  | `"X is required"`                                                                        |
+| `lead_id` not found                                               | 404  | `NOT_FOUND`         | `"A2C Lead {lead_id} not found"`                                                         |
+| Current status is terminal                                        | 400  | `VALIDATION_ERROR`  | `"Lead status is locked and cannot be updated because its current state is '{status}'."` |
+| `status` = `Verified` but missing credit info or approved consent | 400  | `VALIDATION_ERROR`  | (Workflow transition error)                                                              |
+| `status` not in allowlist                                         | 400  | `VALIDATION_ERROR`  | `"Invalid status: {status}"`                                                             |
+| No write permission on lead                                       | 403  | `PERMISSION_DENIED` |                                                                                          |
 
 **Side effect:** Creates `A2C Lead Audit Event` of type `"Status Changed"` with old → new status and reason.
 
@@ -624,17 +655,18 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Default | Constraint |
-|-------|------|----------|---------|-----------|
-| `search_query` | string | No | — | `LIKE` match on `full_name`, `email`, `name` |
-| `start` | int | No | 0 | Offset |
-| `page_length` | int | No | 20 | Clamped to [1, 100] |
+| Param          | Type   | Required | Default | Constraint                                   |
+| -------------- | ------ | -------- | ------- | -------------------------------------------- |
+| `search_query` | string | No       | —       | `LIKE` match on `full_name`, `email`, `name` |
+| `start`        | int    | No       | 0       | Offset                                       |
+| `page_length`  | int    | No       | 20      | Clamped to [1, 100]                          |
 
 > **Warning:** Empty `search_query` returns all users with agent roles (no minimum length enforced). Can be expensive if many agents exist.
 
 **Pagination shape differs from other list endpoints** — uses `start`/`page_length` offset style, not page numbers:
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -661,9 +693,9 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| No read permission on A2C Lead | 403 | `PERMISSION_DENIED` |
+| Condition                      | HTTP | code                |
+| ------------------------------ | ---- | ------------------- |
+| No read permission on A2C Lead | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -671,12 +703,13 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | |
-| **`assigned_to`** | string | Yes | User email or name. Must be enabled. |
+| Param             | Type   | Required | Notes                                |
+| ----------------- | ------ | -------- | ------------------------------------ |
+| **`lead_id`**     | string | Yes      |                                      |
+| **`assigned_to`** | string | Yes      | User email or name. Must be enabled. |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -691,12 +724,12 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `lead_id` or `assigned_to` missing | 400 | `VALIDATION_ERROR` | `"X is required"` |
-| `lead_id` not found | 404 | `NOT_FOUND` | `"A2C Lead {lead_id} not found"` |
-| `assigned_to` user not found or disabled | 404 | `NOT_FOUND` | `"User '{assigned_to}' is not a valid active agent"` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` | |
+| Condition                                | HTTP | code                | message                                              |
+| ---------------------------------------- | ---- | ------------------- | ---------------------------------------------------- |
+| `lead_id` or `assigned_to` missing       | 400  | `VALIDATION_ERROR`  | `"X is required"`                                    |
+| `lead_id` not found                      | 404  | `NOT_FOUND`         | `"A2C Lead {lead_id} not found"`                     |
+| `assigned_to` user not found or disabled | 404  | `NOT_FOUND`         | `"User '{assigned_to}' is not a valid active agent"` |
+| No write permission on lead              | 403  | `PERMISSION_DENIED` |                                                      |
 
 **Side effect:** Sets `assigned_date` to today's date. Creates `A2C Lead Audit Event` of type `"Assigned"`.
 
@@ -706,12 +739,13 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | |
-| **`content`** | string | Yes | |
+| Param         | Type   | Required | Notes |
+| ------------- | ------ | -------- | ----- |
+| **`lead_id`** | string | Yes      |       |
+| **`content`** | string | Yes      |       |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -722,10 +756,10 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| `lead_id` or `content` missing | 400 | `VALIDATION_ERROR` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` |
+| Condition                      | HTTP | code                |
+| ------------------------------ | ---- | ------------------- |
+| `lead_id` or `content` missing | 400  | `VALIDATION_ERROR`  |
+| No write permission on lead    | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -733,12 +767,13 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | |
-| `event_type` | string | No | Filters by exact `event_type` match. Values: `Created`, `Status Changed`, `Credit Info Added`, `Assigned`, `Commented`, `Visit Scheduled` |
+| Param         | Type   | Required | Notes                                                                                                                                     |
+| ------------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **`lead_id`** | string | Yes      |                                                                                                                                           |
+| `event_type`  | string | No       | Filters by exact `event_type` match. Values: `Created`, `Status Changed`, `Credit Info Added`, `Assigned`, `Commented`, `Visit Scheduled` |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -763,10 +798,10 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| `lead_id` missing | 400 | `VALIDATION_ERROR` |
-| No read permission on lead | 403 | `PERMISSION_DENIED` |
+| Condition                  | HTTP | code                |
+| -------------------------- | ---- | ------------------- |
+| `lead_id` missing          | 400  | `VALIDATION_ERROR`  |
+| No read permission on lead | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -774,11 +809,12 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | |
+| Param         | Type   | Required | Notes |
+| ------------- | ------ | -------- | ----- |
+| **`lead_id`** | string | Yes      |       |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -803,10 +839,10 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| `lead_id` missing | 400 | `VALIDATION_ERROR` |
-| No read permission on lead | 403 | `PERMISSION_DENIED` |
+| Condition                  | HTTP | code                |
+| -------------------------- | ---- | ------------------- |
+| `lead_id` missing          | 400  | `VALIDATION_ERROR`  |
+| No read permission on lead | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -814,19 +850,20 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | |
-| **`visit_date`** | string | Yes | ISO date `YYYY-MM-DD` |
-| **`visit_time`** | string | Yes | `HH:MM:SS` |
-| **`region`** | string | Yes | |
-| **`zone`** | string | Yes | |
-| **`woreda`** | string | Yes | |
-| **`kebele`** | string | Yes | |
-| `meeting_location` | string | No | |
-| `notes` | string | No | |
+| Param              | Type   | Required | Notes                 |
+| ------------------ | ------ | -------- | --------------------- |
+| **`lead_id`**      | string | Yes      |                       |
+| **`visit_date`**   | string | Yes      | ISO date `YYYY-MM-DD` |
+| **`visit_time`**   | string | Yes      | `HH:MM:SS`            |
+| **`region`**       | string | Yes      |                       |
+| **`zone`**         | string | Yes      |                       |
+| **`woreda`**       | string | Yes      |                       |
+| **`kebele`**       | string | Yes      |                       |
+| `meeting_location` | string | No       |                       |
+| `notes`            | string | No       |                       |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -837,12 +874,12 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| Any required param missing | 400 | `VALIDATION_ERROR` | `"X is required"` |
-| `lead_id` not found | 404 | `NOT_FOUND` | `"A2C Lead {lead_id} not found"` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` | |
-| No create permission on Visit Schedule | 403 | `PERMISSION_DENIED` | |
+| Condition                              | HTTP | code                | message                          |
+| -------------------------------------- | ---- | ------------------- | -------------------------------- |
+| Any required param missing             | 400  | `VALIDATION_ERROR`  | `"X is required"`                |
+| `lead_id` not found                    | 404  | `NOT_FOUND`         | `"A2C Lead {lead_id} not found"` |
+| No write permission on lead            | 403  | `PERMISSION_DENIED` |                                  |
+| No create permission on Visit Schedule | 403  | `PERMISSION_DENIED` |                                  |
 
 **Side effect:** Creates `A2C Lead Audit Event` of type `"Visit Scheduled"`. Sets `scheduled_by` to `frappe.session.user`. Initial status is always `"Scheduled"`.
 
@@ -852,18 +889,19 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Default | Constraint |
-|-------|------|----------|---------|-----------|
-| `lead_id` | string | No | — | Omitting returns ALL schedules across all leads |
-| `start_date` | string | No | — | ISO date. Filters `visit_date` |
-| `end_date` | string | No | — | ISO date. Filters `visit_date` |
-| `status` | string | No | — | No validation — passed raw into filter |
-| `start` | int | No | 0 | Offset |
-| `page_length` | int | No | 20 | Clamped to [1, 100] |
+| Param         | Type   | Required | Default | Constraint                                      |
+| ------------- | ------ | -------- | ------- | ----------------------------------------------- |
+| `lead_id`     | string | No       | —       | Omitting returns ALL schedules across all leads |
+| `start_date`  | string | No       | —       | ISO date. Filters `visit_date`                  |
+| `end_date`    | string | No       | —       | ISO date. Filters `visit_date`                  |
+| `status`      | string | No       | —       | No validation — passed raw into filter          |
+| `start`       | int    | No       | 0       | Offset                                          |
+| `page_length` | int    | No       | 20      | Clamped to [1, 100]                             |
 
 > **Caution:** No `lead_id` + large `page_length` = potentially large dataset. Frontend calling without `lead_id` will receive paginated results max 100 rows at a time — not all records. This breaks client-side filtering across the full dataset beyond page 1.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -896,10 +934,10 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| No read permission on Visit Schedule | 403 | `PERMISSION_DENIED` |
-| `lead_id` provided but no read permission on that lead | 403 | `PERMISSION_DENIED` |
+| Condition                                              | HTTP | code                |
+| ------------------------------------------------------ | ---- | ------------------- |
+| No read permission on Visit Schedule                   | 403  | `PERMISSION_DENIED` |
+| `lead_id` provided but no read permission on that lead | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -907,14 +945,15 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`schedule_id`** | string | Yes | |
-| **`status`** | string | Yes | Must be in allowlist |
+| Param             | Type   | Required | Notes                |
+| ----------------- | ------ | -------- | -------------------- |
+| **`schedule_id`** | string | Yes      |                      |
+| **`status`**      | string | Yes      | Must be in allowlist |
 
 **Status allowlist:** `Scheduled`, `Completed`, `Cancelled`, `Missed`
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -928,13 +967,13 @@ No parameters. Reads DocType meta only — no DB rows queried.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `schedule_id` or `status` missing | 400 | `VALIDATION_ERROR` | `"schedule_id and status are required"` |
-| `schedule_id` not found | 404 | `NOT_FOUND` | `"A2C Visit Schedule {id} not found"` |
-| Current status is `Completed` or `Missed` | 400 | `VALIDATION_ERROR` | `"Cannot update status of a {status} visit."` |
-| `status` not in allowlist | 400 | `VALIDATION_ERROR` | `"Invalid status: {status}"` |
-| No write permission on the linked lead | 403 | `PERMISSION_DENIED` | |
+| Condition                                 | HTTP | code                | message                                       |
+| ----------------------------------------- | ---- | ------------------- | --------------------------------------------- |
+| `schedule_id` or `status` missing         | 400  | `VALIDATION_ERROR`  | `"schedule_id and status are required"`       |
+| `schedule_id` not found                   | 404  | `NOT_FOUND`         | `"A2C Visit Schedule {id} not found"`         |
+| Current status is `Completed` or `Missed` | 400  | `VALIDATION_ERROR`  | `"Cannot update status of a {status} visit."` |
+| `status` not in allowlist                 | 400  | `VALIDATION_ERROR`  | `"Invalid status: {status}"`                  |
+| No write permission on the linked lead    | 403  | `PERMISSION_DENIED` |                                               |
 
 ---
 
@@ -948,12 +987,13 @@ All endpoints use `@handle_api_errors` and standard envelope.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | See validate_lead quirk in Section 2.3 |
-| `include_consent_data` | int/bool | No | Pass `1` or `true` to include consent fields |
+| Param                  | Type     | Required | Notes                                        |
+| ---------------------- | -------- | -------- | -------------------------------------------- |
+| **`lead_id`**          | string   | Yes      | See validate_lead quirk in Section 2.3       |
+| `include_consent_data` | int/bool | No       | Pass `1` or `true` to include consent fields |
 
 **Success response — without `include_consent_data`** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -977,6 +1017,7 @@ All endpoints use `@handle_api_errors` and standard envelope.
 ```
 
 **Success response — with `include_consent_data=1`** (HTTP 200)
+
 ```json
 {
   "status": "success",
@@ -1008,32 +1049,34 @@ All endpoints use `@handle_api_errors` and standard envelope.
 
 **Error cases:**
 
-| Condition | HTTP | Response |
-|-----------|------|---------|
-| `lead_id` missing | 400 | **Malformed** — see Section 2.3 quirk |
-| `lead_id` not found | 404 | **Malformed** — see Section 2.3 quirk |
-| Lead has no `farmer_profile` | 400 | `VALIDATION_ERROR` — `"Farmer Profile not found for this lead"` |
-| No read permission on lead | 403 | `PERMISSION_DENIED` |
-| No read permission on farmer profile | 403 | `PERMISSION_DENIED` |
+| Condition                            | HTTP | Response                                                        |
+| ------------------------------------ | ---- | --------------------------------------------------------------- |
+| `lead_id` missing                    | 400  | **Malformed** — see Section 2.3 quirk                           |
+| `lead_id` not found                  | 404  | **Malformed** — see Section 2.3 quirk                           |
+| Lead has no `farmer_profile`         | 400  | `VALIDATION_ERROR` — `"Farmer Profile not found for this lead"` |
+| No read permission on lead           | 403  | `PERMISSION_DENIED`                                             |
+| No read permission on farmer profile | 403  | `PERMISSION_DENIED`                                             |
 
 ---
 
 #### `POST /api/method/oan_a2c.api.v1.loan_applications.update_basic_profile`
+
 Method restricted to `POST`.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | See validate_lead quirk |
-| `email` | string | No | Validated format if provided |
-| `region` | string | No | |
-| `woreda` | string | No | |
-| `kebele` | string | No | |
+| Param         | Type   | Required | Notes                        |
+| ------------- | ------ | -------- | ---------------------------- |
+| **`lead_id`** | string | Yes      | See validate_lead quirk      |
+| `email`       | string | No       | Validated format if provided |
+| `region`      | string | No       |                              |
+| `woreda`      | string | No       |                              |
+| `kebele`      | string | No       |                              |
 
 At least one field should be provided (no error if omitted — returns current values).
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1049,13 +1092,13 @@ At least one field should be provided (no error if omitted — returns current v
 
 **Error cases:**
 
-| Condition | HTTP | Response |
-|-----------|------|---------|
-| `lead_id` missing / not found | 400/404 | **Malformed** — see Section 2.3 quirk |
-| Lead has no `farmer_profile` | 400 | `VALIDATION_ERROR` |
-| `email` invalid format | 400 | `VALIDATION_ERROR` — `"Invalid email address format"` |
-| No write permission on lead | 403 | `PERMISSION_DENIED` |
-| No write permission on farmer profile | 403 | `PERMISSION_DENIED` |
+| Condition                             | HTTP    | Response                                              |
+| ------------------------------------- | ------- | ----------------------------------------------------- |
+| `lead_id` missing / not found         | 400/404 | **Malformed** — see Section 2.3 quirk                 |
+| Lead has no `farmer_profile`          | 400     | `VALIDATION_ERROR`                                    |
+| `email` invalid format                | 400     | `VALIDATION_ERROR` — `"Invalid email address format"` |
+| No write permission on lead           | 403     | `PERMISSION_DENIED`                                   |
+| No write permission on farmer profile | 403     | `PERMISSION_DENIED`                                   |
 
 ---
 
@@ -1063,11 +1106,12 @@ At least one field should be provided (no error if omitted — returns current v
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`application_id`** | string | Yes | |
+| Param                | Type   | Required | Notes |
+| -------------------- | ------ | -------- | ----- |
+| **`application_id`** | string | Yes      |       |
 
 **Success response** (HTTP 200) — all fields:
+
 ```json
 {
   "status": "success",
@@ -1120,11 +1164,11 @@ At least one field should be provided (no error if omitted — returns current v
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `application_id` missing | 400 | `VALIDATION_ERROR` | `"application_id is required"` |
-| Application not found | 404 | `NOT_FOUND` | `"Loan Application {id} not found"` |
-| No read permission | 403 | `PERMISSION_DENIED` | |
+| Condition                | HTTP | code                | message                             |
+| ------------------------ | ---- | ------------------- | ----------------------------------- |
+| `application_id` missing | 400  | `VALIDATION_ERROR`  | `"application_id is required"`      |
+| Application not found    | 404  | `NOT_FOUND`         | `"Loan Application {id} not found"` |
+| No read permission       | 403  | `PERMISSION_DENIED` |                                     |
 
 ---
 
@@ -1133,6 +1177,7 @@ At least one field should be provided (no error if omitted — returns current v
 No parameters.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1155,9 +1200,9 @@ No parameters.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| No read permission on Loan Application | 403 | `PERMISSION_DENIED` |
+| Condition                              | HTTP | code                |
+| -------------------------------------- | ---- | ------------------- |
+| No read permission on Loan Application | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -1166,6 +1211,7 @@ No parameters.
 No parameters.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1175,9 +1221,9 @@ No parameters.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| No read permission on Loan Application | 403 | `PERMISSION_DENIED` |
+| Condition                              | HTTP | code                |
+| -------------------------------------- | ---- | ------------------- |
+| No read permission on Loan Application | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -1185,24 +1231,25 @@ No parameters.
 
 **Parameters:**
 
-| Param | Type | Required | Default | Constraint |
-|-------|------|----------|---------|-----------|
-| `status` | string | No | — | Single value, comma-separated list, or stringified JSON array. Each value validated against `{Draft, Processing, Approved, Rejected}`, de-duplicated. Invalid values silently dropped (`in` filter). |
-| `loan_amount` | float | No | — | Exact match (overridden by min/max if both provided) |
-| `min_loan_amount` | float | No | — | |
-| `max_loan_amount` | float | No | — | |
-| `loan_type` | string | No | — | Single value, comma-separated list, or stringified JSON array (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is. |
-| `location` | string | No | — | `LIKE` match |
-| `phone_number` | string | No | — | `LIKE` match |
-| `loan_officer` | string | No | — | Filter by assigned Loan Officer (User). Single value or **comma-separated** list (`in` filter). The literal `unassigned` matches loans with no officer (same notion as the `unassigned` tab in `get_loan_summary`) and can be combined with named users. Not allowlist-validated — an unknown user yields no matches. |
-| `from_date` | string | No | — | ISO date. Filters `creation` |
-| `to_date` | string | No | — | ISO date. End time is padded to `23:59:59` |
-| `page` | int | No | 1 | |
-| `page_size` | int | No | 20 | Clamped to [1, 100] |
-| `lead_id` | string | No | — | Exact match |
-| `search_query` | string | No | — | `LIKE` match on `name`, `phone_number`, `farmer_id`, `first_name`, `last_name` |
+| Param             | Type   | Required | Default | Constraint                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ------ | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`          | string | No       | —       | Single value, comma-separated list, or stringified JSON array. Each value validated against `{Draft, Processing, Approved, Rejected}`, de-duplicated. Invalid values silently dropped (`in` filter).                                                                                                                  |
+| `loan_amount`     | float  | No       | —       | Exact match (overridden by min/max if both provided)                                                                                                                                                                                                                                                                  |
+| `min_loan_amount` | float  | No       | —       |                                                                                                                                                                                                                                                                                                                       |
+| `max_loan_amount` | float  | No       | —       |                                                                                                                                                                                                                                                                                                                       |
+| `loan_type`       | string | No       | —       | Single value, comma-separated list, or stringified JSON array (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is.                                                                                                                             |
+| `location`        | string | No       | —       | `LIKE` match                                                                                                                                                                                                                                                                                                          |
+| `phone_number`    | string | No       | —       | `LIKE` match                                                                                                                                                                                                                                                                                                          |
+| `loan_officer`    | string | No       | —       | Filter by assigned Loan Officer (User). Single value or **comma-separated** list (`in` filter). The literal `unassigned` matches loans with no officer (same notion as the `unassigned` tab in `get_loan_summary`) and can be combined with named users. Not allowlist-validated — an unknown user yields no matches. |
+| `from_date`       | string | No       | —       | ISO date. Filters `creation`                                                                                                                                                                                                                                                                                          |
+| `to_date`         | string | No       | —       | ISO date. End time is padded to `23:59:59`                                                                                                                                                                                                                                                                            |
+| `page`            | int    | No       | 1       |                                                                                                                                                                                                                                                                                                                       |
+| `page_size`       | int    | No       | 20      | Clamped to [1, 100]                                                                                                                                                                                                                                                                                                   |
+| `lead_id`         | string | No       | —       | Exact match                                                                                                                                                                                                                                                                                                           |
+| `search_query`    | string | No       | —       | `LIKE` match on `name`, `phone_number`, `farmer_id`, `first_name`, `last_name`                                                                                                                                                                                                                                        |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1234,28 +1281,31 @@ No parameters.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| No read permission on Loan Application | 403 | `PERMISSION_DENIED` |
+| Condition                              | HTTP | code                |
+| -------------------------------------- | ---- | ------------------- |
+| No read permission on Loan Application | 403  | `PERMISSION_DENIED` |
 
 ---
 
 #### `POST /api/method/oan_a2c.api.v1.loan_applications.upload_supporting_documents`
+
 Method restricted to `POST`. Multipart form data.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`application_id`** | string | Yes | Form field |
-| files | multipart | Yes | One or more files |
+| Param                | Type      | Required | Notes             |
+| -------------------- | --------- | -------- | ----------------- |
+| **`application_id`** | string    | Yes      | Form field        |
+| files                | multipart | Yes      | One or more files |
 
 **File constraints:**
+
 - Allowed extensions: `.pdf`, `.png`, `.jpg`, `.jpeg` (case-insensitive)
 - Max size per file: 5 MB
 - Files stored as private
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1272,14 +1322,14 @@ Method restricted to `POST`. Multipart form data.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `application_id` missing | 400 | `VALIDATION_ERROR` | `"application_id is required"` |
-| Application not found | 404 | `NOT_FOUND` | |
-| No files in request | 400 | `VALIDATION_ERROR` | `"No files found in request"` |
-| Invalid file extension | 400 | `VALIDATION_ERROR` | `"Invalid file type for {name}. Only PDF, PNG, and JPG are allowed."` |
-| File exceeds 5 MB | 400 | `VALIDATION_ERROR` | `"File {name} exceeds the 5MB size limit."` |
-| No write permission on application | 403 | `PERMISSION_DENIED` | |
+| Condition                          | HTTP | code                | message                                                               |
+| ---------------------------------- | ---- | ------------------- | --------------------------------------------------------------------- |
+| `application_id` missing           | 400  | `VALIDATION_ERROR`  | `"application_id is required"`                                        |
+| Application not found              | 404  | `NOT_FOUND`         |                                                                       |
+| No files in request                | 400  | `VALIDATION_ERROR`  | `"No files found in request"`                                         |
+| Invalid file extension             | 400  | `VALIDATION_ERROR`  | `"Invalid file type for {name}. Only PDF, PNG, and JPG are allowed."` |
+| File exceeds 5 MB                  | 400  | `VALIDATION_ERROR`  | `"File {name} exceeds the 5MB size limit."`                           |
+| No write permission on application | 403  | `PERMISSION_DENIED` |                                                                       |
 
 ---
 
@@ -1287,11 +1337,12 @@ Method restricted to `POST`. Multipart form data.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`application_id`** | string | Yes | |
+| Param                | Type   | Required | Notes |
+| -------------------- | ------ | -------- | ----- |
+| **`application_id`** | string | Yes      |       |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1308,11 +1359,11 @@ Method restricted to `POST`. Multipart form data.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| `application_id` missing | 400 | `VALIDATION_ERROR` |
-| Application not found | 404 | `NOT_FOUND` |
-| No read permission | 403 | `PERMISSION_DENIED` |
+| Condition                | HTTP | code                |
+| ------------------------ | ---- | ------------------- |
+| `application_id` missing | 400  | `VALIDATION_ERROR`  |
+| Application not found    | 404  | `NOT_FOUND`         |
+| No read permission       | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -1320,35 +1371,38 @@ Method restricted to `POST`. Multipart form data.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`file_id`** | string | Yes | |
-| `view` | int | No | Pass `1` to stream inline (browser display). Omit for download. |
+| Param         | Type   | Required | Notes                                                           |
+| ------------- | ------ | -------- | --------------------------------------------------------------- |
+| **`file_id`** | string | Yes      |                                                                 |
+| `view`        | int    | No       | Pass `1` to stream inline (browser display). Omit for download. |
 
 **Success response:** Binary file content. Not an envelope. Response headers set:
+
 - `Content-Disposition: attachment; filename="..."` (or `inline` if `view=1`)
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| `file_id` missing | 400 | `VALIDATION_ERROR` |
-| File not found | 404 | `NOT_FOUND` |
-| No read permission on attached doctype | 403 | `PERMISSION_DENIED` |
+| Condition                              | HTTP | code                |
+| -------------------------------------- | ---- | ------------------- |
+| `file_id` missing                      | 400  | `VALIDATION_ERROR`  |
+| File not found                         | 404  | `NOT_FOUND`         |
+| No read permission on attached doctype | 403  | `PERMISSION_DENIED` |
 
 ---
 
 #### `POST /api/method/oan_a2c.api.v1.loan_applications.delete_supporting_document`
+
 Method restricted to `POST`.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`application_id`** | string | Yes | |
-| **`file_id`** | string | Yes | |
+| Param                | Type   | Required | Notes |
+| -------------------- | ------ | -------- | ----- |
+| **`application_id`** | string | Yes      |       |
+| **`file_id`**        | string | Yes      |       |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1359,31 +1413,34 @@ Method restricted to `POST`.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| Either param missing | 400 | `VALIDATION_ERROR` | `"application_id and file_id are required"` |
-| Application not found | 404 | `NOT_FOUND` | |
-| File not found or not attached to this application | 404 | `NOT_FOUND` | `"File not found or not attached to this application"` |
-| No write permission | 403 | `PERMISSION_DENIED` | |
+| Condition                                          | HTTP | code                | message                                                |
+| -------------------------------------------------- | ---- | ------------------- | ------------------------------------------------------ |
+| Either param missing                               | 400  | `VALIDATION_ERROR`  | `"application_id and file_id are required"`            |
+| Application not found                              | 404  | `NOT_FOUND`         |                                                        |
+| File not found or not attached to this application | 404  | `NOT_FOUND`         | `"File not found or not attached to this application"` |
+| No write permission                                | 403  | `PERMISSION_DENIED` |                                                        |
 
 ---
 
 #### `POST /api/method/oan_a2c.api.v1.loan_applications.create_loan_application`
+
 Method restricted to `POST`.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | See validate_lead quirk in Section 2.3 |
+| Param         | Type   | Required | Notes                                  |
+| ------------- | ------ | -------- | -------------------------------------- |
+| **`lead_id`** | string | Yes      | See validate_lead quirk in Section 2.3 |
 
 **Prerequisites (checked in order):**
+
 1. Lead must exist
 2. Lead must have `farmer_profile` linked (consent webhook must have completed)
 3. At least one `A2C Credit Information` record must exist for the lead
 4. No existing loan application for this lead
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1408,27 +1465,29 @@ Method restricted to `POST`.
 
 **Error cases:**
 
-| Condition | HTTP | Response |
-|-----------|------|---------|
-| `lead_id` missing / not found | 400/404 | **Malformed** — see Section 2.3 quirk |
-| Loan application already exists for lead | 400 | `VALIDATION_ERROR` — `"Loan application already exists for this lead"` |
-| Lead has no `farmer_profile` | 400 | `VALIDATION_ERROR` — `"No Farmer Profile found for this lead. Webhook consent might not be completed."` |
-| Lead has no `A2C Credit Information` | 400 | `VALIDATION_ERROR` — `"Credit Information is missing for this lead. A loan application requires a valid loan amount."` |
-| No create permission on Loan Application | 403 | `PERMISSION_DENIED` | |
+| Condition                                | HTTP    | Response                                                                                                               |
+| ---------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- | --- |
+| `lead_id` missing / not found            | 400/404 | **Malformed** — see Section 2.3 quirk                                                                                  |
+| Loan application already exists for lead | 400     | `VALIDATION_ERROR` — `"Loan application already exists for this lead"`                                                 |
+| Lead has no `farmer_profile`             | 400     | `VALIDATION_ERROR` — `"No Farmer Profile found for this lead. Webhook consent might not be completed."`                |
+| Lead has no `A2C Credit Information`     | 400     | `VALIDATION_ERROR` — `"Credit Information is missing for this lead. A loan application requires a valid loan amount."` |
+| No create permission on Loan Application | 403     | `PERMISSION_DENIED`                                                                                                    |     |
 
 ---
 
 #### `POST /api/method/oan_a2c.api.v1.loan_applications.update_loan_status`
+
 Method restricted to `POST`.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`application_id`** | string | Yes | |
-| **`status`** | string | Yes | No explicit allowlist check — any string accepted if not terminal |
+| Param                | Type   | Required | Notes                                                             |
+| -------------------- | ------ | -------- | ----------------------------------------------------------------- |
+| **`application_id`** | string | Yes      |                                                                   |
+| **`status`**         | string | Yes      | No explicit allowlist check — any string accepted if not terminal |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1439,31 +1498,34 @@ Method restricted to `POST`.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| Either param missing | 400 | `VALIDATION_ERROR` | `"application_id and status are required"` |
-| Application not found | 404 | `NOT_FOUND` | `"Loan Application {id} not found"` |
-| Current status is `Rejected` or `Approved` | 400 | `VALIDATION_ERROR` | `"Cannot change status. Loan application is already {status}"` |
-| No write permission | 403 | `PERMISSION_DENIED` | |
+| Condition                                  | HTTP | code                | message                                                        |
+| ------------------------------------------ | ---- | ------------------- | -------------------------------------------------------------- |
+| Either param missing                       | 400  | `VALIDATION_ERROR`  | `"application_id and status are required"`                     |
+| Application not found                      | 404  | `NOT_FOUND`         | `"Loan Application {id} not found"`                            |
+| Current status is `Rejected` or `Approved` | 400  | `VALIDATION_ERROR`  | `"Cannot change status. Loan application is already {status}"` |
+| No write permission                        | 403  | `PERMISSION_DENIED` |                                                                |
 
 ---
 
 #### `POST /api/method/oan_a2c.api.v1.loan_applications.update_loan_step`
+
 Method restricted to `POST`.
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`application_id`** | string | Yes | |
-| **`step`** | int | Yes | |
+| Param                | Type   | Required | Notes |
+| -------------------- | ------ | -------- | ----- |
+| **`application_id`** | string | Yes      |       |
+| **`step`**           | int    | Yes      |       |
 
 **Step validation rules (from source):**
+
 - Valid range: `1` to `4`
 - Cannot skip steps: if `current_step = 2`, only `step = 1`, `2`, or `3` are accepted. `step = 4` → 400.
 - Back-navigation to any lower step is allowed.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1474,13 +1536,13 @@ Method restricted to `POST`.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| Either param missing | 400 | `VALIDATION_ERROR` | `"application_id and step are required"` |
-| Application not found | 404 | `NOT_FOUND` | |
-| `step` not in [1, 4] | 400 | `VALIDATION_ERROR` | `"Step must be between 1 and 4"` |
-| `step` > `current_step + 1` | 400 | `VALIDATION_ERROR` | `"Invalid step transition. You cannot skip steps."` |
-| No write permission | 403 | `PERMISSION_DENIED` | |
+| Condition                   | HTTP | code                | message                                             |
+| --------------------------- | ---- | ------------------- | --------------------------------------------------- |
+| Either param missing        | 400  | `VALIDATION_ERROR`  | `"application_id and step are required"`            |
+| Application not found       | 404  | `NOT_FOUND`         |                                                     |
+| `step` not in [1, 4]        | 400  | `VALIDATION_ERROR`  | `"Step must be between 1 and 4"`                    |
+| `step` > `current_step + 1` | 400  | `VALIDATION_ERROR`  | `"Invalid step transition. You cannot skip steps."` |
+| No write permission         | 403  | `PERMISSION_DENIED` |                                                     |
 
 ---
 
@@ -1489,25 +1551,28 @@ Method restricted to `POST`.
 ---
 
 #### `POST /api/method/oan_a2c.api.v1.webhooks.lead_inbound`
+
 JWT-exempt. Requires Frappe session or `Authorization: token apikey:apisecret`.
 
 **Parameters:**
 
-| Param | Type | Required | Default | Notes |
-|-------|------|----------|---------|-------|
-| **`phone_number`** | string | Yes | — | |
-| `lead_source` | string | No | `"Missed Call"` | Coerced to `"Missed Call"` if invalid |
-| `external_ref_id` | string | No | — | Used for primary deduplication |
-| `timestamp` | string | No | — | Caller-reported event time, stored in call notes as `Timestamp:` (optional/untrusted). The server always additionally records a reliable `Received:` time in the note, regardless of this param. |
+| Param              | Type   | Required | Default         | Notes                                                                                                                                                                                            |
+| ------------------ | ------ | -------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **`phone_number`** | string | Yes      | —               |                                                                                                                                                                                                  |
+| `lead_source`      | string | No       | `"Missed Call"` | Coerced to `"Missed Call"` if invalid                                                                                                                                                            |
+| `external_ref_id`  | string | No       | —               | Used for primary deduplication                                                                                                                                                                   |
+| `timestamp`        | string | No       | —               | Caller-reported event time, stored in call notes as `Timestamp:` (optional/untrusted). The server always additionally records a reliable `Received:` time in the note, regardless of this param. |
 
 **Lead source allowlist:** `Missed Call`, `IVR`, `SMS`, `Agent Entry`
 
 **Idempotency logic (checked in order):**
+
 1. If `external_ref_id` matches an existing lead → update that lead's `call_notes`, return it
 2. Else if `phone_number` matches a lead with status `Active` or `Verified` → update that lead's `call_notes`, return it
 3. Else → create new lead with status `Active`
 
 **Success response — new lead** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1517,6 +1582,7 @@ JWT-exempt. Requires Frappe session or `Authorization: token apikey:apisecret`.
 ```
 
 **Success response — existing lead updated** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1529,10 +1595,10 @@ JWT-exempt. Requires Frappe session or `Authorization: token apikey:apisecret`.
 
 **Error cases:**
 
-| Condition | HTTP | code |
-|-----------|------|------|
-| `phone_number` missing | 400 | `VALIDATION_ERROR` |
-| No create permission on A2C Lead | 403 | `PERMISSION_DENIED` |
+| Condition                        | HTTP | code                |
+| -------------------------------- | ---- | ------------------- |
+| `phone_number` missing           | 400  | `VALIDATION_ERROR`  |
+| No create permission on A2C Lead | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -1541,9 +1607,11 @@ JWT-exempt. Requires Frappe session or `Authorization: token apikey:apisecret`.
 ---
 
 #### `POST /api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data`
+
 JWT-exempt. Called by OpenG2P system.
 
 **Request body** (JSON):
+
 ```json
 {
   "consent": {
@@ -1552,16 +1620,17 @@ JWT-exempt. Called by OpenG2P system.
     "approved_at": "2026-01-15T10:00:00Z"
   },
   "farmer": { "id": 42, "name": "Abebe Kebede" },
-  "selected_data": { 
-    "10010": { 
+  "selected_data": {
+    "10010": {
       "Full Name": "Abebe Kebede",
       "Mobile Number": ["+251911000000"]
-    } 
+    }
   }
 }
 ```
 
 **Success response** (HTTP 202):
+
 ```json
 {
   "status": "success",
@@ -1574,14 +1643,15 @@ JWT-exempt. Called by OpenG2P system.
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `consent_creation_request_id` missing in payload | 400 | `VALIDATION_ERROR` | `"Missing consent_creation_request_id"` |
-| No A2C Consent Request found with that ID | 404 | `NOT_FOUND` | `"Consent Request not found: {id}"` |
-| Linked lead not found | 404 | `NOT_FOUND` | `"Linked Lead not found: {lead_id}"` |
-| No write permission on Consent Request | 403 | `PERMISSION_DENIED` | |
+| Condition                                        | HTTP | code                | message                                 |
+| ------------------------------------------------ | ---- | ------------------- | --------------------------------------- |
+| `consent_creation_request_id` missing in payload | 400  | `VALIDATION_ERROR`  | `"Missing consent_creation_request_id"` |
+| No A2C Consent Request found with that ID        | 404  | `NOT_FOUND`         | `"Consent Request not found: {id}"`     |
+| Linked lead not found                            | 404  | `NOT_FOUND`         | `"Linked Lead not found: {lead_id}"`    |
+| No write permission on Consent Request           | 403  | `PERMISSION_DENIED` |                                         |
 
 **Background job** (`process_consent_data`):
+
 - Sets user context from `A2C Consent Request.owner` (falls back to `Administrator`)
 - Creates or updates `A2C Farmer Profile`
 - Links farmer profile to `A2C Lead`
@@ -1599,11 +1669,12 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`fayda_id`** | string | Yes | National ID |
+| Param          | Type   | Required | Notes       |
+| -------------- | ------ | -------- | ----------- |
+| **`fayda_id`** | string | Yes      | National ID |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1623,11 +1694,11 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `fayda_id` missing | 400 | `VALIDATION_ERROR` | `"fayda_id is required"` |
-| Farmer not found  | 404 | `NOT_FOUND` | `"Farmer with Fayda ID '{id}' not found ."` |
-| OpenG2P unreachable | 500 | `INTERNAL_ERROR` | |
+| Condition           | HTTP | code               | message                                     |
+| ------------------- | ---- | ------------------ | ------------------------------------------- |
+| `fayda_id` missing  | 400  | `VALIDATION_ERROR` | `"fayda_id is required"`                    |
+| Farmer not found    | 404  | `NOT_FOUND`        | `"Farmer with Fayda ID '{id}' not found ."` |
+| OpenG2P unreachable | 500  | `INTERNAL_ERROR`   |                                             |
 
 ---
 
@@ -1635,13 +1706,14 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`fayda_id`** | string | Yes | |
-| **`lead_id`** | string | Yes | |
-| `idempotency_key` | string | No | Optional key to prevent duplicate OTP requests |
+| Param             | Type   | Required | Notes                                          |
+| ----------------- | ------ | -------- | ---------------------------------------------- |
+| **`fayda_id`**    | string | Yes      |                                                |
+| **`lead_id`**     | string | Yes      |                                                |
+| `idempotency_key` | string | No       | Optional key to prevent duplicate OTP requests |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1656,13 +1728,14 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 **Error cases:**
 
-| Condition | HTTP | code | message |
-|-----------|------|------|---------|
-| `lead_id` missing | 400 | `VALIDATION_ERROR` | |
-| `fayda_id` missing | 400 | `VALIDATION_ERROR` | |
-| Rate limit exceeded | 429 | `VALIDATION_ERROR` | `"Rate limit exceeded. Try again later."` |
+| Condition           | HTTP | code               | message                                   |
+| ------------------- | ---- | ------------------ | ----------------------------------------- |
+| `lead_id` missing   | 400  | `VALIDATION_ERROR` |                                           |
+| `fayda_id` missing  | 400  | `VALIDATION_ERROR` |                                           |
+| Rate limit exceeded | 429  | `VALIDATION_ERROR` | `"Rate limit exceeded. Try again later."` |
 
 **Side effects:**
+
 - Stores Odoo session cookie/dict in Redis.
 - Creates `A2C Consent Request` with status `"Pending OTP"`.
 
@@ -1672,13 +1745,14 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | |
-| **`consent_request`** | string | Yes | |
-| **`otp_code`** | string | Yes | |
+| Param                 | Type   | Required | Notes |
+| --------------------- | ------ | -------- | ----- |
+| **`lead_id`**         | string | Yes      |       |
+| **`consent_request`** | string | Yes      |       |
+| **`otp_code`**        | string | Yes      |       |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1693,6 +1767,7 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 ```
 
 **Side effects:**
+
 - Sets `otp_verified_at` on the `A2C Consent Request`.
 
 ---
@@ -1701,18 +1776,19 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 
 **Parameters:**
 
-| Param | Type | Required | Notes |
-|-------|------|----------|-------|
-| **`lead_id`** | string | Yes | |
-| **`consent_request`** | string | Yes | |
-| `consent_type` | string | No | Default: `"specific"` |
-| `consent_reason_id` | integer | No | Default: `1` |
-| `validity_months` | integer | No | Default: `12` |
-| **`consent_form_filename`** | string | Yes | |
-| **`consent_form_base64`** | string | Yes | Base64-encoded PDF/Image file |
-| `allowed_data_field_ids` | array | No | List of permitted OpenG2P field IDs |
+| Param                       | Type    | Required | Notes                               |
+| --------------------------- | ------- | -------- | ----------------------------------- |
+| **`lead_id`**               | string  | Yes      |                                     |
+| **`consent_request`**       | string  | Yes      |                                     |
+| `consent_type`              | string  | No       | Default: `"specific"`               |
+| `consent_reason_id`         | integer | No       | Default: `1`                        |
+| `validity_months`           | integer | No       | Default: `12`                       |
+| **`consent_form_filename`** | string  | Yes      |                                     |
+| **`consent_form_base64`**   | string  | Yes      | Base64-encoded PDF/Image file       |
+| `allowed_data_field_ids`    | array   | No       | List of permitted OpenG2P field IDs |
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1734,6 +1810,7 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 ```
 
 **Side effects:**
+
 - Uploads consent document attachment to OpenG2P.
 - Submits and approves the consent request .
 - Marks `A2C Consent Request` as `"Approved"` and updates the lead with the farmer profile data.
@@ -1747,6 +1824,7 @@ All three endpoints accept parameters via JSON body, form dict, or kwargs (merge
 No parameters.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1764,6 +1842,7 @@ No parameters.
 No parameters.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1784,6 +1863,7 @@ No parameters.
 No parameters.
 
 **Success response** (HTTP 200):
+
 ```json
 {
   "status": "success",
@@ -1803,19 +1883,19 @@ No parameters.
 
 ## 5. Background Jobs
 
-| Job function | Queue | Triggered by | User context |
-|-------------|-------|-------------|-------------|
-| `process_consent_data` | `default` | `receive_consent_data` webhook **or** `submit_consent` inline response (via `validate_and_enqueue_consent`) | Set from `A2C Consent Request.owner`, fallback to `Administrator` |
-| `deliver_websub_payload` | `default` | _Disabled_ — was triggered after consent submit; targets a placeholder OpenG2P endpoint (`/consent/frappe/otp_verified`) not yet implemented | None set — runs without user context |
+| Job function             | Queue     | Triggered by                                                                                                                                 | User context                                                      |
+| ------------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `process_consent_data`   | `default` | `receive_consent_data` webhook **or** `submit_consent` inline response (via `validate_and_enqueue_consent`)                                  | Set from `A2C Consent Request.owner`, fallback to `Administrator` |
+| `deliver_websub_payload` | `default` | _Disabled_ — was triggered after consent submit; targets a placeholder OpenG2P endpoint (`/consent/frappe/otp_verified`) not yet implemented | None set — runs without user context                              |
 
 ---
 
 ## 6. Caching
 
-| Redis key pattern | Content | TTL | Invalidation |
-|-------------------|---------|-----|-------------|
+| Redis key pattern                    | Content                                    | TTL   | Invalidation    |
+| ------------------------------------ | ------------------------------------------ | ----- | --------------- |
 | `odoo_session_dict_{transaction_id}` | Odoo session cookie dict (requests-format) | 1800s | TTL expiry only |
-| `odoo_session_{transaction_id}` | Legacy fallback: single session_id string | 1800s | TTL expiry only |
+| `odoo_session_{transaction_id}`      | Legacy fallback: single session_id string  | 1800s | TTL expiry only |
 
 **Nothing else is cached.** `get_lead_metadata`, `get_loan_metadata`, `get_lead_summary`, `get_loan_summary` hit the database on every call.
 
@@ -1823,15 +1903,15 @@ No parameters.
 
 ## 7. Discrepancies vs `api-flow-frontend.md`
 
-| # | Frontend assumption | Backend reality | Action |
-|---|---------------------|----------------|--------|
-| 1 | `get_leads` returns `visit_date` and `schedule_status` | Not in response — these fields don't exist on A2C Lead | Frontend needs separate `get_visit_schedules` call |
-| 2 | All `leads.py` endpoints returned ad-hoc shapes | **Corrected:** All files now use `@handle_api_errors` and standard envelope | Frontend can use uniform response parsing |
-| 3 | `create_lead` returns only `{ lead_id }` | **Corrected:** Returns `{ lead_id, lead: { full object } }` | Eliminate post-create `get_leads` refetch |
-| 4 | `create_loan_application` returns only `{ application_id }` | **Corrected:** Returns `{ application_id, application: { ...fields } }` | Eliminate post-create `get_all_loans` refetch |
-| 5 | `update_loan_step` accepts any positive integer | **Corrected:** Valid range is 1–4 only; step-skipping rejected | Frontend wizard must enforce 1→2→3→4 ordering |
-| 6 | Visit schedules have no terminal states | **Corrected:** `Completed` and `Missed` are terminal | Disable status update UI for these states |
-| 7 | `get_lead_timeline` / `get_lead_call_logs` return flat arrays | Return objects: `{ lead_id, timeline }` / `{ lead_id, call_logs }` | Update response destructuring |
-| 8 | `get_assignable_users` has no pagination | Now paginated with offset-style `{ start, page_length, total_count, has_next }` | Update pagination handling |
-| 9 | `verify_otp_for_lead` doesn't return consent receipt | Returns `consent_receipt` HMAC signature string | Available for storage if needed |
-| 10 | `login` response has `linked_bank` key | Key is `bank` | Update field reference |
+| #   | Frontend assumption                                           | Backend reality                                                                 | Action                                             |
+| --- | ------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 1   | `get_leads` returns `visit_date` and `schedule_status`        | Not in response — these fields don't exist on A2C Lead                          | Frontend needs separate `get_visit_schedules` call |
+| 2   | All `leads.py` endpoints returned ad-hoc shapes               | **Corrected:** All files now use `@handle_api_errors` and standard envelope     | Frontend can use uniform response parsing          |
+| 3   | `create_lead` returns only `{ lead_id }`                      | **Corrected:** Returns `{ lead_id, lead: { full object } }`                     | Eliminate post-create `get_leads` refetch          |
+| 4   | `create_loan_application` returns only `{ application_id }`   | **Corrected:** Returns `{ application_id, application: { ...fields } }`         | Eliminate post-create `get_all_loans` refetch      |
+| 5   | `update_loan_step` accepts any positive integer               | **Corrected:** Valid range is 1–4 only; step-skipping rejected                  | Frontend wizard must enforce 1→2→3→4 ordering      |
+| 6   | Visit schedules have no terminal states                       | **Corrected:** `Completed` and `Missed` are terminal                            | Disable status update UI for these states          |
+| 7   | `get_lead_timeline` / `get_lead_call_logs` return flat arrays | Return objects: `{ lead_id, timeline }` / `{ lead_id, call_logs }`              | Update response destructuring                      |
+| 8   | `get_assignable_users` has no pagination                      | Now paginated with offset-style `{ start, page_length, total_count, has_next }` | Update pagination handling                         |
+| 9   | `verify_otp_for_lead` doesn't return consent receipt          | Returns `consent_receipt` HMAC signature string                                 | Available for storage if needed                    |
+| 10  | `login` response has `linked_bank` key                        | Key is `bank`                                                                   | Update field reference                             |

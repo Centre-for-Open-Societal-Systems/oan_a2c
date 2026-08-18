@@ -87,7 +87,13 @@ app_license = "mit"
 # ------------
 
 # before_install = "oan_a2c.install.before_install"
-# after_install = "oan_a2c.install.after_install"
+# Install app-owned custom fields on standard doctypes. Runs on fresh install
+# (patches are skipped there via set_all_patches_as_completed) and is idempotent.
+after_install = "oan_a2c.setup.custom_fields.setup_custom_fields"
+
+# Re-assert those custom fields on every migrate so already-provisioned sites
+# stay self-healing when the definitions change.
+after_migrate = "oan_a2c.setup.custom_fields.setup_custom_fields"
 
 # Uninstallation
 # ------------
@@ -133,6 +139,7 @@ BANK_SCOPED = [
 	"A2C Loan Product Lookup",
 	"A2C Loan Product Attribute Lookup",
 	"A2C Loan Application",
+	"A2C Loan Application Audit Event",
 ]
 
 permission_query_conditions = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_query" for d in BANK_SCOPED}

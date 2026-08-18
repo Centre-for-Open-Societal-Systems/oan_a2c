@@ -1,0 +1,149 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:LP-AUDIT-{YYYY}-{#####}",
+ "creation": "2026-08-14 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "loan_product",
+  "bank",
+  "event_type",
+  "from_status",
+  "to_status",
+  "event_title",
+  "event_description",
+  "reason",
+  "performed_by"
+ ],
+ "fields": [
+  {
+   "fieldname": "loan_product",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Loan Product",
+   "options": "A2C Loan Product",
+   "reqd": 1
+  },
+  {
+   "fieldname": "bank",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Bank",
+   "options": "A2C Participating Bank"
+  },
+  {
+   "fieldname": "event_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Event Type",
+   "options": "Status Changed\nProduct Created\nProduct Updated",
+   "reqd": 1
+  },
+  {
+   "fieldname": "from_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "From Status",
+   "options": "Pending Approval\nActive\nRejected\nArchived"
+  },
+  {
+   "fieldname": "to_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "To Status",
+   "options": "Pending Approval\nActive\nRejected\nArchived"
+  },
+  {
+   "fieldname": "event_title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Event Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "event_description",
+   "fieldtype": "Text",
+   "label": "Event Description"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason / Notes"
+  },
+  {
+   "fieldname": "performed_by",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Performed By"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-08-14 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A2C Marketplace",
+ "name": "A2C Loan Product Audit Event",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Development Agent",
+   "share": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Administrator",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Bank Admin"
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "A2C Bank Agent"
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

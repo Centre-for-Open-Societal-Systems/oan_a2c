@@ -33,13 +33,17 @@ class TestLeadCreditInfo(unittest.TestCase):
 					frappe.get_doc(
 						{
 							"doctype": "A2C Participating Bank",
+							"registered_city": "Test City",
+							"kyc_document": "/private/files/test_kyc.pdf",
+							"gro_name": "Test GRO",
+							"ops_name": "Test Ops",
 							"bank_name": "Test Bank",
 							"bank_code": "TB123",
 							"status": "In Review",
 							"entity_type": "Commercial Bank",
 							"registered_email": "tb123@test.com",
 							"registered_phone": "+251911000000",
-							"registered_city": "Addis Ababa",
+							"registered_region": "Addis Ababa",
 							"registered_country": "Ethiopia",
 						}
 					)

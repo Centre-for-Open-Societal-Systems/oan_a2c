@@ -9,6 +9,7 @@ from oan_a2c.api.utils import (
 	check_rate_limit,
 	handle_api_errors,
 	success_response,
+	validate_password_complexity,
 	validate_request,
 )
 
@@ -24,14 +25,8 @@ class RegisterUserSchema(BaseModel):
 
 	@field_validator("password")
 	@classmethod
-	def validate_password_complexity(cls, v: str) -> str:
-		if not any(char.isalpha() for char in v):
-			raise ValueError("Password must contain at least one letter.")
-		if not any(char.isdigit() for char in v):
-			raise ValueError("Password must contain at least one number.")
-		if not any(not char.isalnum() for char in v):
-			raise ValueError("Password must contain at least one special character.")
-		return v
+	def validate_password(cls, v: str) -> str:
+		return validate_password_complexity(v)
 
 
 def create_user_account(
@@ -40,7 +35,15 @@ def create_user_account(
 	password: str,
 	phone_number: str,
 	role: str | None = None,
+	must_change_password: bool = False,
 ):
+	"""Create a User with a password.
+
+	`must_change_password` marks the password as admin-issued and temporary: the
+	account authenticates but cannot open a session until the user rotates it
+	through api.auth.set_initial_password. Self-registration leaves it False —
+	that password is already the user's own.
+	"""
 	if frappe.db.exists("User", email):
 		return frappe.get_doc("User", email)
 
@@ -57,6 +60,7 @@ def create_user_account(
 		"mobile_no": phone_number,
 		"send_welcome_email": 0,
 		"new_password": password,
+		"a2c_must_change_password": 1 if must_change_password else 0,
 	}
 	if role:
 		user_data["roles"] = [{"role": role}]
@@ -85,6 +89,20 @@ def register_user(email: str, full_name: str, password: str, phone_number: str, 
 	if role not in SELF_REGISTERABLE_ROLES:
 		frappe.throw(_("Invalid role."), frappe.ValidationError)
 
+	if frappe.db.exists("User", email):
+		return success_response(
+			data={
+				"message": _("You already have an account. Please log in."),
+				"already_exists": True,
+			}
+		)
+
+	if frappe.db.exists("User", {"mobile_no": phone_number}):
+		frappe.throw(
+			_("A user with this name or phone number is already registered."),
+			frappe.ValidationError,
+		)
+
 	create_user_account(
 		email=email,
 		full_name=full_name,
@@ -92,10 +110,4 @@ def register_user(email: str, full_name: str, password: str, phone_number: str, 
 		phone_number=phone_number,
 		role=role,
 	)
-	return success_response(
-		data={
-			"message": _(
-				"If your email and phone number are not already registered, your account has been created successfully."
-			)
-		}
-	)
+	return success_response(data={"message": _("Account created successfully.")})

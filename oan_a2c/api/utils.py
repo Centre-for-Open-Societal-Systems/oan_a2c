@@ -17,6 +17,34 @@ class _DummyException(Exception):
 	pass
 
 
+class PasswordChangeRequired(frappe.AuthenticationError):
+	"""Raised when an admin-issued temporary password must be rotated before use.
+
+	Subclasses AuthenticationError so it still fails closed everywhere a plain
+	auth failure would, but handle_api_errors catches it first to return a
+	distinct PASSWORD_CHANGE_REQUIRED code and a 403 rather than a 401: the
+	credentials were correct, the account is simply gated behind an action the
+	user can take. A 401 would also read to the client as an expired session and
+	bounce the user to a global logout instead of the set-password step.
+	"""
+
+
+def validate_password_complexity(value: str) -> str:
+	"""Shared password rule: at least one letter, one digit and one symbol.
+
+	Three schemas (registration, first-login, change-password) enforce the same
+	rule; defining it once keeps the requirement — and the error strings the
+	frontend shows — from drifting apart between them.
+	"""
+	if not any(c.isalpha() for c in value):
+		raise ValueError("Password must contain at least one letter.")
+	if not any(c.isdigit() for c in value):
+		raise ValueError("Password must contain at least one number.")
+	if not any(not c.isalnum() for c in value):
+		raise ValueError("Password must contain at least one special character.")
+	return value
+
+
 def validate_request(schema: type[BaseModel]):
 	"""Decorator to validate whitelisted API inputs using a Pydantic schema.
 
@@ -394,6 +422,16 @@ def handle_api_errors(func):
 			frappe.local.message_log = []
 			frappe.response["http_status_code"] = 403
 			return error_response("Permission denied", "PERMISSION_DENIED")
+		except PasswordChangeRequired as e:
+			# Must precede the AuthenticationError branch below — this subclasses it.
+			# Distinct from a 401: the credentials were correct, but the password was
+			# issued by an admin and has to be rotated before any session exists.
+			frappe.local.message_log = []
+			frappe.response["http_status_code"] = 403
+			return error_response(
+				str(e) or "You must set your own password before signing in.",
+				"PASSWORD_CHANGE_REQUIRED",
+			)
 		except frappe.AuthenticationError as e:
 			frappe.local.message_log = []
 			frappe.response["http_status_code"] = 401

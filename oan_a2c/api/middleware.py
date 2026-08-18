@@ -39,6 +39,7 @@ def validate_jwt_request(request=None):
 		"/api/method/oan_a2c.api.auth.login",
 		"/api/method/oan_a2c.api.auth.forgot_password",
 		"/api/method/oan_a2c.api.auth.reset_password",
+		"/api/method/oan_a2c.api.auth.set_initial_password",
 		"/api/method/oan_a2c.api.auth.refresh",
 		"/api/method/oan_a2c.api.auth.logout",
 		"/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
@@ -74,10 +75,23 @@ def validate_jwt_request(request=None):
 			audience="oan_a2c_client",
 		)
 
-		# Verify the user is active/enabled (revocation check)
+		# Verify the user is active/enabled (revocation check). Both flags come from
+		# one row read — the must-change check below costs no extra query.
 		user_name = payload.get("sub")
-		if not user_name or not frappe.db.get_value("User", user_name, "enabled"):
+		user_state = (
+			frappe.db.get_value("User", user_name, ["enabled", "a2c_must_change_password"], as_dict=True)
+			if user_name
+			else None
+		)
+		if not user_state or not user_state.enabled:
 			raise JWTUnauthorized("User is disabled or does not exist")
+
+		# An admin issued this user a temporary password after the token was minted.
+		# Rejecting here is what makes "reissue a temporary password" also mean
+		# "end their current session now" — the point of the action when the reason
+		# for it is a suspected compromise.
+		if user_state.a2c_must_change_password:
+			raise JWTUnauthorized("Password change required")
 
 		# Log the user context into the Python thread memory for Frappe's ORM RBAC
 		# Save and restore form_dict as frappe.set_user() resets local.form_dict = _dict()

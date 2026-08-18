@@ -1,6 +1,6 @@
 import frappe
 from frappe import _
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from oan_a2c.a2c_marketplace.permissions import (
 	BankNotActive,
@@ -33,24 +33,43 @@ def assert_bank_active(bank: str | None) -> None:
 		)
 
 
-class ProductMetaSchema(BaseModel):
-	meta_key: str = Field(..., min_length=1, max_length=140)
-	meta_value: str = Field(..., min_length=1, max_length=2000)
+from oan_a2c.a2c_marketplace.doctype_schemas import ProductMetaSchema, SingleProductSchema
 
 
 class CreateProductSchema(BaseModel):
-	product_name: str = Field(..., min_length=1, max_length=140)
-	min_interest_rate: float = Field(..., ge=0, le=100)
-	max_interest_rate: float | None = Field(None, ge=0, le=100)
-	min_amount: float | None = Field(None, ge=0, le=999999999999.0)
-	max_amount: float = Field(..., ge=0, le=999999999999.0)
-	tenure_months: int = Field(..., ge=1, le=1200)
+	product_name: str | None = Field(None, min_length=1, max_length=140)
+	min_interest_rate: float | None = Field(None, ge=0, le=20.0)
+	max_interest_rate: float | None = Field(None, ge=0, le=20.0)
+	min_amount: int | None = Field(None, ge=0, le=999999)
+	max_amount: int | None = Field(None, ge=0, le=999999)
+	tenure_months: int | None = Field(None, ge=1, le=1200)
 	description: str | None = Field(None, max_length=2000)
 	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None
 
+	products: list[SingleProductSchema] | None = None
+
+	@field_validator("min_interest_rate", "max_interest_rate")
+	@classmethod
+	def validate_decimals(cls, v):
+		if v is not None and round(v, 2) != v:
+			raise ValueError("Interest rate must have at most 2 decimal places.")
+		return v
+
 	@model_validator(mode="after")
-	def validate_min_max_ordering(self):
+	def check_payload(self):
+		if self.products:
+			if len(self.products) > 10:
+				raise ValueError("A maximum of 10 products can be created at once in bulk.")
+			return self
+		if (
+			not self.product_name
+			or self.min_interest_rate is None
+			or self.max_amount is None
+			or self.tenure_months is None
+		):
+			raise ValueError("Either 'products' array or single product required fields must be provided")
+
 		if self.min_interest_rate is not None and self.max_interest_rate is not None:
 			if self.min_interest_rate > self.max_interest_rate:
 				raise ValueError("min_interest_rate cannot be greater than max_interest_rate.")
@@ -63,14 +82,21 @@ class CreateProductSchema(BaseModel):
 class UpdateProductSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
 	product_name: str | None = Field(None, max_length=140)
-	min_interest_rate: float | None = Field(None, ge=0, le=100)
-	max_interest_rate: float | None = Field(None, ge=0, le=100)
-	min_amount: float | None = Field(None, ge=0, le=999999999999.0)
-	max_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	min_interest_rate: float | None = Field(None, ge=0, le=20.0)
+	max_interest_rate: float | None = Field(None, ge=0, le=20.0)
+	min_amount: int | None = Field(None, ge=0, le=999999)
+	max_amount: int | None = Field(None, ge=0, le=999999)
 	tenure_months: int | None = Field(None, ge=1, le=1200)
 	description: str | None = Field(None, max_length=2000)
 	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None
+
+	@field_validator("min_interest_rate", "max_interest_rate")
+	@classmethod
+	def validate_decimals(cls, v):
+		if v is not None and round(v, 2) != v:
+			raise ValueError("Interest rate must have at most 2 decimal places.")
+		return v
 
 	@model_validator(mode="after")
 	def validate_min_max_ordering(self):
@@ -85,10 +111,21 @@ class UpdateProductSchema(BaseModel):
 
 class SetProductStatusSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
-	status: str = Field(..., pattern="^(Draft|Active|Archived)$")
+	status: str = Field(..., pattern="^(Pending Approval|Active|Rejected|Archived)$")
+	reason: str | None = Field(None, max_length=2000)
+
+	@model_validator(mode="after")
+	def validate_reason_required_for_approval_or_rejection(self):
+		if self.status in ("Active", "Rejected", "Archived") and not (self.reason and self.reason.strip()):
+			raise ValueError(f"Please provide a reason when setting status to '{self.status}'.")
+		return self
 
 
 class GetProductSchema(BaseModel):
+	product_id: str = Field(..., min_length=1, max_length=140)
+
+
+class GetProductCommentSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
 
 
@@ -100,26 +137,32 @@ def create_product(**kwargs):
 	frappe.has_permission("A2C Loan Product", "create", throw=True)
 	assert_bank_active(kwargs.get("bank"))
 
-	product_meta = kwargs.get("product_meta")
+	products_data = kwargs.get("products") or [kwargs]
+	created_ids = []
+	bank = kwargs.get("bank")
 
-	doc = frappe.new_doc("A2C Loan Product")
-	doc.product_name = kwargs.get("product_name")
-	doc.bank = kwargs.get("bank")
-	doc.min_interest_rate = kwargs.get("min_interest_rate")
-	doc.max_interest_rate = kwargs.get("max_interest_rate")
-	doc.min_amount = kwargs.get("min_amount")
-	doc.max_amount = kwargs.get("max_amount")
-	doc.tenure_months = kwargs.get("tenure_months")
-	doc.description = kwargs.get("description")
-	doc.image = kwargs.get("image")
-	doc.status = "Draft"
+	for p_data in products_data:
+		doc = frappe.new_doc("A2C Loan Product")
+		doc.product_name = p_data.get("product_name")
+		doc.bank = bank
+		doc.min_interest_rate = p_data.get("min_interest_rate")
+		doc.max_interest_rate = p_data.get("max_interest_rate")
+		doc.min_amount = p_data.get("min_amount")
+		doc.max_amount = p_data.get("max_amount")
+		doc.tenure_months = p_data.get("tenure_months")
+		doc.description = p_data.get("description")
+		doc.image = p_data.get("image")
+		doc.status = "Pending Approval"
 
-	if product_meta:
-		for meta in product_meta:
-			doc.append("product_meta", {"meta_key": meta["meta_key"], "meta_value": meta["meta_value"]})
+		p_meta = p_data.get("product_meta")
+		if p_meta:
+			for meta in p_meta:
+				doc.append("product_meta", {"meta_key": meta["meta_key"], "meta_value": meta["meta_value"]})
 
-	doc.insert(ignore_permissions=False)
-	return success_response(data={"message": _("Product created"), "product_id": doc.name})
+		doc.insert(ignore_permissions=False)
+		created_ids.append(doc.name)
+
+	return success_response(data={"message": _("Products created"), "product_ids": created_ids})
 
 
 @frappe.whitelist()
@@ -134,6 +177,8 @@ def update_product(**kwargs):
 		assert_bank_active(get_user_bank())
 
 	doc = frappe.get_doc("A2C Loan Product", product_id)
+	if kwargs.get("reason"):
+		doc._status_reason = kwargs["reason"]
 
 	direct_fields = [
 		"product_name",
@@ -160,7 +205,13 @@ def update_product(**kwargs):
 			frappe.throw(_("min_amount cannot be greater than max_amount."), frappe.ValidationError)
 
 	doc.save(ignore_permissions=False)
-	return success_response(data={"message": _("Product updated"), "product_id": doc.name})
+	return success_response(
+		data={
+			"message": _("Product updated"),
+			"product_id": doc.name,
+			"status": doc.status,
+		}
+	)
 
 
 @frappe.whitelist()
@@ -169,23 +220,41 @@ def update_product(**kwargs):
 def set_product_status(**kwargs):
 	product_id = kwargs.get("product_id")
 	status = kwargs.get("status")
+	reason = kwargs.get("reason")
 	if not frappe.has_permission("A2C Loan Product", "write", product_id):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	# Approval gate: activating a product is a Bank Admin / platform-admin action.
-	# Bank Agents can draft and edit products (write) but cannot approve their own —
-	# so the `Active` transition needs an explicit role check beyond `write`.
-	if status == "Active" and not (is_bank_unbound() or BANK_ADMIN_ROLE in frappe.get_roles()):
-		frappe.throw(_("Only a Bank Admin can approve (activate) a product."), frappe.PermissionError)
+	# Approval/lifecycle gate: activating or archiving a product is a Bank Admin /
+	# platform-admin action. Bank Agents can draft and edit products (write) but cannot
+	# approve or retire them — so these transitions need a role check beyond `write`.
+	if status in ("Active", "Archived") and not (is_bank_unbound() or BANK_ADMIN_ROLE in frappe.get_roles()):
+		action = "approve (activate)" if status == "Active" else "archive"
+		frappe.throw(_("Only a Bank Admin can {0} a product.").format(action), frappe.PermissionError)
 
 	if not is_bank_unbound():
 		assert_bank_active(get_user_bank())
 
 	doc = frappe.get_doc("A2C Loan Product", product_id)
+
+	# Archiving retires a live product: only an Active product can be Archived, and an
+	# Archived product is restored by moving it back to Active (Active <-> Archived).
+	if status == "Archived" and doc.status != "Active":
+		frappe.throw(
+			_("Only an Active product can be archived (currently {0}).").format(_(doc.status)),
+			frappe.ValidationError,
+		)
+	if reason:
+		doc._status_reason = reason
 	doc.status = status
 	doc.save(ignore_permissions=False)
 
-	return success_response(data={"message": _("Product status updated to {}").format(status)})
+	return success_response(
+		data={
+			"message": _("Product status updated to {}").format(doc.status),
+			"product_id": doc.name,
+			"status": doc.status,
+		}
+	)
 
 
 @frappe.whitelist()
@@ -284,6 +353,7 @@ def list_products(
 			"product_name",
 			"slug",
 			"status",
+			"bank",
 			"min_interest_rate",
 			"max_interest_rate",
 			"min_amount",
@@ -319,9 +389,22 @@ def list_products(
 		)
 		counts_map = {row.loan_product: row.get("COUNT(*)") for row in app_counts}
 
+		# Batch resolve bank display names for the result rows. A2C Participating Bank
+		# is the public lender directory (not bank-scoped), so get_all is fine.
+		bank_ids = list({p["bank"] for p in products if p.get("bank")})
+		bank_name_map = {}
+		if bank_ids:
+			bank_rows = frappe.get_all(
+				"A2C Participating Bank",
+				filters={"name": ["in", bank_ids]},
+				fields=["name", "bank_name"],
+			)
+			bank_name_map = {row.name: row.bank_name for row in bank_rows}
+
 		for p in products:
 			p["categories"] = categories_map.get(p["name"], [])
 			p["applications_count"] = counts_map.get(p["name"], 0)
+			p["bank_name"] = bank_name_map.get(p.get("bank"))
 
 	total_pages = -(-total_records // page_size)
 	has_next = offset + page_size < total_records
@@ -399,3 +482,37 @@ def get_product(**kwargs):
 	}
 
 	return success_response(data={"product": product_data})
+
+
+@frappe.whitelist()
+@validate_request(GetProductCommentSchema)
+@handle_api_errors
+def get_product_comment(**kwargs):
+	product_id = kwargs.get("product_id")
+	if not frappe.has_permission("A2C Loan Product", "read", product_id):
+		frappe.throw(_("Not permitted"), frappe.PermissionError)
+
+	filters = {"loan_product": product_id}
+
+	events = frappe.get_all(
+		"A2C Loan Product Audit Event",
+		filters=filters,
+		fields=[
+			"name",
+			"creation",
+			"event_type",
+			"from_status",
+			"to_status",
+			"event_title",
+			"event_description",
+			"reason",
+			"performed_by",
+		],
+		order_by="creation desc",
+		limit_page_length=1,
+	)
+
+	for event in events:
+		event.creation = to_tz_aware_iso(event.creation)
+
+	return success_response(data={"comment": events})

@@ -10,6 +10,10 @@ _COUNTERS = (
 	"pending_products",
 )
 _PENDING_STATUSES = {"Submitted", "Under Review"}
+# Product statuses that are retired from the marketplace: not offerable to farmers
+# and excluded from total_products. Rejected (declined at approval) and Archived
+# (retired after being Active) are treated identically for counting/visibility.
+_EXCLUDED_PRODUCT_STATUSES = {"Rejected", "Archived"}
 
 
 def _key(bank: str, counter: str) -> str:
@@ -58,9 +62,11 @@ def _compute_from_db(bank: str) -> dict:
 		fields=["status", {"COUNT": "name", "as": "count"}],
 		group_by="status",
 	)
-	total_products = sum(item.count for item in product_counts if item.status != "Archived")
+	total_products = sum(
+		item.count for item in product_counts if item.status not in _EXCLUDED_PRODUCT_STATUSES
+	)
 	active_products = sum(item.count for item in product_counts if item.status == "Active")
-	pending_products = sum(item.count for item in product_counts if item.status == "Draft")
+	pending_products = sum(item.count for item in product_counts if item.status == "Pending Approval")
 
 	app_counts = frappe.get_all(  # bank-scope-exempt: bank scoped explicitly via filters above
 		"A2C Loan Application",
@@ -130,11 +136,11 @@ def on_product_change(doc, event: str) -> None:
 		return
 
 	if event == "after_insert":
-		if doc.status != "Archived":
+		if doc.status not in _EXCLUDED_PRODUCT_STATUSES:
 			_incr(bank, "total_products")
 		if doc.status == "Active":
 			_incr(bank, "active_products")
-		elif doc.status == "Draft":
+		elif doc.status == "Pending Approval":
 			_incr(bank, "pending_products")
 
 	elif event == "on_update":
@@ -142,27 +148,29 @@ def on_product_change(doc, event: str) -> None:
 		if before is None:
 			return  # after_insert already handled this
 		if before.status != doc.status:
-			if before.status != "Archived" and doc.status == "Archived":
+			was_excluded = before.status in _EXCLUDED_PRODUCT_STATUSES
+			now_excluded = doc.status in _EXCLUDED_PRODUCT_STATUSES
+			if not was_excluded and now_excluded:
 				_decr(bank, "total_products")
-			elif before.status == "Archived" and doc.status != "Archived":
+			elif was_excluded and not now_excluded:
 				_incr(bank, "total_products")
 
 			if before.status == "Active":
 				_decr(bank, "active_products")
-			elif before.status == "Draft":
+			elif before.status == "Pending Approval":
 				_decr(bank, "pending_products")
 
 			if doc.status == "Active":
 				_incr(bank, "active_products")
-			elif doc.status == "Draft":
+			elif doc.status == "Pending Approval":
 				_incr(bank, "pending_products")
 
 	elif event == "on_trash":
-		if doc.status != "Archived":
+		if doc.status not in _EXCLUDED_PRODUCT_STATUSES:
 			_decr(bank, "total_products")
 		if doc.status == "Active":
 			_decr(bank, "active_products")
-		elif doc.status == "Draft":
+		elif doc.status == "Pending Approval":
 			_decr(bank, "pending_products")
 
 

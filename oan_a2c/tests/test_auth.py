@@ -4,11 +4,18 @@ import unittest
 import frappe
 import jwt
 
-from oan_a2c.api.auth import change_password, forgot_password, login, logout, refresh, reset_password
+from oan_a2c.api.auth import (
+	change_password,
+	forgot_password,
+	login,
+	logout,
+	refresh,
+)
 from oan_a2c.api.middleware import JWTUnauthorized, validate_jwt_request
+from oan_a2c.tests.request_context import RequestContextMixin
 
 
-class TestAuthAPI(unittest.TestCase):
+class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 	"""
 	Unit Tests for Identity and Access Management (IAM) endpoints.
 	Ensures strict adherence to our NSPF and No-Hack mandates.
@@ -41,59 +48,6 @@ class TestAuthAPI(unittest.TestCase):
 	def tearDownClass(cls):
 		frappe.set_user("Administrator")
 		frappe.db.rollback()
-
-	def setUp(self):
-		frappe.local.response = {}
-		frappe.set_user("Administrator")
-
-		# frappe.local.request_ip is normally set by HTTPRequest.set_request_ip() during
-		# the web request cycle. In unit tests HTTPRequest is never instantiated, so the
-		# value stays None. LoginAttemptTracker uses it as its Redis hash key — passing
-		# None causes Redis to reject the HDEL call with a DataError.
-		frappe.local.request_ip = "127.0.0.1"
-
-		# Mock request for LoginManager and middleware
-		self._original_request = getattr(frappe.local, "request", None)
-		frappe.local.request = frappe._dict(
-			{
-				"path": "",
-				"headers": {},
-				"cookies": frappe._dict(),
-				"scheme": "http",
-				"remote_addr": "127.0.0.1",
-			}
-		)
-
-		# Mock CookieManager for LoginManager
-		from frappe.auth import CookieManager
-
-		self._original_cookie_manager = getattr(frappe.local, "cookie_manager", None)
-		frappe.local.cookie_manager = CookieManager()
-
-		# Patch get_request_header for middleware tests
-		self._original_get_request_header = getattr(frappe, "get_request_header", None)
-		frappe.get_request_header = self._mock_get_request_header
-		self._mock_headers = {}
-
-	def tearDown(self):
-		frappe.get_request_header = self._original_get_request_header
-
-		# Restore original request
-		if self._original_request:
-			frappe.local.request = self._original_request
-		else:
-			if hasattr(frappe.local, "request"):
-				delattr(frappe.local, "request")
-
-		# Restore original cookie_manager
-		if self._original_cookie_manager:
-			frappe.local.cookie_manager = self._original_cookie_manager
-		else:
-			if hasattr(frappe.local, "cookie_manager"):
-				delattr(frappe.local, "cookie_manager")
-
-	def _mock_get_request_header(self, key):
-		return self._mock_headers.get(key)
 
 	# ------------------------------------------------------------------
 	# Auth endpoint tests
@@ -167,9 +121,15 @@ class TestAuthAPI(unittest.TestCase):
 			validate_jwt_request()
 
 	def test_6_forgot_password(self):
+		frappe.cache().delete_value("rl:forgot_pwd:127.0.0.1")
 		response = forgot_password(self.test_email)
 
 		self.assertEqual(response.get("status"), "success")
+
+		# The OTP must never travel back to the caller. While it did, anyone could
+		# POST an address here, read the key out of the response and take the
+		# account over through reset_password.
+		self.assertIsNone(response.get("data"))
 
 	def test_7_middleware_bypasses_public_endpoints(self):
 		"""Auth endpoints must not require a JWT — they serve unauthenticated agents."""
@@ -354,3 +314,34 @@ class TestAuthAPI(unittest.TestCase):
 		# 3. Restore original password using change_password
 		restore_resp = change_password(current_password=new_pwd, new_password=self.test_password)
 		self.assertEqual(restore_resp.get("status"), "success")
+
+	def test_15_register_user_duplicate_email(self):
+		from oan_a2c.api.v1.auth import register_user
+
+		resp = register_user(
+			email=self.test_email,
+			full_name="Test Agent",
+			password="TestPassword123!",
+			phone_number="+251911999999",
+		)
+		self.assertEqual(resp.get("status"), "success")
+		self.assertTrue(resp.get("data", {}).get("already_exists"))
+		self.assertIn("already have an account", resp.get("data", {}).get("message", ""))
+
+	def test_16_register_user_duplicate_phone(self):
+		from oan_a2c.api.v1.auth import register_user
+
+		# Set mobile_no for test_email user
+		frappe.db.set_value("User", self.test_email, "mobile_no", "+251911888888")
+
+		resp = register_user(
+			email="new_unique_email@test.com",
+			full_name="Test Agent",
+			password="TestPassword123!",
+			phone_number="+251911888888",
+		)
+		self.assertEqual(resp.get("status"), "error")
+		self.assertEqual(resp.get("code"), "VALIDATION_ERROR")
+		self.assertIn(
+			"already registered", resp.get("details", {}).get("phone_number", "") or resp.get("message", "")
+		)

@@ -15,6 +15,7 @@ from oan_a2c.a2c_marketplace.roles import (
 from oan_a2c.api.utils import (
 	RequiredPhone,
 	SafeEmail,
+	check_rate_limit,
 	handle_api_errors,
 	success_response,
 	validate_request,
@@ -41,7 +42,7 @@ def resolve_assignable_role(role: str, allowed: set[str]) -> str:
 	"""Validate a client-supplied role against an allowlist, or reject it.
 
 	Canonical `Role` names only (from a2c_marketplace.roles). This is the ONLY
-	gate on the client-supplied `role` in invite_user — never append a raw client
+	gate on the client-supplied `role` in invite_team_member — never append a raw client
 	string to User.roles, or a caller can hand themselves System Manager /
 	A2C Administrator, or resurrect a retired plain-named role. (update_user does
 	its own level-based role check; see ROLE_LEVELS.)
@@ -58,24 +59,34 @@ class RegisterBankSchema(BaseModel):
 	registered_street: str = Field(..., min_length=2, max_length=255)
 	registered_kebele_village: str | None = Field(None, max_length=140)
 	registered_woreda_district: str | None = Field(None, max_length=140)
-	registered_city: str = Field(..., min_length=2, max_length=140)
+	registered_zone: str | None = Field(None, max_length=140)
+	registered_region: str = Field(..., min_length=2, max_length=140)
 	registered_country: str = Field(..., min_length=2, max_length=140)
-	registered_postal_code: str = Field(..., min_length=2, max_length=20)
+	registered_postal_code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d+$")
 	registered_email: SafeEmail
 	registered_phone: RequiredPhone
-	website: str | None = Field(None, max_length=255)
+	website: str | None = Field(
+		None,
+		max_length=255,
+		pattern=r"^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$",
+	)
 
 
 class UpdateBankProfileSchema(BaseModel):
 	bank_name: str | None = Field(None, max_length=140)
 	brand_name: str | None = Field(None, max_length=140)
-	website: str | None = Field(None, max_length=255)
+	website: str | None = Field(
+		None,
+		max_length=255,
+		pattern=r"^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$",
+	)
 	registered_street: str | None = Field(None, max_length=255)
 	registered_kebele_village: str | None = Field(None, max_length=140)
 	registered_woreda_district: str | None = Field(None, max_length=140)
-	registered_city: str | None = Field(None, max_length=140)
+	registered_zone: str | None = Field(None, max_length=140)
+	registered_region: str | None = Field(None, max_length=140)
 	registered_country: str | None = Field(None, max_length=140)
-	registered_postal_code: str | None = Field(None, max_length=20)
+	registered_postal_code: str | None = Field(None, min_length=6, max_length=6, pattern=r"^\d+$")
 	registered_email: SafeEmail | None = None
 	registered_phone: RequiredPhone | None = None
 	logo: str | None = Field(None, max_length=255)
@@ -131,18 +142,40 @@ class UpdateBankStatusSchema(BaseModel):
 	new_status: str = Field(..., pattern="^(In Review|Active|Suspended)$")
 
 
-class InviteUserSchema(BaseModel):
+def _validate_temp_password(v: str) -> str:
+	"""Complexity rule for an admin-typed temporary password.
+
+	Deliberately weaker than validate_password_complexity: this password is
+	transcribed by hand from an admin to an agent and lives for one login, at
+	which point set_initial_password enforces the full rule on the real one.
+	"""
+	if not any(c.isalpha() for c in v) or not any(c.isdigit() for c in v):
+		raise ValueError("Password must contain at least one letter and one number.")
+	return v
+
+
+class InviteTeamMemberSchema(BaseModel):
 	email: SafeEmail
 	full_name: str = Field(..., min_length=2, max_length=140)
-	role: str = Field(..., min_length=2, max_length=140)
+	# Bank Admins may only create Bank Agents. The field stays in the contract so
+	# an explicit role is validated and rejected rather than silently ignored.
+	role: str = Field(default=BANK_AGENT_ROLE, min_length=2, max_length=140)
 	password: str = Field(..., min_length=8, max_length=64)
 
 	@field_validator("password")
 	@classmethod
 	def validate_pwd(cls, v: str) -> str:
-		if not any(c.isalpha() for c in v) or not any(c.isdigit() for c in v):
-			raise ValueError("Password must contain at least one letter and one number.")
-		return v
+		return _validate_temp_password(v)
+
+
+class ResetMemberPasswordSchema(BaseModel):
+	email: SafeEmail
+	password: str = Field(..., min_length=8, max_length=64)
+
+	@field_validator("password")
+	@classmethod
+	def validate_pwd(cls, v: str) -> str:
+		return _validate_temp_password(v)
 
 
 # -----------------
@@ -191,13 +224,15 @@ def register_bank(**kwargs):
 		bank = frappe.get_doc(
 			{
 				"doctype": "A2C Participating Bank",
+				"registered_city": "Test City",
 				"bank_code": bank_code,
 				"bank_name": kwargs.get("bank_name"),
 				"entity_type": kwargs.get("entity_type"),
 				"registered_street": kwargs.get("registered_street"),
 				"registered_kebele_village": kwargs.get("registered_kebele_village"),
 				"registered_woreda_district": kwargs.get("registered_woreda_district"),
-				"registered_city": kwargs.get("registered_city"),
+				"registered_zone": kwargs.get("registered_zone"),
+				"registered_region": kwargs.get("registered_region"),
 				"registered_country": kwargs.get("registered_country"),
 				"registered_postal_code": kwargs.get("registered_postal_code"),
 				"registered_email": kwargs.get("registered_email"),
@@ -364,10 +399,11 @@ def get_bank_profile():
 		"logo": doc.logo,
 		"registered_street": doc.registered_street,
 		"registered_kebele_village": doc.registered_kebele_village,
-		"registered_woreda_district": doc.registered_woreda_district,
-		"registered_city": doc.registered_city,
-		"registered_country": doc.registered_country,
-		"registered_postal_code": doc.registered_postal_code,
+		"registered_woreda_district": getattr(doc, "registered_woreda_district", None),
+		"registered_zone": getattr(doc, "registered_zone", None),
+		"registered_region": getattr(doc, "registered_region", None),
+		"registered_country": getattr(doc, "registered_country", None),
+		"registered_postal_code": getattr(doc, "registered_postal_code", None),
 		"registered_email": doc.registered_email,
 		"registered_phone": doc.registered_phone,
 		"website": doc.website,
@@ -420,7 +456,8 @@ def update_bank_profile(**kwargs):
 		"registered_street",
 		"registered_kebele_village",
 		"registered_woreda_district",
-		"registered_city",
+		"registered_zone",
+		"registered_region",
 		"registered_country",
 		"registered_postal_code",
 		"registered_email",
@@ -482,14 +519,23 @@ def update_bank_status(**kwargs):
 
 
 # -----------------
-# 5. invite_user
+# 5. invite_team_member
 # -----------------
 @frappe.whitelist()
-@validate_request(InviteUserSchema)
+@validate_request(InviteTeamMemberSchema)
 @handle_api_errors
 @require_bank_role(BANK_ADMIN_ROLE)
-def invite_user(email: str, full_name: str, role: str, password: str):
-	role = resolve_assignable_role(role, {BANK_ADMIN_ROLE, BANK_AGENT_ROLE})
+def invite_team_member(email: str, full_name: str, password: str, role: str = BANK_AGENT_ROLE):
+	"""Add a Bank Agent to the caller's bank with a temporary password.
+
+	Bank Agent only: a Bank Admin cannot mint another Bank Admin. New admins come
+	from self-registration (api.v1.auth.register_user, which pairs with
+	register_bank) or from a platform admin promoting an agent via update_user.
+
+	The password is admin-chosen, so it is flagged must-change — the agent cannot
+	open a session with it, only rotate it (api.auth.set_initial_password).
+	"""
+	role = resolve_assignable_role(role, {BANK_AGENT_ROLE})
 
 	user = frappe.session.user
 	bank = frappe.db.get_value(
@@ -504,16 +550,23 @@ def invite_user(email: str, full_name: str, role: str, password: str):
 			"User Permission", {"user": email, "allow": "A2C Participating Bank", "for_value": bank}
 		)
 		if is_in_this_bank:
-			return success_response(data={"message": _("User has already joined.")})
+			return success_response(data={"message": _("Team member has already joined.")})
 
 		is_in_other_bank = frappe.db.exists(
 			"User Permission", {"user": email, "allow": "A2C Participating Bank"}
 		)
 		if is_in_other_bank:
 			# Fake success to prevent info leak
-			return success_response(data={"message": _("User invited successfully.")})
+			return success_response(data={"message": _("Team member invited successfully.")})
 	else:
-		create_user_account(email=email, full_name=full_name, password=password, phone_number="", role=role)
+		create_user_account(
+			email=email,
+			full_name=full_name,
+			password=password,
+			phone_number="",
+			role=role,
+			must_change_password=True,
+		)
 
 	try:
 		user_doc = frappe.get_doc("User", email)
@@ -539,9 +592,9 @@ def invite_user(email: str, full_name: str, role: str, password: str):
 			perm.insert(ignore_permissions=True)
 	except Exception as e:
 		frappe.db.rollback()
-		frappe.throw(_("Failed to invite user: {0}").format(str(e)))
+		frappe.throw(_("Failed to invite team member: {0}").format(str(e)))
 
-	return success_response(data={"message": _("User invited successfully.")})
+	return success_response(data={"message": _("Team member invited successfully.")})
 
 
 # -----------------
@@ -568,7 +621,7 @@ def list_users():
 	users = frappe.get_all(
 		"User",
 		filters={"name": ("in", bank_users)},
-		fields=["name", "email", "first_name", "enabled", "last_active"],
+		fields=["name", "email", "first_name", "enabled", "last_active", "a2c_must_change_password"],
 	)
 
 	roles = frappe.get_all(
@@ -581,6 +634,9 @@ def list_users():
 
 	for u in users:
 		u["role"] = user_role_map.get(u.name)
+		# Surfaced so the team list can flag members who have not yet set their own
+		# password — the ones whose credential the admin still knows.
+		u["must_change_password"] = bool(u.pop("a2c_must_change_password", 0))
 
 	return success_response(data={"users": users})
 
@@ -595,12 +651,17 @@ class UpdateUserSchema(BaseModel):
 	enabled: bool | None = None
 
 
-@frappe.whitelist()
-@validate_request(UpdateUserSchema)
-@handle_api_errors
-def update_user(
-	email: str, full_name: str | None = None, role: str | None = None, enabled: bool | None = None
-):
+def _assert_can_manage_member(email: str) -> tuple[int, bool, bool]:
+	"""Authorization gate for acting on another user's account. Fails closed.
+
+	Returns (caller_level, is_platform_admin, is_bank_admin) so callers can layer
+	on their own action-specific rules.
+
+	Shared by update_user and reset_member_password: both hand one user power
+	over another's account, so they have to agree on exactly who may reach whom.
+	Keeping the rules in one place is what stops a later edit to one of them from
+	leaving a cross-bank hole in the other.
+	"""
 	caller = frappe.session.user
 	caller_roles = set(frappe.get_roles(caller))
 	caller_level = _get_user_level(caller)
@@ -646,6 +707,17 @@ def update_user(
 		if target_bank != caller_bank:
 			frappe.throw(_("Not permitted to manage a user from another bank."), frappe.PermissionError)
 
+	return caller_level, is_platform_admin, is_bank_admin
+
+
+@frappe.whitelist()
+@validate_request(UpdateUserSchema)
+@handle_api_errors
+def update_user(
+	email: str, full_name: str | None = None, role: str | None = None, enabled: bool | None = None
+):
+	caller_level, is_platform_admin, is_bank_admin = _assert_can_manage_member(email)
+
 	if role is not None:
 		if role not in ROLE_LEVELS:
 			frappe.throw(_("Invalid role."), frappe.ValidationError)
@@ -674,3 +746,39 @@ def update_user(
 	target_user.save(ignore_permissions=True)
 
 	return success_response(message=_("User updated successfully."))
+
+
+# -----------------
+# 8. reset_member_password
+# -----------------
+@frappe.whitelist()
+@validate_request(ResetMemberPasswordSchema)
+@handle_api_errors
+@require_bank_role(BANK_ADMIN_ROLE)
+def reset_member_password(email: str, password: str):
+	"""Issue a fresh temporary password for a Bank Agent (forgotten-password path).
+
+	The agent cannot sign in with it — it is flagged must-change, so login returns
+	PASSWORD_CHANGE_REQUIRED until they set their own through
+	api.auth.set_initial_password.
+
+	Any session the agent currently holds dies immediately: the refresh tokens are
+	deleted here and the JWT middleware rejects access tokens for a flagged user.
+	That is deliberate — when the reason for the reset is a suspected compromise,
+	"issue a new password" has to also mean "cut off the current session".
+	"""
+	check_rate_limit(f"rl:reset_member_pwd:{frappe.session.user}", limit=10, window=300)
+
+	_assert_can_manage_member(email)
+
+	from frappe.utils.password import update_password as update_password_db
+
+	update_password_db(user=email, pwd=password, logout_all_sessions=True)
+	frappe.db.set_value("User", email, "a2c_must_change_password", 1)
+	frappe.db.delete("A2C User Refresh Token", {"user": email})
+
+	frappe.logger("oan_a2c").info(f"temporary password reissued by={frappe.session.user} for={email}")
+
+	return success_response(
+		message=_("Temporary password issued. The agent must set their own password at next login.")
+	)

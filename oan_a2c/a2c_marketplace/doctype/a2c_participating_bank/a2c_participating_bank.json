@@ -17,7 +17,8 @@
   "registered_street",
   "registered_kebele_village",
   "registered_woreda_district",
-  "registered_city",
+  "registered_zone",
+  "registered_region",
   "registered_country",
   "registered_postal_code",
   "kyc_document",
@@ -106,9 +107,14 @@
    "label": "Registered Woreda/District"
   },
   {
-   "fieldname": "registered_city",
+   "fieldname": "registered_zone",
    "fieldtype": "Data",
-   "label": "Registered City",
+   "label": "Registered Zone"
+  },
+  {
+   "fieldname": "registered_region",
+   "fieldtype": "Data",
+   "label": "Registered Region",
    "reqd": 1
   },
   {
