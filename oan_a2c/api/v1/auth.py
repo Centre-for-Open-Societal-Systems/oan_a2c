@@ -2,7 +2,7 @@ import frappe
 from frappe import _
 from pydantic import BaseModel, Field, field_validator
 
-from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE
+from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE
 from oan_a2c.api.utils import (
 	RequiredPhone,
 	SafeEmail,
@@ -13,11 +13,16 @@ from oan_a2c.api.utils import (
 	validate_request,
 )
 
-SELF_REGISTERABLE_ROLES = {BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE}
+SELF_REGISTERABLE_ROLES = {BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE}
 
 
 class RegisterUserSchema(BaseModel):
-	email: SafeEmail
+	# SafeEmail is Annotated[str | None, ...], so this validates the format but cannot
+	# enforce presence -- validate_request always supplies the signature default, so a
+	# missing address arrives here as a legitimate None. register_user does the
+	# presence check; it is the only thing standing between a farmer and an account
+	# they can never log in to.
+	email: SafeEmail | None = None
 	full_name: str = Field(..., min_length=2)
 	password: str = Field(..., min_length=8, max_length=64)
 	phone_number: RequiredPhone
@@ -27,6 +32,9 @@ class RegisterUserSchema(BaseModel):
 	@classmethod
 	def validate_password(cls, v: str) -> str:
 		return validate_password_complexity(v)
+
+
+
 
 
 def create_user_account(
@@ -83,11 +91,20 @@ def create_user_account(
 @frappe.whitelist(allow_guest=True)
 @validate_request(RegisterUserSchema)
 @handle_api_errors
-def register_user(email: str, full_name: str, password: str, phone_number: str, role: str = BANK_ADMIN_ROLE):
-	check_rate_limit(f"rl:register_user:{getattr(frappe.local, 'request_ip', 'guest')}", limit=5, window=60)
+def register_user(full_name: str, password: str, phone_number: str, email: str | None = None, role: str = BANK_ADMIN_ROLE):
+	check_rate_limit(f"rl:register_user:{getattr(frappe.local, 'request_ip', 'guest')}", limit=50, window=60)
+	check_rate_limit(f"rl:register_phone:{phone_number}", limit=5, window=60)
 
 	if role not in SELF_REGISTERABLE_ROLES:
 		frappe.throw(_("Invalid role."), frappe.ValidationError)
+
+	# Farmers register with a real email like every other role. Production identity
+	# comes from the Fayda registry over OAuth; email + password is the development
+	# stand-in until that lands. The phone number is still collected -- it is how the
+	# consent webhook matches a User to an A2C Farmer Profile -- but it is not an
+	# identity, and nothing may derive a login from it.
+	if not email:
+		frappe.throw(_("Email is required for this role."), frappe.ValidationError)
 
 	if frappe.db.exists("User", email):
 		return success_response(
@@ -98,9 +115,11 @@ def register_user(email: str, full_name: str, password: str, phone_number: str, 
 		)
 
 	if frappe.db.exists("User", {"mobile_no": phone_number}):
-		frappe.throw(
-			_("A user with this name or phone number is already registered."),
-			frappe.ValidationError,
+		return success_response(
+			data={
+				"message": _("You already have an account. Please log in."),
+				"already_exists": True,
+			}
 		)
 
 	create_user_account(
@@ -111,3 +130,6 @@ def register_user(email: str, full_name: str, password: str, phone_number: str, 
 		role=role,
 	)
 	return success_response(data={"message": _("Account created successfully.")})
+
+
+

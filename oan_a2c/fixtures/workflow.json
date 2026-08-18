@@ -303,6 +303,17 @@
     "workflow_builder_id": null
    },
    {
+    "action": "Send for Review",
+    "allow_self_approval": 1,
+    "allowed": "A2C Farmer",
+    "condition": null,
+    "next_state": "Processing",
+    "send_email_to_creator": 0,
+    "state": "Draft",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
     "action": "Approve",
     "allow_self_approval": 1,
     "allowed": "A2C Bank Agent",

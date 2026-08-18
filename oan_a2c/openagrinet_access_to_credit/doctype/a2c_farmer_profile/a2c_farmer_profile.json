@@ -10,6 +10,7 @@
  "field_order": [
   "lead_id",
   "farmer_id",
+  "user",
   "id_type",
   "id_number",
   "application_status",
@@ -240,6 +241,15 @@
    "label": "Farmer ID"
   },
   {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User Account",
+   "options": "User",
+   "read_only": 1,
+   "unique": 1,
+   "search_index": 1
+  },
+  {
    "fieldname": "id_type",
    "fieldtype": "Data",
    "label": "ID Type"
@@ -300,6 +310,11 @@
    "report": 1,
    "role": "A2C Administrator",
    "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "A2C Farmer",
    "write": 1
   }
  ],

@@ -242,10 +242,11 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 	Wraps Frappe's core LoginManager to ensure standard validations apply
 	(account lock, disabled user, etc.) without creating a server-side session.
 	"""
-	check_rate_limit(f"rl:login:{getattr(frappe.local, 'request_ip', 'guest')}", limit=10, window=60)
+	check_rate_limit(f"rl:login:{getattr(frappe.local, 'request_ip', 'guest')}", limit=100, window=60)
 
 	# Accept either an email or a phone number as the login id.
 	usr = _resolve_login_id(usr)
+	check_rate_limit(f"rl:login_usr:{usr}", limit=10, window=60)
 
 	try:
 		login_manager = LoginManager()

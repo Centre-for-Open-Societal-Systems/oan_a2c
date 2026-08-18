@@ -27,6 +27,7 @@
   "loan_reason",
   "links_section",
   "lead_id",
+  "farmer_profile",
   "farmer_id",
   "id_type",
   "id_number",
@@ -96,6 +97,14 @@
    "fieldtype": "Link",
    "label": "Lead ID",
    "options": "A2C Lead",
+   "search_index": 1
+  },
+  {
+   "fieldname": "farmer_profile",
+   "fieldtype": "Link",
+   "label": "Farmer Profile",
+   "options": "A2C Farmer Profile",
+   "read_only": 1,
    "search_index": 1
   },
   {
@@ -447,6 +456,12 @@
    "role": "A2C Administrator",
    "share": 1,
    "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "A2C Farmer",
    "write": 1
   }
  ],

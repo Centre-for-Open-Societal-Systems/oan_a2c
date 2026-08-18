@@ -88,6 +88,22 @@ def validate_request(schema: type[BaseModel]):
 	return decorator
 
 
+def require_role(roles: list[str]):
+	"""Decorator that enforces the caller holds at least one of `roles`. Must sit below @handle_api_errors."""
+
+	def decorator(fn):
+		@wraps(fn)
+		def wrapper(*args, **kwargs):
+			user_doc = frappe.get_doc("User", frappe.session.user)
+			if not any(d.role in roles for d in user_doc.roles):
+				roles_str = ", ".join(roles)
+				frappe.throw(_("Only {0} can perform this action.").format(roles_str), frappe.PermissionError)
+			return fn(*args, **kwargs)
+
+		return wrapper
+
+	return decorator
+
 def parse_multi_value(value, allowed=None):
 	"""Split a single value or comma-separated string into a de-duplicated list.
 

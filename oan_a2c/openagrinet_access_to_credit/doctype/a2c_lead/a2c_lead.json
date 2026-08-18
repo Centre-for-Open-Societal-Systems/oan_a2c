@@ -65,7 +65,7 @@
    "fieldname": "lead_source",
    "fieldtype": "Select",
    "label": "Source",
-   "options": "Missed Call\nIVR\nSMS\nAgent Entry",
+   "options": "Missed Call\nIVR\nSMS\nAgent Entry\nSelf Service",
    "default": "Missed Call",
    "reqd": 1,
    "in_list_view": 1,
@@ -166,6 +166,11 @@
    "role": "A2C Administrator",
    "share": 1,
    "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "A2C Farmer"
   }
  ],
  "sort_field": "modified",

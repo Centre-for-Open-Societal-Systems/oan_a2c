@@ -139,6 +139,11 @@
             "read": 1,
             "role": "A2C Administrator",
             "write": 1
+        },
+        {
+            "create": 1,
+            "read": 1,
+            "role": "A2C Farmer"
         }
     ],
     "row_format": "Dynamic",

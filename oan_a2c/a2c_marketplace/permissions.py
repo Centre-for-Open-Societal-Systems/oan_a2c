@@ -4,7 +4,7 @@ import frappe
 from frappe import _
 
 # Role names live in one place (oan_a2c.a2c_marketplace.roles).
-from oan_a2c.a2c_marketplace.roles import BANK_UNBOUND_ROLES
+from oan_a2c.a2c_marketplace.roles import BANK_UNBOUND_ROLES, FARMER_ROLE
 
 
 class BankNotOnboarded(frappe.PermissionError):
@@ -34,6 +34,24 @@ def is_bank_unbound(user=None):
 	if not user:
 		user = frappe.session.user
 	return bool(BANK_UNBOUND_ROLES.intersection(frappe.get_roles(user)))
+
+
+def is_farmer(user=None):
+	"""True if the user is a marketplace applicant (scoped by ownership, not bank)."""
+	if not user:
+		user = frappe.session.user
+	return FARMER_ROLE in frappe.get_roles(user)
+
+
+def get_user_farmer_profile(user=None):
+	"""The A2C Farmer Profile bound to `user`, or None before consent binds one.
+
+	A registered farmer who has never completed a consent has no profile. That is
+	a normal state, not an error: it means they have nothing to see yet.
+	"""
+	if not user:
+		user = frappe.session.user
+	return frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
 
 
 def get_user_bank(user=None):
@@ -208,19 +226,18 @@ def bank_scope_query(user):
 
 
 def loan_application_scope_query(user=None):
-	"""permission_query_conditions hook for A2C Loan Application only.
-
-	Extends bank_scope_query with a lifecycle gate: a Draft application belongs to
-	the Development Agent until "Send for Review" moves it to Processing, so
-	bank-bound users (Bank Admin/Agent) must not see Drafts even within their own
-	bank. Unbound roles (Dev Agent / admins) keep seeing every state.
-
-	Registered separately from bank_scope_query because `status` only exists on
-	A2C Loan Application; the shared hook must stay column-agnostic for the other
-	bank-scoped doctypes (Loan Product, lookups, term relationship).
-	"""
 	if not user:
 		user = frappe.session.user
+
+	# Farmers are scoped by ownership, not by bank. Checked first: a farmer has no
+	# A2C Participating Bank binding, so bank_scope_query would fail them closed at
+	# 1=0. No Draft gate here -- Draft is the farmer's own working stage (unlike a
+	# bank user, for whom Draft is the Development Agent's private stage).
+	if is_farmer(user) and not is_bank_unbound(user):
+		profile = get_user_farmer_profile(user)
+		if not profile:
+			return "1=0"
+		return f"`farmer_profile` = {frappe.db.escape(profile)}"
 
 	base = bank_scope_query(user)
 	if is_bank_unbound(user):
@@ -228,6 +245,42 @@ def loan_application_scope_query(user=None):
 
 	draft_gate = "`status` != 'Draft'"
 	return f"({base}) and {draft_gate}" if base else draft_gate
+
+
+def loan_product_scope_query(user=None):
+	"""permission_query_conditions for A2C Loan Product.
+
+	A farmer browses the marketplace across every bank but only ever sees Active
+	products -- Draft and Archived belong to the owning bank's catalog workspace.
+	Everyone else keeps plain bank scoping.
+	"""
+	if not user:
+		user = frappe.session.user
+
+	if is_farmer(user) and not is_bank_unbound(user):
+		return "`status` = 'Active'"
+
+	return bank_scope_query(user)
+
+
+def farmer_own_profile_query(user=None):
+	"""permission_query_conditions for A2C Farmer Profile."""
+	if not user:
+		user = frappe.session.user
+	if not is_farmer(user) or is_bank_unbound(user):
+		return ""
+	profile = get_user_farmer_profile(user)
+	return f"`name` = {frappe.db.escape(profile)}" if profile else "1=0"
+
+
+def farmer_own_consent_query(user=None):
+	"""permission_query_conditions for A2C Consent Request."""
+	if not user:
+		user = frappe.session.user
+	if not is_farmer(user) or is_bank_unbound(user):
+		return ""
+	profile = get_user_farmer_profile(user)
+	return f"`farmer` = {frappe.db.escape(profile)}" if profile else "1=0"
 
 
 def bank_scope_doc(doc, user=None):
@@ -240,6 +293,21 @@ def bank_scope_doc(doc, user=None):
 
 	if is_bank_unbound(user):
 		return True
+
+	# Mirror of the query hooks above, for single-doc reads (get_doc, has_permission).
+	if is_farmer(user):
+		if doc.doctype == "A2C Loan Product":
+			return doc.get("status") == "Active"
+		if doc.doctype == "A2C Loan Application":
+			profile = get_user_farmer_profile(user)
+			allowed = bool(profile) and doc.get("farmer_profile") == profile
+			if not allowed:
+				frappe.logger("bank_scope").warning(
+					f"Denied cross-farmer access: user={user} profile={profile} "
+					f"{doc.doctype}={doc.name} doc_profile={doc.get('farmer_profile')}"
+				)
+			return allowed
+		return False
 
 	bank = get_user_bank(user)
 	allowed = bool(bank) and doc.bank == bank

@@ -312,6 +312,24 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 				if v is not None and v != "":
 					farmer_profile.set(k, v)
 
+			if phone_number and not farmer_profile.user:
+				# Find matching user by phone and role
+				import re
+				candidates = [phone_number, re.sub(r"\D", "", phone_number)]
+				farmer_user = None
+				for field in ("mobile_no", "phone"):
+					for cand in candidates:
+						if not cand: continue
+						match = frappe.db.get_value("User", {field: cand, "enabled": 1}, "name")
+						if match:
+							farmer_user = match
+							break
+					if farmer_user:
+						break
+				
+				if farmer_user and frappe.db.exists("Has Role", {"parent": farmer_user, "role": "A2C Farmer"}):
+					farmer_profile.user = farmer_user
+
 			# ignore_permissions=True is required because this background job processes webhooks
 			# from OpenG2P asynchronously. The user context set (or Administrator fallback) may
 			# not have direct write permissions on A2C Farmer Profile, but the system must persist

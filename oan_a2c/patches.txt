@@ -16,3 +16,7 @@ oan_a2c.patches.backfill_lead_loan_amount
 oan_a2c.patches.add_must_change_password_field
 oan_a2c.patches.round_loan_product_values
 oan_a2c.patches.normalize_loan_product_status
+oan_a2c.patches.add_farmer_role
+oan_a2c.patches.backfill_loan_application_farmer_profile
+oan_a2c.patches.update_loan_workflow_for_farmer
+oan_a2c.patches.add_saved_product_unique_index
