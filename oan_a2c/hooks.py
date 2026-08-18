@@ -87,7 +87,13 @@ app_license = "mit"
 # ------------
 
 # before_install = "oan_a2c.install.before_install"
-# after_install = "oan_a2c.install.after_install"
+# Install app-owned custom fields on standard doctypes. Runs on fresh install
+# (patches are skipped there via set_all_patches_as_completed) and is idempotent.
+after_install = "oan_a2c.setup.custom_fields.setup_custom_fields"
+
+# Re-assert those custom fields on every migrate so already-provisioned sites
+# stay self-healing when the definitions change.
+after_migrate = "oan_a2c.setup.custom_fields.setup_custom_fields"
 
 # Uninstallation
 # ------------

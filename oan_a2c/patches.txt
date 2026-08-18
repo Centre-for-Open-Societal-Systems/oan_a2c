@@ -15,3 +15,4 @@ oan_a2c.patches.cleanup_stale_plain_roles
 oan_a2c.patches.backfill_lead_loan_amount
 oan_a2c.patches.add_must_change_password_field
 oan_a2c.patches.round_loan_product_values
+oan_a2c.patches.normalize_loan_product_status

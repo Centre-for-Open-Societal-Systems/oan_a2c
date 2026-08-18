@@ -91,7 +91,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Pending Approval\nActive\nRejected",
+   "options": "Pending Approval\nActive\nRejected\nArchived",
    "read_only": 1
   },
   {

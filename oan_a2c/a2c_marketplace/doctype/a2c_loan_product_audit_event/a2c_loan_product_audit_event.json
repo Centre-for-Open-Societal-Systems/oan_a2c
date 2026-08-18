@@ -47,14 +47,14 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "From Status",
-   "options": "Pending Approval\nActive\nRejected"
+   "options": "Pending Approval\nActive\nRejected\nArchived"
   },
   {
    "fieldname": "to_status",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "To Status",
-   "options": "Pending Approval\nActive\nRejected"
+   "options": "Pending Approval\nActive\nRejected\nArchived"
   },
   {
    "fieldname": "event_title",

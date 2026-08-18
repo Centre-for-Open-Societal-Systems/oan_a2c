@@ -111,12 +111,12 @@ class UpdateProductSchema(BaseModel):
 
 class SetProductStatusSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
-	status: str = Field(..., pattern="^(Pending Approval|Active|Rejected)$")
+	status: str = Field(..., pattern="^(Pending Approval|Active|Rejected|Archived)$")
 	reason: str | None = Field(None, max_length=2000)
 
 	@model_validator(mode="after")
 	def validate_reason_required_for_approval_or_rejection(self):
-		if self.status in ("Active", "Rejected") and not (self.reason and self.reason.strip()):
+		if self.status in ("Active", "Rejected", "Archived") and not (self.reason and self.reason.strip()):
 			raise ValueError(f"Please provide a reason when setting status to '{self.status}'.")
 		return self
 
@@ -224,16 +224,25 @@ def set_product_status(**kwargs):
 	if not frappe.has_permission("A2C Loan Product", "write", product_id):
 		frappe.throw(_("Not permitted"), frappe.PermissionError)
 
-	# Approval gate: activating a product is a Bank Admin / platform-admin action.
-	# Bank Agents can draft and edit products (write) but cannot approve their own —
-	# so the `Active` transition needs an explicit role check beyond `write`.
-	if status == "Active" and not (is_bank_unbound() or BANK_ADMIN_ROLE in frappe.get_roles()):
-		frappe.throw(_("Only a Bank Admin can approve (activate) a product."), frappe.PermissionError)
+	# Approval/lifecycle gate: activating or archiving a product is a Bank Admin /
+	# platform-admin action. Bank Agents can draft and edit products (write) but cannot
+	# approve or retire them — so these transitions need a role check beyond `write`.
+	if status in ("Active", "Archived") and not (is_bank_unbound() or BANK_ADMIN_ROLE in frappe.get_roles()):
+		action = "approve (activate)" if status == "Active" else "archive"
+		frappe.throw(_("Only a Bank Admin can {0} a product.").format(action), frappe.PermissionError)
 
 	if not is_bank_unbound():
 		assert_bank_active(get_user_bank())
 
 	doc = frappe.get_doc("A2C Loan Product", product_id)
+
+	# Archiving retires a live product: only an Active product can be Archived, and an
+	# Archived product is restored by moving it back to Active (Active <-> Archived).
+	if status == "Archived" and doc.status != "Active":
+		frappe.throw(
+			_("Only an Active product can be archived (currently {0}).").format(_(doc.status)),
+			frappe.ValidationError,
+		)
 	if reason:
 		doc._status_reason = reason
 	doc.status = status
