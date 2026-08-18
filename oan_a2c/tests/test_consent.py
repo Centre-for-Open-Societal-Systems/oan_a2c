@@ -16,52 +16,12 @@ class TestConsentAPI(unittest.TestCase):
 		frappe.db.commit()
 
 	def setUp(self):
-		# Create missing Custom DocTypes if they don't exist in the database
-		if not frappe.db.exists("DocType", "Farmer"):
-			frappe.get_doc(
-				{
-					"doctype": "DocType",
-					"name": "Farmer",
-					"module": "OpenAgriNet Access to Credit",
-					"custom": 1,
-					"fields": [
-						{"fieldname": "farmer_name", "fieldtype": "Data", "label": "Farmer Name"},
-						{"fieldname": "full_name", "fieldtype": "Data", "label": "Full Name"},
-						{"fieldname": "mobile_no", "fieldtype": "Data", "label": "Mobile No"},
-						{"fieldname": "fayda_id", "fieldtype": "Data", "label": "Fayda ID"},
-					],
-					"permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1}],
-				}
-			).insert(ignore_permissions=True)
-
-		if not frappe.db.exists("DocType", "Consent Partner Config"):
-			frappe.get_doc(
-				{
-					"doctype": "DocType",
-					"name": "Consent Partner Config",
-					"module": "OpenAgriNet Access to Credit",
-					"custom": 1,
-					"fields": [{"fieldname": "partner_name", "fieldtype": "Data", "label": "Partner Name"}],
-					"permissions": [{"role": "System Manager", "read": 1, "write": 1, "create": 1}],
-				}
-			).insert(ignore_permissions=True)
-
-		# Create necessary placeholder records
-		if not frappe.db.exists("Farmer", "FAYDA-123"):
-			frappe.get_doc(
-				{
-					"doctype": "Farmer",
-					"farmer_name": "Test Farmer",
-					"full_name": "Test Farmer",
-					"mobile_no": "+251911123456",
-					"fayda_id": "FAYDA-123",
-				}
-			).insert(ignore_permissions=True)
-
-		if not frappe.db.exists("Consent Partner Config", "Test Partner"):
-			frappe.get_doc({"doctype": "Consent Partner Config", "partner_name": "Test Partner"}).insert(
-				ignore_permissions=True
-			)
+		# The OpenG2P client is mocked in every test, and `fayda_id` flows through as a
+		# plain string, so the consent code never reads a Farmer / Consent Partner Config
+		# record. We deliberately do NOT create those DocTypes here: inserting a DocType
+		# issues a CREATE TABLE (DDL), which Frappe forbids inside the per-test
+		# transaction (ImplicitCommitError) — it only "worked" on databases where a
+		# previous run had already left the tables behind.
 
 		# Create Lead for testing consent
 		if not frappe.db.exists("A2C Lead", "TEST-LEAD-CONSENT"):
