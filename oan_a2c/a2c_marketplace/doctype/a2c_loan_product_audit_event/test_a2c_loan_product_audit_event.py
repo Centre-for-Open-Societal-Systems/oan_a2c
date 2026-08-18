@@ -159,16 +159,12 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 		frappe.set_user("Administrator")
 
 		# Cannot archive a product that is not Active (transition guard).
-		res_bad = set_product_status(
-			product_id=product.name, status="Archived", reason="Too soon"
-		)
+		res_bad = set_product_status(product_id=product.name, status="Archived", reason="Too soon")
 		self.assertEqual(res_bad.get("status"), "error")
 		self.assertIn("Only an Active product can be archived", str(res_bad))
 
 		# Archiving requires a reason.
-		res_activate = set_product_status(
-			product_id=product.name, status="Active", reason="Approved"
-		)
+		res_activate = set_product_status(product_id=product.name, status="Active", reason="Approved")
 		self.assertEqual(res_activate.get("status"), "success", str(res_activate))
 		res_noreason = set_product_status(product_id=product.name, status="Archived")
 		self.assertEqual(res_noreason.get("status"), "error")
@@ -181,9 +177,7 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 		self.assertEqual(res_arch.get("status"), "success", str(res_arch))
 		self.assertEqual(res_arch.get("data", {}).get("status"), "Archived")
 
-		res_restore = set_product_status(
-			product_id=product.name, status="Active", reason="Relaunched"
-		)
+		res_restore = set_product_status(product_id=product.name, status="Active", reason="Relaunched")
 		self.assertEqual(res_restore.get("status"), "success", str(res_restore))
 		self.assertEqual(res_restore.get("data", {}).get("status"), "Active")
 
