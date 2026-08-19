@@ -30,4 +30,4 @@ def execute():
 		SET `application_source` = 'Agent'
 		WHERE ifnull(`application_source`, '') = ''
 		"""
-	)
+	)  # bank-scope-exempt

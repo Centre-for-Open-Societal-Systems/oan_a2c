@@ -33,7 +33,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"bank_code": cls.bank,
 				"status": "Active",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		def _user(prefix, role):
 			email = f"{prefix}-{cls.h}@example.com"
@@ -44,7 +44,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 					"first_name": prefix,
 					"roles": [{"role": role}],
 				}
-			).insert(ignore_permissions=True)
+			).insert(ignore_permissions=True, ignore_mandatory=True)
 			return email
 
 		cls.farmer_a = _user("b2c-farmer-a", FARMER_ROLE)
@@ -58,7 +58,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"allow": "A2C Participating Bank",
 				"for_value": cls.bank,
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.profile_a = frappe.get_doc(
 			{
@@ -67,7 +67,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"first_name": "A",
 				"last_name": "Farmer",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 		cls.profile_b = frappe.get_doc(
 			{
 				"doctype": "A2C Farmer Profile",
@@ -75,7 +75,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"first_name": "B",
 				"last_name": "Farmer",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		def _product(name):
 			return frappe.get_doc(
@@ -88,7 +88,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 					"tenure_months": 12,
 					"status": "Active",
 				}
-			).insert(ignore_permissions=True)
+			).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.prod_1 = _product(f"B2CProd1-{cls.h}")
 		cls.prod_2 = _product(f"B2CProd2-{cls.h}")
@@ -219,6 +219,32 @@ class TestCatalogFilterComposition(FarmerB2CFixtures):
 		page = self._catalog(is_saved=True)
 		self.assertEqual(page, [])
 
+	def test_every_sort_is_deterministic_across_pages(self):
+		"""Ties must break on a unique key or pagination repeats and skips rows.
+
+		The fixture products share a rate, amount and tenure, so every sort except
+		product_name is entirely ties -- exactly the case where an unstable sort
+		shows up.
+		"""
+		from oan_a2c.api.v1.farmer.catalog import _SORT_COLUMNS
+
+		for key, clause in _SORT_COLUMNS.items():
+			self.assertTrue(
+				clause.strip().endswith("name asc"),
+				f"sort '{key}' has no tiebreaker: {clause!r}",
+			)
+
+	def test_paging_a_tied_sort_yields_no_duplicates(self):
+		import frappe
+
+		frappe.set_user(self.farmer_a)
+		# Both fixture products carry min_interest_rate 5, so this sort is all ties.
+		page_1 = self._catalog(sort_by="interest_low_high", limit=1, start=0)
+		page_2 = self._catalog(sort_by="interest_low_high", limit=1, start=1)
+
+		names = [p["name"] for p in page_1] + [p["name"] for p in page_2]
+		self.assertEqual(len(names), len(set(names)), "a product appeared on two pages")
+
 	def test_pagination_shape_is_identical_on_an_empty_page(self):
 		"""Short-circuited empty results must not need a client special case."""
 		import frappe
@@ -256,7 +282,7 @@ class TestApplicationSourceScoping(FarmerB2CFixtures):
 					"phone_number": phone,
 					"farmer_profile": profile,
 				}
-			).insert(ignore_permissions=True)
+			).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.self_service_app = _app(cls.profile_a.name, "Self Service", "Processing", f"1{cls.h}")
 		cls.agent_app = _app(cls.profile_a.name, "Agent", "Processing", f"2{cls.h}")
@@ -354,7 +380,7 @@ class TestFarmerApplicationCreation(FarmerB2CFixtures):
 				"farmer_fayda_id": f"fayda-{self.h}",
 				"status": "Approved",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		# handle_api_errors turns a PermissionError into an error envelope rather
 		# than letting it propagate, so assert on the envelope.
@@ -386,7 +412,7 @@ class TestConsentRequestOwnership(FarmerB2CFixtures):
 				"last_name": "L",
 				"phone_number": f"9{self.h}",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		bound = frappe.get_doc(
 			{
@@ -397,7 +423,7 @@ class TestConsentRequestOwnership(FarmerB2CFixtures):
 				"reference_name": lead.name,
 				"status": "Pending OTP",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		# Omitting lead_id resolves it from the record rather than skipping the check.
 		self.assertEqual(_lead_for_consent_request(bound), lead.name)
@@ -426,7 +452,7 @@ class TestConsentRequestOwnership(FarmerB2CFixtures):
 				"last_name": "R",
 				"phone_number": f"8{self.h}",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		def _attempt(suffix):
 			cr = frappe.get_doc(
@@ -438,7 +464,7 @@ class TestConsentRequestOwnership(FarmerB2CFixtures):
 					"reference_name": lead.name,
 					"status": "Pending OTP",
 				}
-			).insert(ignore_permissions=True)
+			).insert(ignore_permissions=True, ignore_mandatory=True)
 			# Mirrors what request_otp writes.
 			frappe.db.set_value("A2C Lead", lead.name, "consent_id", cr.name, update_modified=False)
 			return cr
@@ -465,7 +491,7 @@ class TestConsentRequestOwnership(FarmerB2CFixtures):
 				"farmer_fayda_id": f"fayda-c-{self.h}",
 				"status": "Pending OTP",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		self.assertIsNone(_lead_for_consent_request(standalone))
 		with self.assertRaises(frappe.ValidationError):

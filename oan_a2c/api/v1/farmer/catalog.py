@@ -24,14 +24,19 @@ class SaveProductSchema(BaseModel):
 
 # Sort keys are an allowlist rather than free text: order_by is interpolated into
 # SQL, so anything the client can name has to be something we chose.
+#
+# Every entry ends with `name asc` as a tiebreaker. Without it, rows sharing a sort
+# value (many products carry the same rate or tenure) have no defined order between
+# them, and MariaDB is free to return them differently on each query -- so paging
+# through the catalogue can show one product twice and skip another entirely.
 _SORT_COLUMNS = {
-	"product_name": "product_name asc",
-	"interest_low_high": "min_interest_rate asc",
-	"interest_high_low": "max_interest_rate desc",
-	"amount_low_high": "min_amount asc",
-	"amount_high_low": "max_amount desc",
-	"tenure_low_high": "tenure_months asc",
-	"newest": "creation desc",
+	"product_name": "product_name asc, name asc",
+	"interest_low_high": "min_interest_rate asc, name asc",
+	"interest_high_low": "max_interest_rate desc, name asc",
+	"amount_low_high": "min_amount asc, name asc",
+	"amount_high_low": "max_amount desc, name asc",
+	"tenure_low_high": "tenure_months asc, name asc",
+	"newest": "creation desc, name asc",
 }
 
 
@@ -293,12 +298,14 @@ def get_saved_products(**kwargs):
 	limit = kwargs["limit"]
 	start = kwargs["start"]
 
-	# We fetch the links from A2C Saved Product and join with A2C Loan Product details
+	# We fetch the links from A2C Saved Product and join with A2C Loan Product details.
+	# `name asc` tiebreaks: bookmarks saved in the same second would otherwise have no
+	# defined order, and this query is paginated.
 	saved_docs = frappe.get_all(
 		"A2C Saved Product",
 		filters={"user": user},
 		pluck="loan_product",
-		order_by="creation desc",
+		order_by="creation desc, name asc",
 		limit_page_length=limit,
 		limit_start=start,
 	)

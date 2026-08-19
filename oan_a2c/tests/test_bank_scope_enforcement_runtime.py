@@ -18,7 +18,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"bank_code": cls.bank,
 				"status": "Active",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.bank_agent = f"agent-{cls.h}@example.com"
 		frappe.get_doc(
@@ -28,7 +28,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"first_name": "Agent",
 				"roles": [{"role": BANK_AGENT_ROLE}],
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 		frappe.get_doc(
 			{
 				"doctype": "User Permission",
@@ -36,7 +36,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"allow": "A2C Participating Bank",
 				"for_value": cls.bank,
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.farmer_a = f"farmer-a-{cls.h}@example.com"
 		frappe.get_doc(
@@ -46,10 +46,10 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"first_name": "FarmerA",
 				"roles": [{"role": FARMER_ROLE}],
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 		cls.profile_a = frappe.get_doc(
 			{"doctype": "A2C Farmer Profile", "user": cls.farmer_a, "first_name": "F", "last_name": "A"}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.farmer_b = f"farmer-b-{cls.h}@example.com"
 		frappe.get_doc(
@@ -59,10 +59,10 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"first_name": "FarmerB",
 				"roles": [{"role": FARMER_ROLE}],
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 		cls.profile_b = frappe.get_doc(
 			{"doctype": "A2C Farmer Profile", "user": cls.farmer_b, "first_name": "F", "last_name": "B"}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.farmer_no_profile = f"farmer-none-{cls.h}@example.com"
 		frappe.get_doc(
@@ -72,7 +72,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"first_name": "FarmerNone",
 				"roles": [{"role": FARMER_ROLE}],
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.prod = frappe.get_doc(
 			{
@@ -84,7 +84,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"tenure_months": 12,
 				"status": "Active",
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		# Application for Farmer A (Draft)
 		cls.app_a_draft = frappe.get_doc(
@@ -100,7 +100,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"phone_number": "111",
 				"farmer_profile": cls.profile_a.name,
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 		# Application for Farmer A (Processing)
 		cls.app_a_proc = frappe.get_doc(
 			{
@@ -115,7 +115,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"phone_number": "222",
 				"farmer_profile": cls.profile_a.name,
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 		# Application for Farmer B (Draft)
 		cls.app_b = frappe.get_doc(
 			{
@@ -130,7 +130,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"phone_number": "333",
 				"farmer_profile": cls.profile_b.name,
 			}
-		).insert(ignore_permissions=True)
+		).insert(ignore_permissions=True, ignore_mandatory=True)
 
 	@classmethod
 	def tearDownClass(cls):

@@ -415,9 +415,13 @@ def get_all_loans(**kwargs):
 
 	# Sorting: sort_by is Literal-constrained to safe columns, so it can't inject
 	# into order_by. Defaults preserve the prior "newest first" behavior.
+	#
+	# `name asc` tiebreaks. This query is paginated and sort_by allows loan_amount,
+	# where ties are common -- without a deterministic second key the order between
+	# equal rows is undefined, so paging can repeat one application and skip another.
 	sort_by = kwargs.get("sort_by") or "creation"
 	sort_order = "asc" if kwargs.get("sort_order") == "asc" else "desc"
-	order_by = f"{sort_by} {sort_order}"
+	order_by = f"{sort_by} {sort_order}, name asc"
 
 	offset = (page - 1) * page_size
 
