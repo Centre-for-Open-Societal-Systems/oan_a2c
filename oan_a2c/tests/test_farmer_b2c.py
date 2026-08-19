@@ -67,6 +67,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"user": cls.farmer_a,
 				"first_name": "A",
 				"last_name": "Farmer",
+				"phone_number": "1111111111",
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 		cls.profile_b = frappe.get_doc(
@@ -75,6 +76,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"user": cls.farmer_b,
 				"first_name": "B",
 				"last_name": "Farmer",
+				"phone_number": "2222222222",
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 
