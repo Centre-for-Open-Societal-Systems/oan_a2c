@@ -25,15 +25,16 @@ class FarmerB2CFixtures(unittest.TestCase):
 		frappe.set_user("Administrator")
 		cls.h = frappe.generate_hash(length=8)
 
-		cls.bank = f"B2CBank-{cls.h}"
-		frappe.get_doc(
+		cls.bank_label = f"B2CBank-{cls.h}"
+		bank_doc = frappe.get_doc(
 			{
 				"doctype": "A2C Participating Bank",
-				"bank_name": cls.bank,
-				"bank_code": cls.bank,
-				"status": "Active",
+				"bank_name": cls.bank_label,
+				"bank_code": cls.bank_label,
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Participating Bank", bank_doc.name, "status", "Active")
+		cls.bank = bank_doc.name
 
 		def _user(prefix, role):
 			email = f"{prefix}-{cls.h}@example.com"
@@ -109,6 +110,12 @@ class FarmerB2CFixtures(unittest.TestCase):
 
 class TestSavedProducts(FarmerB2CFixtures):
 	"""A saved product belongs to a User, and to nobody else."""
+
+	def setUp(self):
+		import frappe
+
+		frappe.set_user("Administrator")
+		frappe.db.delete("A2C Saved Product")
 
 	def test_saved_products_are_scoped_to_the_saving_user(self):
 		import frappe
@@ -284,8 +291,8 @@ class TestApplicationSourceScoping(FarmerB2CFixtures):
 				}
 			).insert(ignore_permissions=True, ignore_mandatory=True)
 
-		cls.self_service_app = _app(cls.profile_a.name, "Self Service", "Processing", f"1{cls.h}")
-		cls.agent_app = _app(cls.profile_a.name, "Agent", "Processing", f"2{cls.h}")
+		cls.self_service_app = _app(cls.profile_a.name, "Self Service", "Processing", "10000001")
+		cls.agent_app = _app(cls.profile_a.name, "Agent", "Processing", "20000001")
 
 	def test_development_agent_does_not_see_self_service_applications(self):
 		import frappe
@@ -410,7 +417,7 @@ class TestConsentRequestOwnership(FarmerB2CFixtures):
 				"status": "Active",
 				"first_name": "L",
 				"last_name": "L",
-				"phone_number": f"9{self.h}",
+				"phone_number": "90000001",
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 
@@ -450,7 +457,7 @@ class TestConsentRequestOwnership(FarmerB2CFixtures):
 				"status": "Active",
 				"first_name": "R",
 				"last_name": "R",
-				"phone_number": f"8{self.h}",
+				"phone_number": "80000001",
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 

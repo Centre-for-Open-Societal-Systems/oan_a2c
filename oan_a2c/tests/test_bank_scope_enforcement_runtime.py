@@ -10,15 +10,15 @@ class TestBankScopeRuntime(unittest.TestCase):
 		from oan_a2c.a2c_marketplace.roles import BANK_AGENT_ROLE, FARMER_ROLE
 
 		cls.h = frappe.generate_hash(length=8)
-		cls.bank = f"Bank-{cls.h}"
-		frappe.get_doc(
+		bank_doc = frappe.get_doc(
 			{
 				"doctype": "A2C Participating Bank",
-				"bank_name": cls.bank,
-				"bank_code": cls.bank,
-				"status": "Active",
+				"bank_name": f"Bank-{cls.h}",
+				"bank_code": f"Bank-{cls.h}",
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Participating Bank", bank_doc.name, "status", "Active")
+		cls.bank = bank_doc.name
 
 		cls.bank_agent = f"agent-{cls.h}@example.com"
 		frappe.get_doc(
