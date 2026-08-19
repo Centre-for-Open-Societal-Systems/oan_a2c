@@ -225,6 +225,22 @@ def bank_scope_query(user):
 	return f"`bank` = {frappe.db.escape(bank)}"
 
 
+# "Self Service" marks an application a farmer raised through the B2C flow, as
+# opposed to one a Development Agent raised in the CRM. Kept as one constant used
+# by both the query hook and the single-doc hook below, so the two can't drift.
+SELF_SERVICE = "Self Service"
+AGENT_SOURCED_ONLY = f"ifnull(`application_source`, 'Agent') != '{SELF_SERVICE}'"
+
+
+def is_platform_admin(user=None) -> bool:
+	"""True for the operators of the platform itself, who are exempt from every
+	scope narrowing below -- as opposed to Development Agents, who are merely
+	bank-unbound."""
+	if not user:
+		user = frappe.session.user
+	return user == "Administrator" or "System Manager" in frappe.get_roles(user)
+
+
 def loan_application_scope_query(user=None):
 	if not user:
 		user = frappe.session.user
@@ -237,12 +253,26 @@ def loan_application_scope_query(user=None):
 		profile = get_user_farmer_profile(user)
 		if not profile:
 			return "1=0"
+		# Scope on farmer_profile alone, not on `owner`. The profile is 1:1 with the
+		# user, so it is already the object-level key -- and an application a
+		# Development Agent raised *for* this farmer is owned by the agent. Adding
+		# `owner` would hide the farmer's own agent-assisted applications from them.
 		return f"`farmer_profile` = {frappe.db.escape(profile)}"
 
 	base = bank_scope_query(user)
-	if is_bank_unbound(user):
-		return base
 
+	if is_bank_unbound(user):
+		if is_platform_admin(user):
+			return base
+		# Development Agents run the agent-operated CRM pipeline; self-service
+		# applications a farmer raised directly are not theirs to work. Filtered on
+		# an indexed column on the row itself -- never by materialising the set of
+		# farmer users into a NOT IN, which grows with the user base and cannot use
+		# an index.
+		return f"({base}) and {AGENT_SOURCED_ONLY}" if base else AGENT_SOURCED_ONLY
+
+	# Bank users (Bank Admin, Bank Agent) DO see self-service applications, but only
+	# once they are no longer Draft.
 	draft_gate = "`status` != 'Draft'"
 	return f"({base}) and {draft_gate}" if base else draft_gate
 
@@ -274,13 +304,18 @@ def farmer_own_profile_query(user=None):
 
 
 def farmer_own_consent_query(user=None):
-	"""permission_query_conditions for A2C Consent Request."""
+	"""permission_query_conditions for A2C Consent Request.
+
+	Scoped on `owner` -- the user who called request_otp and opened the request.
+	Deliberately NOT on the `farmer` field: that holds the *OpenG2P* farmer id
+	returned by Fayda, not an A2C Farmer Profile name, so comparing it to a profile
+	matches nothing and would silently fail open into "farmer sees no consents".
+	"""
 	if not user:
 		user = frappe.session.user
 	if not is_farmer(user) or is_bank_unbound(user):
 		return ""
-	profile = get_user_farmer_profile(user)
-	return f"`farmer` = {frappe.db.escape(profile)}" if profile else "1=0"
+	return f"`owner` = {frappe.db.escape(user)}"
 
 
 def bank_scope_doc(doc, user=None):
@@ -292,6 +327,12 @@ def bank_scope_doc(doc, user=None):
 		user = frappe.session.user
 
 	if is_bank_unbound(user):
+		if is_platform_admin(user):
+			return True
+		# Mirror of AGENT_SOURCED_ONLY for single-doc reads: a Development Agent
+		# does not work self-service applications.
+		if doc.doctype == "A2C Loan Application":
+			return (doc.get("application_source") or "Agent") != SELF_SERVICE
 		return True
 
 	# Mirror of the query hooks above, for single-doc reads (get_doc, has_permission).
@@ -312,14 +353,13 @@ def bank_scope_doc(doc, user=None):
 	bank = get_user_bank(user)
 	allowed = bool(bank) and doc.bank == bank
 
-	# Lifecycle gate (mirror of loan_application_scope_query): even within their own
-	# bank, bank users can't read a Draft loan application — it's the Development
-	# Agent's until "Send for Review". Applies to single-doc reads (get_doc etc.).
-	if allowed and doc.doctype == "A2C Loan Application" and doc.get("status") == "Draft":
-		frappe.logger("bank_scope").info(
-			f"Denied Draft loan application to bank user: user={user} {doc.doctype}={doc.name}"
-		)
-		return False
+	if allowed and doc.doctype == "A2C Loan Application":
+		# Lifecycle gate: Bank users can't read Drafts
+		if doc.get("status") == "Draft":
+			frappe.logger("bank_scope").info(
+				f"Denied Draft loan application to bank user: user={user} {doc.doctype}={doc.name}"
+			)
+			return False
 
 	if not allowed:
 		# Potentially high volume (probing), so use the file logger, not log_error:
@@ -331,3 +371,17 @@ def bank_scope_doc(doc, user=None):
 		)
 
 	return allowed
+
+
+def saved_product_own_query(user=None):
+	"""permission_query_conditions for A2C Saved Product.
+
+	Bookmarking is open to every signed-in user (DocPerm role "All"), so row
+	visibility is the only thing standing between one user's saved list and
+	another's. Platform admins keep the unscoped view for support.
+	"""
+	if not user:
+		user = frappe.session.user
+	if is_platform_admin(user):
+		return ""
+	return f"`user` = {frappe.db.escape(user)}"

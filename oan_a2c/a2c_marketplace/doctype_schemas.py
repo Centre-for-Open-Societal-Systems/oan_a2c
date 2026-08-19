@@ -1,5 +1,22 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+# Global limits for A2C Loan Products.
+#
+# Single source of truth: every schema that bounds a loan amount, tenure or
+# interest rate imports these, and the catalog facet endpoint publishes the same
+# numbers as slider boundaries. Changing a cap here changes it everywhere, so the
+# UI can never offer a range the API will reject.
+MAX_LOAN_AMOUNT = 999999.0
+MAX_TENURE_MONTHS = 1200
+MAX_INTEREST_RATE = 20.0
+
+# The widest value a *filter* may express, which is deliberately not MAX_LOAN_AMOUNT.
+# That cap governs what a bank may offer in the catalogue; loan applications and credit
+# information are written through other paths (see api/v1/leads.py) that permit larger
+# figures. Binding a search bound to the catalogue cap would make any loan above it
+# impossible to search for even though it exists in the data.
+MAX_QUERY_AMOUNT = 999999999999.0
+
 
 class ProductMetaSchema(BaseModel):
 	meta_key: str = Field(..., min_length=1, max_length=140)
@@ -8,11 +25,11 @@ class ProductMetaSchema(BaseModel):
 
 class SingleProductSchema(BaseModel):
 	product_name: str = Field(..., min_length=1, max_length=140)
-	min_interest_rate: float = Field(..., ge=0, le=20.0)
-	max_interest_rate: float | None = Field(None, ge=0, le=20.0)
-	min_amount: int | None = Field(None, ge=0, le=999999)
-	max_amount: int = Field(..., ge=0, le=999999)
-	tenure_months: int = Field(..., ge=1, le=1200)
+	min_interest_rate: float = Field(..., ge=0, le=MAX_INTEREST_RATE)
+	max_interest_rate: float | None = Field(None, ge=0, le=MAX_INTEREST_RATE)
+	min_amount: int | None = Field(None, ge=0, le=MAX_LOAN_AMOUNT)
+	max_amount: int = Field(..., ge=0, le=MAX_LOAN_AMOUNT)
+	tenure_months: int = Field(..., ge=1, le=MAX_TENURE_MONTHS)
 	description: str | None = Field(None, max_length=2000)
 	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None

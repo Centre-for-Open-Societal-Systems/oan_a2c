@@ -5,10 +5,12 @@ from frappe import _
 from frappe.utils import cint, flt, sanitize_html
 from pydantic import BaseModel, Field, model_validator
 
+from oan_a2c.a2c_marketplace.doctype_schemas import MAX_LOAN_AMOUNT, MAX_QUERY_AMOUNT
 from oan_a2c.api.utils import (
 	SafeDate,
 	SafeEmail,
 	apply_status_transition,
+	assert_amount_within_product_range,
 	handle_api_errors,
 	parse_multi_value,
 	success_response,
@@ -40,9 +42,12 @@ class LeadIDSchema(BaseModel):
 
 class GetAllLoansSchema(BaseModel):
 	status: str | None = Field(None, max_length=140)
-	loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
-	min_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
-	max_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	# MAX_QUERY_AMOUNT, not MAX_LOAN_AMOUNT: these are search bounds over existing
+	# applications, and api/v1/leads.py accepts credit-information amounts far above
+	# the catalogue cap. Capping the filter lower would hide those rows from search.
+	loan_amount: float | None = Field(None, ge=0, le=MAX_QUERY_AMOUNT)
+	min_loan_amount: float | None = Field(None, ge=0, le=MAX_QUERY_AMOUNT)
+	max_loan_amount: float | None = Field(None, ge=0, le=MAX_QUERY_AMOUNT)
 	loan_type: str | None = Field(None, max_length=140)
 	location: str | None = Field(None, max_length=140)
 	phone_number: str | None = Field(None, max_length=50)
@@ -68,8 +73,8 @@ class BrowseProductsSchema(BaseModel):
 	search: str | None = Field(None, max_length=140)
 	bank: str | None = Field(None, max_length=140)
 	loan_product: str | None = Field(None, max_length=140)
-	min_amount: float | None = Field(None, ge=0, le=999999999999.0)
-	max_amount: float | None = Field(None, ge=0, le=999999999999.0)
+	min_amount: float | None = Field(None, ge=0, le=MAX_LOAN_AMOUNT)
+	max_amount: float | None = Field(None, ge=0, le=MAX_LOAN_AMOUNT)
 	limit: int = Field(20, ge=1, le=100)
 	start: int = Field(0, ge=0)
 
@@ -160,8 +165,15 @@ def get_basic_profile(lead_id: str | None = None, include_consent_data: bool | N
 	lead_doc = _get_lead(lead_id)
 
 	profile_name = lead_doc.farmer_profile
-	consent_id = frappe.db.get_value(
-		"A2C Consent Request", {"lead": lead_id}, "name", order_by="creation desc"
+
+	# The lead caches its latest consent attempt, so this is a field read rather than
+	# a sort over every consent request raised for the lead. Falls back to that scan
+	# for leads whose cache predates backfill_lead_consent_id.
+	consent_id = lead_doc.consent_id or frappe.db.get_value(
+		"A2C Consent Request",
+		{"reference_doctype": "A2C Lead", "reference_name": lead_id},
+		"name",
+		order_by="creation desc",
 	)
 
 	if not profile_name and not consent_id:
@@ -281,7 +293,7 @@ def get_full_profile(**kwargs):
 		"loan_type": doc.loan_type,
 		"loan_product": doc.loan_product,
 		"loan_product_name": doc.loan_product_name,
-		"loan_amount": float(doc.loan_amount) if doc.loan_amount else 0.0,
+		"loan_amount": flt(doc.loan_amount),
 		"loan_reason": doc.loan_reason,
 		"status": doc.status,
 		"current_step": cint(doc.current_step),
@@ -297,15 +309,9 @@ def get_full_profile(**kwargs):
 		"source_of_income": doc.source_of_income,
 		"education_level": doc.education_level,
 		"family_member_owns_land_independently": bool(doc.family_member_owns_land_independently),
-		"total_farmland_size_as_landowner": float(doc.total_farmland_size_as_landowner)
-		if doc.total_farmland_size_as_landowner
-		else 0.0,
-		"total_farmland_size_as_crop_sharing": float(doc.total_farmland_size_as_crop_sharing)
-		if doc.total_farmland_size_as_crop_sharing
-		else 0.0,
-		"total_farmland_size_as_rented": float(doc.total_farmland_size_as_rented)
-		if doc.total_farmland_size_as_rented
-		else 0.0,
+		"total_farmland_size_as_landowner": flt(doc.total_farmland_size_as_landowner),
+		"total_farmland_size_as_crop_sharing": flt(doc.total_farmland_size_as_crop_sharing),
+		"total_farmland_size_as_rented": flt(doc.total_farmland_size_as_rented),
 		"farmland_size_hectares": doc.farmland_size_hectares,
 		"land_ownership_status": doc.land_ownership_status,
 		"soil_fertility_minerals": doc.soil_fertility_minerals,
@@ -381,75 +387,6 @@ def get_loan_metadata():
 	)
 
 	return success_response(data={"statuses": statuses}, message="Loan metadata retrieved successfully")
-
-
-@frappe.whitelist(allow_guest=False)
-@validate_request(BrowseProductsSchema)
-@handle_api_errors
-def browse_products(**kwargs):
-	"""Browse Active loan products to attach one to a farmer's application.
-
-	This is the Development Agent's product-discovery path. The seller endpoint
-	(seller/loan_products.list_products) is for a bank managing its own catalog and
-	shows only that bank's products (incl. Drafts); a Development Agent has no write
-	access there. Here we read A2C Loan Product via get_list, which applies both
-	DocPerm (Dev Agent has read) and the bank_scope_query hook:
-
-	  - Development Agent is bank-unbound -> sees Active products across ALL banks.
-	  - A bank user hitting this still sees only their own bank (hook scopes them).
-
-	Only Active products are returned -- Drafts/Archived are not offerable to farmers.
-	"""
-	frappe.has_permission("A2C Loan Product", "read", throw=True)
-
-	filters = {"status": "Active"}
-	if kwargs.get("bank"):
-		filters["bank"] = kwargs["bank"]
-	if kwargs.get("loan_product"):
-		filters["name"] = kwargs["loan_product"]
-	if kwargs.get("search"):
-		filters["product_name"] = ["like", f"%{kwargs['search']}%"]
-	if kwargs.get("min_amount") is not None:
-		filters["min_amount"] = [">=", float(kwargs["min_amount"])]
-	if kwargs.get("max_amount") is not None:
-		filters["max_amount"] = ["<=", float(kwargs["max_amount"])]
-
-	limit = kwargs["limit"]
-	start = kwargs["start"]
-
-	products = frappe.get_list(
-		"A2C Loan Product",
-		filters=filters,
-		fields=[
-			"name",
-			"product_name",
-			"slug",
-			"bank",
-			"min_interest_rate",
-			"max_interest_rate",
-			"min_amount",
-			"max_amount",
-			"tenure_months",
-		],
-		order_by="product_name asc",
-		limit_page_length=limit,
-		limit_start=start,
-	)
-
-	total = len(frappe.get_list("A2C Loan Product", filters=filters, pluck="name", limit_page_length=0))
-	pagination = {
-		"page": (start // limit) + 1,
-		"limit": limit,
-		"total": total,
-		"total_pages": -(-total // limit),
-		"has_next": start + limit < total,
-	}
-
-	return success_response(
-		data={"products": products},
-		message="Products retrieved successfully",
-		pagination=pagination,
-	)
 
 
 @frappe.whitelist(allow_guest=False)
@@ -686,8 +623,13 @@ def upload_supporting_documents(**kwargs):
 		audit_event.bank = doc.bank
 		audit_event.event_type = "Document Uploaded"
 		audit_event.event_title = "Document Uploaded"
+		# ignore_permissions=True: A2C Lead Audit Event is an append-only trail that
+		# must record the upload regardless of whether the uploader holds DocPerm on
+		# it -- a farmer uploading their own document does not. The write is a fixed,
+		# server-composed record about an action already authorised above, so there
+		# is no user-controlled permission decision being skipped here.
 		audit_event.event_description = description
-		audit_event.insert()
+		audit_event.insert(ignore_permissions=True)
 
 	return success_response(
 		data={"uploaded_files": uploaded_files}, message="Supporting documents uploaded successfully"
@@ -781,8 +723,10 @@ def delete_supporting_document(**kwargs):
 	audit_event.bank = frappe.db.get_value("A2C Loan Application", application_id, "bank")
 	audit_event.event_type = "Document Deleted"
 	audit_event.event_title = "Document Deleted"
+	# ignore_permissions=True: see the note in upload_supporting_documents -- the
+	# audit trail records the deletion even when the caller has no DocPerm on it.
 	audit_event.event_description = description
-	audit_event.insert()
+	audit_event.insert(ignore_permissions=True)
 
 	return success_response(message=_("Document deleted successfully."))
 
@@ -856,12 +800,25 @@ def create_loan_application(**kwargs):
 			frappe.ValidationError,
 		)
 
-	# bank-scope-exempt — reading the product's own bank to stamp the application; not a cross-bank query.
-	bank = frappe.db.get_value("A2C Loan Product", loan_product, "bank")
+	# bank-scope-exempt — reading the product's own bank and amount range to stamp and
+	# validate the application; not a cross-bank query.
+	product = (
+		frappe.db.get_value(
+			"A2C Loan Product", loan_product, ["bank", "min_amount", "max_amount"], as_dict=True
+		)
+		or {}
+	)
+	bank = product.get("bank")
 	if not bank:
 		frappe.throw(
 			_("Loan Product {0} is not linked to a bank.").format(loan_product), frappe.ValidationError
 		)
+
+	# Same per-product rule the self-service path enforces: an amount the chosen
+	# product cannot offer would reach the bank as something it can never approve.
+	assert_amount_within_product_range(
+		credit_info.get("loan_amount"), product.get("min_amount"), product.get("max_amount")
+	)
 
 	loan_app = frappe.new_doc("A2C Loan Application")
 	loan_app.lead_id = lead_id

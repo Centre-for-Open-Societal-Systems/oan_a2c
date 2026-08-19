@@ -11,7 +11,10 @@ class TestConsentAPI(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
 		frappe.set_user("Administrator")
-		frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead='TEST-LEAD-CONSENT'")
+		frappe.db.sql(
+			"DELETE FROM `tabA2C Consent Request` "
+			"WHERE reference_doctype='A2C Lead' AND reference_name='TEST-LEAD-CONSENT'"
+		)
 		frappe.db.sql("DELETE FROM `tabA2C Lead` WHERE name='TEST-LEAD-CONSENT'")
 		frappe.db.commit()
 
@@ -35,7 +38,10 @@ class TestConsentAPI(unittest.TestCase):
 		frappe.conf.secret_key = "test_secret_key"
 
 	def tearDown(self):
-		frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead='TEST-LEAD-CONSENT'")
+		frappe.db.sql(
+			"DELETE FROM `tabA2C Consent Request` "
+			"WHERE reference_doctype='A2C Lead' AND reference_name='TEST-LEAD-CONSENT'"
+		)
 		frappe.db.commit()
 
 	def _get_consent_values(self, name, *fields):
@@ -72,12 +78,21 @@ class TestConsentAPI(unittest.TestCase):
 		# Verify document was created using direct DB query
 		consent_name = response.get("data", {}).get("consent_request")
 		vals = self._get_consent_values(
-			consent_name, "farmer_fayda_id", "status", "otp_transaction_id", "lead"
+			consent_name,
+			"farmer_fayda_id",
+			"status",
+			"otp_transaction_id",
+			"reference_doctype",
+			"reference_name",
 		)
 		self.assertEqual(vals.get("farmer_fayda_id"), "FAYDA-123")
 		self.assertEqual(vals.get("status"), "Pending OTP")
 		self.assertEqual(vals.get("otp_transaction_id"), "MOCK-TXN-999")
-		self.assertEqual(vals.get("lead"), "TEST-LEAD-CONSENT")
+		self.assertEqual(vals.get("reference_doctype"), "A2C Lead")
+		self.assertEqual(vals.get("reference_name"), "TEST-LEAD-CONSENT")
+
+		# request_otp also refreshes the lead's "latest attempt" cache.
+		self.assertEqual(frappe.db.get_value("A2C Lead", "TEST-LEAD-CONSENT", "consent_id"), consent_name)
 
 		return consent_name
 

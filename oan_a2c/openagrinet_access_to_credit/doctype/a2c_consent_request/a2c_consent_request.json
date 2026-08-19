@@ -1,153 +1,163 @@
 {
-    "actions": [],
-    "creation": "2026-06-05 14:28:14.026194",
-    "doctype": "DocType",
-    "engine": "InnoDB",
-    "field_order": [
-        "farmer",
-        "farmer_fayda_id",
-        "partner",
-        "consent_type",
-        "purpose",
-        "validity_from",
-        "validity_to",
-        "consent_form_attachment",
-        "lead",
-        "requested_data_fields",
-        "openg2p_consent_id",
-        "status",
-        "otp_transaction_id",
-        "otp_verified_at",
-        "websub_delivered",
-        "websub_delivered_at",
-        "consent_receipt"
-    ],
-    "fields": [
-        {
-            "fieldname": "farmer",
-            "fieldtype": "Data",
-            "label": "Farmer"
-        },
-        {
-            "fieldname": "farmer_fayda_id",
-            "fieldtype": "Data",
-            "label": "Farmer Fayda ID"
-        },
-        {
-            "fieldname": "partner",
-            "fieldtype": "Data",
-            "label": "Partner"
-        },
-        {
-            "fieldname": "consent_type",
-            "fieldtype": "Data",
-            "label": "Consent Type"
-        },
-        {
-            "fieldname": "purpose",
-            "fieldtype": "Data",
-            "label": "Purpose"
-        },
-        {
-            "fieldname": "validity_from",
-            "fieldtype": "Date",
-            "label": "Validity From"
-        },
-        {
-            "fieldname": "validity_to",
-            "fieldtype": "Date",
-            "label": "Validity To"
-        },
-        {
-            "fieldname": "consent_form_attachment",
-            "fieldtype": "Data",
-            "label": "Consent Form Attachment"
-        },
-        {
-            "fieldname": "lead",
-            "fieldtype": "Link",
-            "label": "Lead",
-            "options": "A2C Lead"
-        },
-        {
-            "fieldname": "requested_data_fields",
-            "fieldtype": "Table",
-            "label": "Requested Data Fields",
-            "options": "A2C Consent Data"
-        },
-        {
-            "fieldname": "openg2p_consent_id",
-            "fieldtype": "Data",
-            "label": "OpenG2P Consent ID"
-        },
-        {
-            "fieldname": "status",
-            "fieldtype": "Select",
-            "label": "Status",
-            "options": "Draft\nPending OTP\nOTP Verified\nApproved\nRejected\nFailed"
-        },
-        {
-            "fieldname": "otp_transaction_id",
-            "fieldtype": "Data",
-            "label": "OTP Transaction ID"
-        },
-        {
-            "fieldname": "otp_verified_at",
-            "fieldtype": "Datetime",
-            "label": "OTP Verified At"
-        },
-        {
-            "default": "0",
-            "fieldname": "websub_delivered",
-            "fieldtype": "Check",
-            "label": "WebSub Delivered"
-        },
-        {
-            "fieldname": "websub_delivered_at",
-            "fieldtype": "Datetime",
-            "label": "WebSub Delivered At"
-        },
-        {
-            "fieldname": "consent_receipt",
-            "fieldtype": "Data",
-            "label": "Consent Receipt"
-        }
-    ],
-    "links": [],
-    "modified": "2026-06-07 13:18:11.798044",
-    "modified_by": "Administrator",
-    "module": "OpenAgriNet Access to Credit",
-    "name": "A2C Consent Request",
-    "owner": "Administrator",
-    "permissions": [
-        {
-            "create": 1,
-            "delete": 1,
-            "read": 1,
-            "role": "System Manager",
-            "write": 1
-        },
-        {
-            "create": 1,
-            "read": 1,
-            "role": "A2C Development Agent",
-            "write": 1
-        },
-        {
-            "create": 1,
-            "delete": 1,
-            "read": 1,
-            "role": "A2C Administrator",
-            "write": 1
-        },
-        {
-            "create": 1,
-            "read": 1,
-            "role": "A2C Farmer"
-        }
-    ],
-    "row_format": "Dynamic",
-    "sort_field": "creation",
-    "sort_order": "DESC",
-    "states": []
+ "actions": [],
+ "creation": "2026-06-05 14:28:14.026194",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "farmer",
+  "farmer_fayda_id",
+  "partner",
+  "consent_type",
+  "purpose",
+  "validity_from",
+  "validity_to",
+  "consent_form_attachment",
+  "reference_doctype",
+  "reference_name",
+  "requested_data_fields",
+  "openg2p_consent_id",
+  "status",
+  "otp_transaction_id",
+  "otp_verified_at",
+  "websub_delivered",
+  "websub_delivered_at",
+  "consent_receipt"
+ ],
+ "fields": [
+  {
+   "fieldname": "farmer",
+   "fieldtype": "Data",
+   "label": "Farmer"
+  },
+  {
+   "fieldname": "farmer_fayda_id",
+   "fieldtype": "Data",
+   "label": "Farmer Fayda ID"
+  },
+  {
+   "fieldname": "partner",
+   "fieldtype": "Data",
+   "label": "Partner"
+  },
+  {
+   "fieldname": "consent_type",
+   "fieldtype": "Data",
+   "label": "Consent Type"
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Data",
+   "label": "Purpose"
+  },
+  {
+   "fieldname": "validity_from",
+   "fieldtype": "Date",
+   "label": "Validity From"
+  },
+  {
+   "fieldname": "validity_to",
+   "fieldtype": "Date",
+   "label": "Validity To"
+  },
+  {
+   "fieldname": "consent_form_attachment",
+   "fieldtype": "Data",
+   "label": "Consent Form Attachment"
+  },
+  {
+   "fieldname": "requested_data_fields",
+   "fieldtype": "Table",
+   "label": "Requested Data Fields",
+   "options": "A2C Consent Data"
+  },
+  {
+   "fieldname": "openg2p_consent_id",
+   "fieldtype": "Data",
+   "label": "OpenG2P Consent ID"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nPending OTP\nOTP Verified\nApproved\nRejected\nFailed"
+  },
+  {
+   "fieldname": "otp_transaction_id",
+   "fieldtype": "Data",
+   "label": "OTP Transaction ID"
+  },
+  {
+   "fieldname": "otp_verified_at",
+   "fieldtype": "Datetime",
+   "label": "OTP Verified At"
+  },
+  {
+   "default": "0",
+   "fieldname": "websub_delivered",
+   "fieldtype": "Check",
+   "label": "WebSub Delivered"
+  },
+  {
+   "fieldname": "websub_delivered_at",
+   "fieldtype": "Datetime",
+   "label": "WebSub Delivered At"
+  },
+  {
+   "fieldname": "consent_receipt",
+   "fieldtype": "Data",
+   "label": "Consent Receipt"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "options": "DocType",
+   "label": "Reference DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "options": "reference_doctype",
+   "label": "Reference Name",
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-06-07 13:18:11.798044",
+ "modified_by": "Administrator",
+ "module": "OpenAgriNet Access to Credit",
+ "name": "A2C Consent Request",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "A2C Development Agent",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "A2C Administrator",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "A2C Farmer"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
 }

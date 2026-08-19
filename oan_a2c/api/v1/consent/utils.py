@@ -20,7 +20,11 @@ def generate_consent_receipt(consent_request_name):
 		"consent_request": consent.name,
 		"fayda_id": consent.farmer_fayda_id,
 		"partner": consent.partner,
-		"lead": getattr(consent, "lead", None),
+		# The lead this consent was raised for, or None for a self-service consent.
+		# Read from the reference pair rather than the lead's own consent_id cache:
+		# a receipt is signed evidence, so it must reflect what THIS request was for,
+		# not whichever attempt happens to be the lead's latest.
+		"lead": (consent.reference_name if consent.reference_doctype == "A2C Lead" else None),
 		"openg2p_consent_id": consent.openg2p_consent_id or None,
 		"status": consent.status,
 		"otp_verified_at": to_tz_aware_iso(consent.otp_verified_at) if consent.otp_verified_at else None,

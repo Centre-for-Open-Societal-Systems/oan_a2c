@@ -7,17 +7,18 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "farmer_profile",
+  "user",
   "loan_product"
  ],
  "fields": [
   {
-   "fieldname": "farmer_profile",
+   "fieldname": "user",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Farmer Profile",
-   "options": "A2C Farmer Profile",
-   "reqd": 1
+   "label": "User",
+   "options": "User",
+   "reqd": 1,
+   "search_index": 1
   },
   {
    "fieldname": "loan_product",
@@ -45,14 +46,26 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "A2C Farmer",
    "share": 1,
-   "write": 1
+   "write": 1,
+   "role": "All"
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "share": 1,
+   "write": 1,
+   "role": "A2C Administrator"
   }
  ],
  "row_format": "Dynamic",
  "rows_threshold_for_grid_search": 20,
- "search_fields": "farmer_profile, loan_product",
+ "search_fields": "user, loan_product",
  "sort_field": "creation",
  "sort_order": "DESC",
  "states": [],

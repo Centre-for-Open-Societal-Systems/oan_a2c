@@ -27,6 +27,7 @@
   "loan_reason",
   "links_section",
   "lead_id",
+  "application_source",
   "farmer_profile",
   "farmer_id",
   "id_type",
@@ -97,6 +98,15 @@
    "fieldtype": "Link",
    "label": "Lead ID",
    "options": "A2C Lead",
+   "search_index": 1
+  },
+  {
+   "fieldname": "application_source",
+   "fieldtype": "Select",
+   "label": "Application Source",
+   "options": "Agent\nSelf Service",
+   "default": "Agent",
+   "read_only": 1,
    "search_index": 1
   },
   {

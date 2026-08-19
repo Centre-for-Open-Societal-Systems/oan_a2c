@@ -18,7 +18,8 @@
   "loan_amount",
   "section_notes",
   "call_notes",
-  "farmer_profile"
+  "farmer_profile",
+  "consent_id"
  ],
  "fields": [
   {
@@ -119,6 +120,14 @@
    "fieldtype": "Link",
    "label": "Farmer Profile",
    "options": "A2C Farmer Profile"
+  },
+  {
+   "fieldname": "consent_id",
+   "fieldtype": "Link",
+   "label": "Consent Request",
+   "options": "A2C Consent Request",
+   "read_only": 1,
+   "search_index": 1
   }
  ],
  "index_web_pages_for_search": 0,
