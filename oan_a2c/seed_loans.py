@@ -113,5 +113,5 @@ def seed_loans():
 		else:
 			print(f"Could not find bank ID for {data['bank']}")
 
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep: intentional commit for seeding script
 	return f"Created {created} loan products."
