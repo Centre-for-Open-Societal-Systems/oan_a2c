@@ -36,15 +36,15 @@ the data-protection record, and the moment the account becomes a farmer profile.
 
 ### 1.1 What is reused unchanged
 
-| Component | Why it needs no change |
-| --- | --- |
-| `oan_a2c.api.auth.login` | email + password works unchanged; it is the development stand-in only |
-| `oan_a2c.api.auth.refresh` / `logout` | token lifecycle is role-agnostic |
-| `_classify_user_type` | already returns `"farmer"` for `FARMER_ROLE` |
-| `src/features/auth/rbac.ts` | `farmer` kind and its three routes already exist |
-| `apply_status_transition` | `("Draft", "Processing") → "Send for Review"` already mapped |
-| `notify_users()` | existing writer over Frappe's `Notification Log` |
-| `api/v1/consent/*` | consent runs on its existing lead-anchored path |
+| Component                             | Why it needs no change                                                |
+| ------------------------------------- | --------------------------------------------------------------------- |
+| `oan_a2c.api.auth.login`              | email + password works unchanged; it is the development stand-in only |
+| `oan_a2c.api.auth.refresh` / `logout` | token lifecycle is role-agnostic                                      |
+| `_classify_user_type`                 | already returns `"farmer"` for `FARMER_ROLE`                          |
+| `src/features/auth/rbac.ts`           | `farmer` kind and its three routes already exist                      |
+| `apply_status_transition`             | `("Draft", "Processing") → "Send for Review"` already mapped          |
+| `notify_users()`                      | existing writer over Frappe's `Notification Log`                      |
+| `api/v1/consent/*`                    | consent runs on its existing lead-anchored path                       |
 
 ---
 
@@ -52,13 +52,13 @@ the data-protection record, and the moment the account becomes a farmer profile.
 
 ### 2.1 Locked
 
-| # | Decision | Consequence for the build |
-| --- | --- | --- |
-| D1 | Discovery is **behind login** | No guest endpoint, no middleware allowlist entry, no public route. `/discover-loans` stays as it is. |
-| D2 | `Draft` is the farmer's **working stage**; `Processing` is bank-visible | Farmer scope must **not** inherit the Draft gate. Workflow needs a farmer `Draft → Processing` transition. |
-| D3 | ~~Synthesised email, phone is the real identifier~~ **Superseded.** Identity comes from the Fayda registry over OAuth; email + password is a development stand-in | `email` is required for every role. No address is synthesised, and no login is derived from a phone number. |
-| D4 | **Consent on every submission** | No application reaches `Processing` without an approved consent record. |
-| D5 | **No SMS/email delivery exists** | No self-service password reset. Ship an admin-side reset over the existing temporary-password handshake. |
+| #   | Decision                                                                                                                                                          | Consequence for the build                                                                                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| D1  | Discovery is **behind login**                                                                                                                                     | No guest endpoint, no middleware allowlist entry, no public route. `/discover-loans` stays as it is.        |
+| D2  | `Draft` is the farmer's **working stage**; `Processing` is bank-visible                                                                                           | Farmer scope must **not** inherit the Draft gate. Workflow needs a farmer `Draft → Processing` transition.  |
+| D3  | ~~Synthesised email, phone is the real identifier~~ **Superseded.** Identity comes from the Fayda registry over OAuth; email + password is a development stand-in | `email` is required for every role. No address is synthesised, and no login is derived from a phone number. |
+| D4  | **Consent on every submission**                                                                                                                                   | No application reaches `Processing` without an approved consent record.                                     |
+| D5  | **No SMS/email delivery exists**                                                                                                                                  | No self-service password reset. Ship an admin-side reset over the existing temporary-password handshake.    |
 
 ### 2.2 Open — these block BE-103
 
@@ -70,7 +70,7 @@ profile at that moment is safe because identity is verified. If it is a checkbox
 anyone who types a farmer's phone number inherit that farmer's Fayda-verified profile and every
 application on it.
 
-*Recommendation:* keep Fayda + OTP **at the consent step only**. "Bypass Fayda and OTP" then means
+_Recommendation:_ keep Fayda + OTP **at the consent step only**. "Bypass Fayda and OTP" then means
 "bypass them for account creation", which is the actual friction being removed.
 
 **D7 — Should Bank Agents lose read access to loan applications?**
@@ -84,7 +84,7 @@ application", D2's Draft gate already guarantees it and no permission change is 
 
 ## 3. Data model
 
-### 3.1 `A2C Loan Application` — add `farmer_profile` *(fixes a live bug)*
+### 3.1 `A2C Loan Application` — add `farmer_profile` _(fixes a live bug)_
 
 `create_loan_application` sets `loan_app.farmer_profile = farmer_profile.name`
 (`api/v1/loan_applications.py:866`) and returns it in the response (`:897`), but the field does not
@@ -141,8 +141,8 @@ A B2C lead has no valid value. Add `Self Service`:
 
 Module: `a2c_marketplace`. **Not** added to `BANK_SCOPED` — it is user-owned, not bank-owned.
 
-| Field | Type | Notes |
-| --- | --- | --- |
+| Field          | Type                      | Notes                  |
+| -------------- | ------------------------- | ---------------------- |
 | `loan_product` | Link → `A2C Loan Product` | `reqd`, `search_index` |
 
 `owner` is set by Frappe and is the scoping key; no separate `user` field. Permissions are a single
@@ -167,7 +167,7 @@ oan_a2c.patches.add_saved_product_unique_index
 
 ### 4.1 `add_farmer_role.py`
 
-Fixtures load *after* patches on a clean install, so the role must be created here as well as added
+Fixtures load _after_ patches on a clean install, so the role must be created here as well as added
 to the fixture list — the same reasoning as `create_lead_loan_workflows._ensure_roles`.
 
 ```python
@@ -302,7 +302,7 @@ def execute():
 
 ### 5.1 Do **not** add `FARMER_ROLE` to `BANK_UNBOUND_ROLES`
 
-`BANK_UNBOUND_ROLES` lifts bank scoping on *every* bank-scoped doctype the role has DocPerm for. Since
+`BANK_UNBOUND_ROLES` lifts bank scoping on _every_ bank-scoped doctype the role has DocPerm for. Since
 the farmer holds DocPerm on `A2C Loan Application`, making them unbound would let any farmer read
 **every** application in the system. Farmers stay bank-bound; the catalog gets its own branch instead.
 
@@ -384,7 +384,7 @@ def loan_product_scope_query(user=None):
 
 ### 5.5 `bank_scope_doc` — farmer branch
 
-Frappe's `has_permission` controllers can only *deny* (`frappe/permissions.py:484`), so this hook
+Frappe's `has_permission` controllers can only _deny_ (`frappe/permissions.py:484`), so this hook
 returning `False` blocks a farmer from their own document unless it is handled here.
 
 ```python
@@ -465,19 +465,19 @@ permission_query_conditions["A2C Consent Request"] = (
 ```
 
 **Assign, never append.** Multiple hooks for one doctype are joined with `AND`
-(`frappe/model/db_query.py:1157`), so registering a farmer hook *alongside* the bank hook produces
+(`frappe/model/db_query.py:1157`), so registering a farmer hook _alongside_ the bank hook produces
 `farmer_condition AND 1=0` — an empty list with no error.
 
 ### 5.8 DocPerms
 
-| Doctype | `A2C Farmer` grants |
-| --- | --- |
+| Doctype                | `A2C Farmer` grants                                                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `A2C Loan Application` | `read`, `create`, `write` — `if_owner` is **not** used; scoping is by `farmer_profile` via the hook, because an agent-created application is owned by the agent |
-| `A2C Farmer Profile` | `read`, `write` |
-| `A2C Loan Product` | `read` only |
-| `A2C Consent Request` | `read`, `create` |
-| `A2C Saved Product` | `read`, `create`, `delete`, `if_owner: 1` |
-| `A2C Lead` | `read`, `create` — required for the hidden lead (§6.3) |
+| `A2C Farmer Profile`   | `read`, `write`                                                                                                                                                 |
+| `A2C Loan Product`     | `read` only                                                                                                                                                     |
+| `A2C Consent Request`  | `read`, `create`                                                                                                                                                |
+| `A2C Saved Product`    | `read`, `create`, `delete`, `if_owner: 1`                                                                                                                       |
+| `A2C Lead`             | `read`, `create` — required for the hidden lead (§6.3)                                                                                                          |
 
 The `A2C Lead` grant deserves a second look at review time: it is the one place a farmer touches a
 doctype built for agents. Scope it with an owner-based hook if the review is uncomfortable with it.
@@ -690,7 +690,7 @@ SELF_REGISTERABLE_ROLES = {BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE}
   and the frontend exercises it for the bank-agent temporary-password flow
   (`authApi.test.ts:52`). Removing it would break staff login, not farmer login.
 - **Neutral duplicate responses** (`:92-104`): registration currently returns a soft
-  "you already have an account" for a known email but *throws* for a known phone. Phone-first, that is
+  "you already have an account" for a known email but _throws_ for a known phone. Phone-first, that is
   a "is this number registered?" oracle. Return the same soft response on both paths.
 - **Rate limits**: `login` is 10/60s and `register_user` 5/60s, both keyed on `request_ip`
   (`api/auth.py:245`, `api/v1/auth.py:87`). Behind carrier NAT that locks out villages. Add a
@@ -723,7 +723,7 @@ a new caller, not a new mechanism.
 8. get_my_applications Now also returns any application an agent filed against that profile.
 ```
 
-Step 8 is the payoff of binding at consent: the farmer's view is anchored on the *profile*, not the
+Step 8 is the payoff of binding at consent: the farmer's view is anchored on the _profile_, not the
 account, so agent-created and self-created applications converge the moment identity is asserted.
 
 ---
@@ -734,15 +734,15 @@ The farmer screens already exist and render entirely from
 `src/features/(farmer-application)/discover-loans/data/mockLoans.ts`. Nothing calls the API. The work
 is wiring, not building.
 
-| Path | Change |
-| --- | --- |
-| `src/features/(farmer-application)/index.ts` | **create** — the boundaries rule imports features through a barrel; this feature has none |
-| `src/features/(farmer-application)/api/` | **create** — per-feature service object, matching the `seller` and `leads` features |
-| `…/discover-loans/data/mockLoans.ts` | delete once the catalog is wired |
+| Path                                             | Change                                                                                                                                                                                                                                                      |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/features/(farmer-application)/index.ts`     | **create** — the boundaries rule imports features through a barrel; this feature has none                                                                                                                                                                   |
+| `src/features/(farmer-application)/api/`         | **create** — per-feature service object, matching the `seller` and `leads` features                                                                                                                                                                         |
+| `…/discover-loans/data/mockLoans.ts`             | delete once the catalog is wired                                                                                                                                                                                                                            |
 | `src/app/(portal-account)/login/farmer/page.tsx` | email + password; drop the `farmerId` field and the simulated delay. Build it so the credential form is a swappable block — production replaces it with an OAuth redirect to the Fayda registry, and everything downstream only reads the resulting session |
-| `src/app/(portal-account)/signup/farmer/` | **create** — no signup route exists |
-| `src/app/api/auth/register/route.ts` | optional; registration sets no cookies, so `/api/proxy/api/method/oan_a2c.api.v1.auth.register_user` is sufficient |
-| `src/features/auth/rbac.ts` | no change — `farmer` and its three routes already exist and D1 keeps them protected |
+| `src/app/(portal-account)/signup/farmer/`        | **create** — no signup route exists                                                                                                                                                                                                                         |
+| `src/app/api/auth/register/route.ts`             | optional; registration sets no cookies, so `/api/proxy/api/method/oan_a2c.api.v1.auth.register_user` is sufficient                                                                                                                                          |
+| `src/features/auth/rbac.ts`                      | no change — `farmer` and its three routes already exist and D1 keeps them protected                                                                                                                                                                         |
 
 Two corrections to the original plan: there is no `/api/proxy/auth/login` — login **must** use the
 cookie-setting BFF route `/api/auth/login`, since the generic proxy does not set the httpOnly cookies.
@@ -759,14 +759,14 @@ test. Fixtures must be created per-run with a `frappe.generate_hash()` suffix an
 `tearDownClass` — the `if not frappe.db.exists(...)` reuse pattern passes locally on leftover data and
 fails on clean CI (`docs/refactor-test-isolation.md`).
 
-| File | Cases |
-| --- | --- |
-| `test_bank_scope_enforcement.py` *(extend)* | farmer sees own application incl. Draft; sees **zero** of another farmer's; bank user still sees no Draft; farmer with no profile gets an empty list, not an error |
-| `test_farmer_catalog.py` | Active products across banks; Archived/Draft excluded; direct fetch of a non-Active product denied |
-| `test_farmer_applications.py` | start → draft → submit; submit without consent rejected; submit on another farmer's application denied |
-| `test_farmer_auth.py` | registration without an email is rejected; no address is ever synthesised; duplicate phone and duplicate email return the *same* response; a staff account can still resolve by phone, so the farmer change did not regress `_resolve_login_id` |
-| `test_saved_products.py` | save, list, delete; duplicate save rejected by the unique index; one farmer cannot see another's |
-| `test_workflow_farmer.py` | farmer Draft→Processing succeeds; farmer Processing→Approved denied |
+| File                                        | Cases                                                                                                                                                                                                                                           |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_bank_scope_enforcement.py` _(extend)_ | farmer sees own application incl. Draft; sees **zero** of another farmer's; bank user still sees no Draft; farmer with no profile gets an empty list, not an error                                                                              |
+| `test_farmer_catalog.py`                    | Active products across banks; Archived/Draft excluded; direct fetch of a non-Active product denied                                                                                                                                              |
+| `test_farmer_applications.py`               | start → draft → submit; submit without consent rejected; submit on another farmer's application denied                                                                                                                                          |
+| `test_farmer_auth.py`                       | registration without an email is rejected; no address is ever synthesised; duplicate phone and duplicate email return the _same_ response; a staff account can still resolve by phone, so the farmer change did not regress `_resolve_login_id` |
+| `test_saved_products.py`                    | save, list, delete; duplicate save rejected by the unique index; one farmer cannot see another's                                                                                                                                                |
+| `test_workflow_farmer.py`                   | farmer Draft→Processing succeeds; farmer Processing→Approved denied                                                                                                                                                                             |
 
 The first row is the one that matters most: it is the test that would have caught the `1=0` trap.
 
@@ -800,7 +800,7 @@ hook targets `testsite.localhost`, which does not exist in this bench — run ag
   but as written it invites someone to apply it anyway and break the feature. Amend it to distinguish
   bank-owned (`BANK_SCOPED`) from user-owned (`if_owner` DocPerms plus owner scoping), and note that
   user-owned is now a real category in this codebase.
-- **`docs/multi_tenancy.md`** — add the farmer branch: ownership scoping sits *beside* bank scoping,
+- **`docs/multi_tenancy.md`** — add the farmer branch: ownership scoping sits _beside_ bank scoping,
   and the two are mutually exclusive per role.
 - **`fixtures/workflow.json`** — re-export after the workflow patch, or it reintroduces the old
   transitions on the next sync.
@@ -817,13 +817,13 @@ themselves. Fix is one line — `{"Processing"}` — plus a `test_stats_cache.py
 
 ## Appendix B — traps verified in the source
 
-| Trap | Evidence |
-| --- | --- |
-| Two query hooks on one doctype are `AND`-ed, so a second hook yields `1=0` | `frappe/model/db_query.py:1157` |
-| `has_permission` controllers can only deny, never grant | `frappe/permissions.py:484` |
-| A desk-access role makes every holder a System User | `frappe/core/doctype/user/user.py:403-414` |
-| `farmer_profile` is assigned but never persisted | `api/v1/loan_applications.py:866`, absent from `a2c_loan_application.json` |
-| `Draft → Processing` is Development-Agent-only | `fixtures/workflow.json:295` |
-| Consent is Fayda/OTP and lead-anchored | `api/v1/consent/consent.py:27-49` |
-| Notification infrastructure already exists | `api/v1/notifications.py:17` |
-| `lead_source` has no self-service option | `a2c_lead.json:65-70` |
+| Trap                                                                       | Evidence                                                                   |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Two query hooks on one doctype are `AND`-ed, so a second hook yields `1=0` | `frappe/model/db_query.py:1157`                                            |
+| `has_permission` controllers can only deny, never grant                    | `frappe/permissions.py:484`                                                |
+| A desk-access role makes every holder a System User                        | `frappe/core/doctype/user/user.py:403-414`                                 |
+| `farmer_profile` is assigned but never persisted                           | `api/v1/loan_applications.py:866`, absent from `a2c_loan_application.json` |
+| `Draft → Processing` is Development-Agent-only                             | `fixtures/workflow.json:295`                                               |
+| Consent is Fayda/OTP and lead-anchored                                     | `api/v1/consent/consent.py:27-49`                                          |
+| Notification infrastructure already exists                                 | `api/v1/notifications.py:17`                                               |
+| `lead_source` has no self-service option                                   | `a2c_lead.json:65-70`                                                      |
