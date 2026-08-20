@@ -143,10 +143,25 @@ BANK_SCOPED = [
 ]
 
 permission_query_conditions = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_query" for d in BANK_SCOPED}
-# A2C Loan Application adds a lifecycle gate on top of bank scoping: bank users
-# never see Draft applications (the Development Agent's stage). See permissions.py.
 permission_query_conditions["A2C Loan Application"] = (
 	"oan_a2c.a2c_marketplace.permissions.loan_application_scope_query"
+)
+# A2C Loan Product adds a catalog-visibility branch on top of bank scoping: a farmer
+# browses across banks but only sees Active products. See permissions.py.
+permission_query_conditions["A2C Loan Product"] = (
+	"oan_a2c.a2c_marketplace.permissions.loan_product_scope_query"
+)
+# Neither of these is bank-scoped, so neither had a hook before farmers existed.
+permission_query_conditions["A2C Farmer Profile"] = (
+	"oan_a2c.a2c_marketplace.permissions.farmer_own_profile_query"
+)
+permission_query_conditions["A2C Consent Request"] = (
+	"oan_a2c.a2c_marketplace.permissions.farmer_own_consent_query"
+)
+# Bookmarking is open to every signed-in user (DocPerm role "All"), so this hook is
+# the only thing scoping one user's saved list away from another's.
+permission_query_conditions["A2C Saved Product"] = (
+	"oan_a2c.a2c_marketplace.permissions.saved_product_own_query"
 )
 has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d in BANK_SCOPED}
 
@@ -286,6 +301,7 @@ fixtures = [
 					"A2C Bank Admin",
 					"A2C Bank Agent",
 					"A2C Development Agent",
+					"A2C Farmer",
 				],
 			]
 		],

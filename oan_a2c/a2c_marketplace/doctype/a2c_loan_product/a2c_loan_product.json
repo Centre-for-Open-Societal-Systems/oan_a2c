@@ -166,6 +166,10 @@
    "read": 1,
    "report": 1,
    "role": "A2C Development Agent"
+  },
+  {
+   "read": 1,
+   "role": "A2C Farmer"
   }
  ],
  "sort_field": "modified",

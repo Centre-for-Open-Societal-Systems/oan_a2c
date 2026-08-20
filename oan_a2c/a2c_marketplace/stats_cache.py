@@ -9,7 +9,7 @@ _COUNTERS = (
 	"total_approved_amount",
 	"pending_products",
 )
-_PENDING_STATUSES = {"Submitted", "Under Review"}
+_PENDING_STATUSES = {"Processing"}
 # Product statuses that are retired from the marketplace: not offerable to farmers
 # and excluded from total_products. Rejected (declined at approval) and Archived
 # (retired after being Active) are treated identically for counting/visibility.

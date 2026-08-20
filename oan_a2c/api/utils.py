@@ -4,6 +4,7 @@ from typing import Annotated
 
 import frappe  # pyright: ignore[reportMissingImports]
 from frappe import _  # pyright: ignore[reportMissingImports]
+from frappe.utils import flt  # pyright: ignore[reportMissingImports]
 from pydantic import BaseModel, BeforeValidator
 from pydantic import ValidationError as PydanticValidationError
 
@@ -82,6 +83,23 @@ def validate_request(schema: type[BaseModel]):
 			# or collects into **kwargs, depending on the decorated function's signature.
 			validated_dict = validated.model_dump()
 			return func(**validated_dict)
+
+		return wrapper
+
+	return decorator
+
+
+def require_role(roles: list[str]):
+	"""Decorator that enforces the caller holds at least one of `roles`. Must sit below @handle_api_errors."""
+
+	def decorator(fn):
+		@wraps(fn)
+		def wrapper(*args, **kwargs):
+			user_doc = frappe.get_doc("User", frappe.session.user)
+			if not any(d.role in roles for d in user_doc.roles):
+				roles_str = ", ".join(roles)
+				frappe.throw(_("Only {0} can perform this action.").format(roles_str), frappe.PermissionError)
+			return fn(*args, **kwargs)
 
 		return wrapper
 
@@ -243,6 +261,36 @@ SafeDate = Annotated[str | None, BeforeValidator(validate_date_string)]
 SafeEmail = Annotated[str | None, BeforeValidator(validate_email_string)]
 SafePhone = Annotated[str | None, BeforeValidator(validate_phone_string)]
 RequiredPhone = Annotated[str, BeforeValidator(validate_required_phone_string)]
+
+
+def assert_amount_within_product_range(amount, min_amount=None, max_amount=None):
+	"""Reject a loan amount the chosen product cannot actually offer.
+
+	The bound is per-product, so no request schema can express it -- a global
+	`le=` only says what the platform permits, not what this bank offers. Shared by
+	every path that attaches an amount to a product (the Development Agent's
+	create_loan_application and the farmer's self-service create_application) so the
+	two cannot drift.
+
+	Args:
+		amount: the requested/credit-information amount, already cast to a number.
+		min_amount: product floor; falsy (None/0) means no floor.
+		max_amount: product ceiling; falsy (None/0) means no ceiling.
+
+	Raises:
+		frappe.ValidationError: when the amount falls outside the product's range.
+	"""
+	amount = flt(amount)
+	if max_amount and amount > flt(max_amount):
+		frappe.throw(
+			_("Requested amount exceeds the maximum of {0} for this product.").format(flt(max_amount)),
+			frappe.ValidationError,
+		)
+	if min_amount and amount < flt(min_amount):
+		frappe.throw(
+			_("Requested amount is below the minimum of {0} for this product.").format(flt(min_amount)),
+			frappe.ValidationError,
+		)
 
 
 def success_response(data=None, message="Success", meta=None, pagination=None):

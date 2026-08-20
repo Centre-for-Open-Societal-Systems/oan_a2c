@@ -36,7 +36,8 @@ class A2CLead(Document):
 		"""
 		has_credit = frappe.db.exists("A2C Credit Information", {"lead": self.name})
 		has_approved_consent = frappe.db.exists(
-			"A2C Consent Request", {"lead": self.name, "status": "Approved"}
+			"A2C Consent Request",
+			{"reference_doctype": "A2C Lead", "reference_name": self.name, "status": "Approved"},
 		)
 		has_scheduled_visit = frappe.db.exists(
 			"A2C Visit Schedule", {"lead": self.name, "status": ["in", ["Scheduled", "Completed"]]}

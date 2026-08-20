@@ -1,0 +1,1544 @@
+{
+ "info": {
+  "name": "OAN A2C — Farmer B2C Flow",
+  "description": "End-to-end farmer self-service flow: register with a phone number, log in, browse the catalog, bookmark, build a Draft application, submit it to a bank, and read it back.\n\nRun the folders in order. Folder 2 is a hard prerequisite on a fresh account — a farmer with no bound A2C Farmer Profile cannot create anything.\n\nActors are kept in separate variables (farmer_jwt, dev_agent_jwt) rather than a shared jwt_token, so this collection can be merged into the combined one without clobbering its token mid-run.\n\nEndpoints covered: api.v1.auth.register_user, api.auth.login, api.auth.get_me, api.v1.farmer.catalog.*, api.v1.farmer.applications.*, api.v1.farmer.dashboard.*",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+ },
+ "item": [
+  {
+   "name": "1. Farmer Account",
+   "description": "DEVELOPMENT LOGIN ONLY. In production a farmer authenticates over OAuth against the Fayda farmer registry; email + password is the stand-in until that lands, so treat this folder as scaffolding rather than the real entry path.\n\nRegistration mints a fresh farmer each run, so the folder is safe to re-run. The phone number is still collected — the consent webhook matches a User to a farmer profile by mobile_no — but it is not an identity and nothing logs in with it.",
+   "item": [
+    {
+     "name": "1. Register Farmer",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.auth.register_user",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.auth.register_user"
+       ]
+      },
+      "description": "email is required for every role, farmers included — there is no identifier to derive one from, and a missing address is a field-level 400 from RegisterUserSchema. phone_number is still required and still stored on the User, because the consent webhook binds a farmer profile by mobile_no.\n\nRate limited two ways: 50/60s per IP and 5/60s per phone number, so shared carrier NAT does not lock out a village.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"email\": \"{{farmer_email}}\",\n    \"full_name\": \"{{farmer_full_name}}\",\n    \"password\": \"{{farmer_password}}\",\n    \"phone_number\": \"{{farmer_phone}}\",\n    \"role\": \"A2C Farmer\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "// Fresh farmer per run. The phone is still stored on the User (the consent",
+         "// webhook binds a profile by mobile_no) but is never used to log in.",
+         "const n = Math.floor(10000000 + Math.random() * 90000000);",
+         "const phone = '09' + n;",
+         "const slug = Math.random().toString(36).substring(2, 8);",
+         "pm.collectionVariables.set('farmer_phone', phone);",
+         "pm.collectionVariables.set('farmer_email', 'farmer_' + slug + '@example.com');",
+         "pm.collectionVariables.set('farmer_password', 'Farmer_' + slug + '!123');",
+         "pm.collectionVariables.set('farmer_full_name', 'Test Farmer ' + slug);",
+         "console.log('Farmer for this run:', pm.collectionVariables.get('farmer_email'), phone);"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Registration accepted', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Not an error envelope', function () {",
+         "    pm.expect(resEnv.status, JSON.stringify(resEnv)).to.not.eql('error');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "2. Login (development stand-in)",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.auth.login",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.auth.login"
+       ]
+      },
+      "description": "Email + password, the development stand-in for the Fayda OAuth flow. Stores farmer_jwt for every later request in this collection.\n\nWhen OAuth lands this request is replaced, not edited: the token will come from the registry rather than from oan_a2c.api.auth.login. Nothing downstream should change — every other request only reads farmer_jwt.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"usr\": \"{{farmer_email}}\",\n    \"pwd\": \"{{farmer_password}}\",\n    \"remember_me\": false\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('Login HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "if (resData.token) { pm.collectionVariables.set('farmer_jwt', resData.token); }",
+         "if (resData.refresh_token) { pm.collectionVariables.set('farmer_refresh_token', resData.refresh_token); }",
+         "pm.test('Token issued', function () { pm.expect(resData.token, 'no token in response').to.be.a('string'); });",
+         "pm.test('Classified as farmer', function () {",
+         "    pm.expect(resData.user && resData.user.user_type).to.eql('farmer');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "3. Get Me",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.auth.get_me",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.auth.get_me"
+       ]
+      },
+      "description": "Confirms the JWT resolves and carries the A2C Farmer role."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Holds A2C Farmer role', function () {",
+         "    pm.expect(resData.roles || []).to.include('A2C Farmer');",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "2. Farmer Profile Binding (prerequisite)",
+   "description": "STOP HERE ON A FRESH ACCOUNT. Every write endpoint in folders 3 and 4 resolves the caller through A2C Farmer Profile where user = session user, and a freshly registered farmer has no such profile — create_application and save_product both throw \"You must have a Farmer Profile\".\n\nBinding is done by the consent-data webhook (api/v1/webhook_consent_data.py:315-331): it matches a User by mobile_no/phone, checks the A2C Farmer role, and sets profile.user. That path needs a lead, an OpenG2P consent and an api_key/api_secret pair, so it lives in the combined collection under \"4. OpenG2P Consent Flow\" + \"Loan Application Management\".\n\nFor local testing the deterministic shortcut is bench console:\n\n  bench --site development.localhost console\n  >>> import frappe\n  >>> phone = \"<farmer_phone from the run log>\"\n  >>> user = frappe.db.get_value(\"User\", {\"mobile_no\": phone}, \"name\")\n  >>> p = frappe.get_doc({\"doctype\": \"A2C Farmer Profile\", \"first_name\": \"Test\",\n  ...     \"last_name\": \"Farmer\", \"phone_number\": phone, \"user\": user})\n  >>> p.insert(ignore_permissions=True); frappe.db.commit()\n\nRun \"1. Verify Profile Bound\" afterwards to confirm before continuing.",
+   "item": [
+    {
+     "name": "1. Verify Profile Bound",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.dashboard.get_dashboard_summary",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.dashboard.get_dashboard_summary"
+       ]
+      },
+      "description": "Cheapest bound/unbound probe: the dashboard returns an empty farmer_profile object when nothing is bound, and the profile fields once it is. Fails loudly here rather than leaving folders 3 and 4 to fail confusingly."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "const p = resData.farmer_profile || {};",
+         "const bound = Object.keys(p).length > 0;",
+         "pm.collectionVariables.set('profile_bound', bound ? 'yes' : 'no');",
+         "pm.test('A farmer profile is bound to this account', function () {",
+         "    pm.expect(bound, 'no A2C Farmer Profile has user = this account; see the folder description').to.be.true;",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "3. Discovery & Bookmarks",
+   "description": "Catalog reads are scoped by loan_product_scope_query: a farmer sees Active products across every bank, and never a Draft or Archived one. Bookmarks are keyed on the farmer profile (A2C Saved Product.farmer_profile), so they need the binding from folder 2.",
+   "item": [
+    {
+     "name": "1. List Catalog",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.list_catalog?limit=20&start=0",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.list_catalog"
+       ],
+       "query": [
+        {
+         "key": "limit",
+         "value": "20"
+        },
+        {
+         "key": "start",
+         "value": "0"
+        },
+        {
+         "key": "search",
+         "value": "",
+         "description": "LIKE match on product_name.",
+         "disabled": true
+        },
+        {
+         "key": "bank",
+         "value": "",
+         "description": "Filter to one bank code.",
+         "disabled": true
+        },
+        {
+         "key": "loan_product",
+         "value": "",
+         "description": "Exact product id.",
+         "disabled": true
+        },
+        {
+         "key": "min_amount",
+         "value": "",
+         "description": "Products whose min_amount is >= this.",
+         "disabled": true
+        },
+        {
+         "key": "max_amount",
+         "value": "",
+         "description": "Products whose max_amount is <= this.",
+         "disabled": true
+        }
+       ]
+      },
+      "description": "Captures the first product into loan_product for the rest of the run. If this returns zero products, no bank has an Active product yet — seed one through the seller folder of the combined collection."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "const products = resData.products || [];",
+         "pm.test('Catalog is not empty', function () {",
+         "    pm.expect(products.length, 'no Active products exist on this site').to.be.above(0);",
+         "});",
+         "if (products.length) {",
+         "    pm.collectionVariables.set('loan_product', products[0].name);",
+         "    if (products[0].bank) {",
+         "        pm.collectionVariables.set('catalog_bank', products[0].bank);",
+         "    }",
+         "    console.log('Using product:', products[0].name, '-', products[0].product_name);",
+         "}",
+         "pm.test('Only Active products are returned', function () {",
+         "    products.forEach(function (p) {",
+         "        if (p.status) { pm.expect(p.status).to.eql('Active'); }",
+         "    });",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "2. List Catalog Facets",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.get_catalog_facets",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.get_catalog_facets"
+       ]
+      },
+      "description": "Filter options derived from the live catalog: categories with counts, the tenure values actually offered, the amount range and the highest interest rate. The discovery sidebar renders from this rather than a hardcoded list, so it can never offer a filter that matches nothing.\n\nThere is deliberately no region facet — A2C Loan Product has no region field. A product is offered by a bank, not into a place."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Carries the four facet blocks', function () {",
+         "    ['categories', 'tenures', 'amount_range', 'max_interest_rate']",
+         "        .forEach(function (k) { pm.expect(resData).to.have.property(k); });",
+         "});",
+         "pm.test('Tenures are numbers, ascending', function () {",
+         "    const t = resData.tenures || [];",
+         "    t.forEach(function (v) { pm.expect(v).to.be.a('number'); });",
+         "    pm.expect(t).to.eql(t.slice().sort(function (a, b) { return a - b; }));",
+         "});",
+         "if ((resData.tenures || []).length) {",
+         "    pm.collectionVariables.set('facet_tenure', String(resData.tenures[0]));",
+         "}"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "3. List Catalog (sorted + filtered)",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.list_catalog?limit=20&start=0&sort_by=amount_high_low&max_tenure_months={{facet_tenure}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.list_catalog"
+       ],
+       "query": [
+        {
+         "key": "limit",
+         "value": "20"
+        },
+        {
+         "key": "start",
+         "value": "0"
+        },
+        {
+         "key": "sort_by",
+         "value": "amount_high_low",
+         "description": "product_name | interest_low_high | interest_high_low | amount_low_high | amount_high_low | tenure_low_high | newest"
+        },
+        {
+         "key": "max_tenure_months",
+         "value": "{{facet_tenure}}",
+         "description": "Taken from the facets call above."
+        },
+        {
+         "key": "category",
+         "value": "",
+         "description": "A category name from the facets call.",
+         "disabled": true
+        },
+        {
+         "key": "max_interest_rate",
+         "value": "",
+         "description": "Products whose lowest rate is at or below this.",
+         "disabled": true
+        }
+       ]
+      },
+      "description": "Every filter here is one the sidebar offers, and every sort key maps to _SORT_COLUMNS in catalog.py. sort_by is an allowlist, not free text — order_by is interpolated into SQL, so anything the client can name has to be something the server chose."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "if (!pm.collectionVariables.get('facet_tenure')) {",
+         "    console.log('facet_tenure not set — run \"2. List Catalog Facets\" first');",
+         "    pm.execution.skipRequest();",
+         "}"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "const products = resData.products || [];",
+         "const cap = Number(pm.collectionVariables.get('facet_tenure'));",
+         "pm.test('Tenure filter is honoured', function () {",
+         "    products.forEach(function (p) {",
+         "        if (p.tenure_months) { pm.expect(p.tenure_months).to.be.at.most(cap); }",
+         "    });",
+         "});",
+         "pm.test('Sorted by max_amount descending', function () {",
+         "    const amounts = products.map(function (p) { return p.max_amount || 0; });",
+         "    pm.expect(amounts).to.eql(amounts.slice().sort(function (a, b) { return b - a; }));",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "4. Reject an unknown sort key",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.list_catalog?sort_by=name;DROP TABLE",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.list_catalog"
+       ],
+       "query": [
+        {
+         "key": "sort_by",
+         "value": "name;DROP TABLE"
+        }
+       ]
+      },
+      "description": "The sort allowlist is the guard against order_by injection. Anything outside it must be refused by the schema before a query is built."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Unknown sort key refused', function () {",
+         "    pm.expect(resEnv.status, 'an arbitrary sort key reached the query builder').to.eql('error');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "5. Save Product",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       },
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.save_product",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.save_product"
+       ]
+      },
+      "description": "Idempotent by design — save_product checks for an existing A2C Saved Product before inserting, so re-running does not raise on the unique index.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"loan_product\": \"{{loan_product}}\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Saved', function () { pm.expect(resEnv.status).to.not.eql('error'); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "6. Get Saved Products",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.get_saved_products?limit=20&start=0",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.get_saved_products"
+       ],
+       "query": [
+        {
+         "key": "limit",
+         "value": "20"
+        },
+        {
+         "key": "start",
+         "value": "0"
+        }
+       ]
+      },
+      "description": "Returns the saved products newest-first, resolved to full product detail."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "const products = resData.products || [];",
+         "pm.test('Contains the product just saved', function () {",
+         "    const want = pm.collectionVariables.get('loan_product');",
+         "    pm.expect(products.map(function (p) { return p.name; })).to.include(want);",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "7. Unsave Product",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       },
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.unsave_product",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.unsave_product"
+       ]
+      },
+      "description": "Also idempotent: removing a product that was never saved is a no-op, not an error.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"loan_product\": \"{{loan_product}}\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Removed', function () { pm.expect(resEnv.status).to.not.eql('error'); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "8. Get Bank Details",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.get_bank_details?bank={{catalog_bank}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.get_bank_details"
+       ],
+       "query": [
+        {
+         "key": "bank",
+         "value": "{{catalog_bank}}",
+         "description": "Bank name or bank code to retrieve storefront details for."
+        }
+       ]
+      },
+      "description": "Storefront details for an Active bank: brand name, entity type, website, logo URL, region, and country."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "if (!pm.collectionVariables.get('catalog_bank')) {",
+         "    console.log('catalog_bank not set — run \"1. List Catalog\" first');",
+         "    pm.execution.skipRequest();",
+         "}"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Bank details retrieved successfully', function () {",
+         "    pm.expect(resEnv.status).to.not.eql('error');",
+         "    pm.expect(resData).to.have.property('bank_name');",
+         "    pm.expect(resData).to.have.property('bank_code');",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "4. Application Lifecycle",
+   "description": "Draft is the farmer's working stage: they create, edit and then submit it. Submission moves the application to Processing through the workflow, which is the point it becomes visible to the bank (bank users never see Draft — loan_application_scope_query).\n\nRun this folder in order; each request feeds the next through application_id.",
+   "item": [
+    {
+     "name": "1. Create Application (Draft)",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       },
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.create_application",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.create_application"
+       ]
+      },
+      "description": "Creates a hidden A2C Lead (lead_source \"Self Service\", status \"Active\") plus the Draft application, so consent and the rest of the existing pipeline keep working unchanged. The lead is an implementation detail and is never shown to the farmer.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"loan_product\": \"{{loan_product}}\",\n    \"requested_amount\": 25000,\n    \"loan_reason\": \"Seed and fertiliser for the belg season\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('No error envelope', function () {",
+         "    pm.expect(resEnv.status, JSON.stringify(resEnv.message || resEnv)).to.not.eql('error');",
+         "});",
+         "if (resData.application_id) {",
+         "    pm.collectionVariables.set('application_id', resData.application_id);",
+         "    console.log('Application:', resData.application_id);",
+         "}",
+         "pm.test('Returned an application_id', function () {",
+         "    pm.expect(resData.application_id).to.be.a('string');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "2. Get Application",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.get_application?application_id={{application_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.get_application"
+       ],
+       "query": [
+        {
+         "key": "application_id",
+         "value": "{{application_id}}"
+        }
+       ]
+      },
+      "description": "Single-doc read, authorised by bank_scope_doc's farmer branch (owner match on farmer_profile)."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Starts in Draft', function () { pm.expect(resData.status).to.eql('Draft'); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "3. Update Draft",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       },
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.update_application",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.update_application"
+       ]
+      },
+      "description": "Only Draft applications accept edits; after submission this endpoint refuses (see folder 5).",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"application_id\": \"{{application_id}}\",\n    \"requested_amount\": 32000,\n    \"loan_reason\": \"Revised: seed, fertiliser and one ox\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('No error envelope', function () { pm.expect(resEnv.status).to.not.eql('error'); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "4. List My Applications",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.list_applications?page=1&page_size=20",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.list_applications"
+       ],
+       "query": [
+        {
+         "key": "page",
+         "value": "1"
+        },
+        {
+         "key": "page_size",
+         "value": "20"
+        },
+        {
+         "key": "status",
+         "value": "",
+         "description": "Draft | Processing | Approved | Rejected",
+         "disabled": true
+        }
+       ]
+      },
+      "description": "Scoping is the permission hook's job, not the endpoint's: loan_application_scope_query matches on farmer_profile, so this returns the caller's own applications only — including any an agent filed against the same profile."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "const rows = Array.isArray(resEnv.data) ? resEnv.data : (resData.length ? resData : []);",
+         "pm.test('Includes the application just created', function () {",
+         "    const want = pm.collectionVariables.get('application_id');",
+         "    pm.expect(rows.map(function (r) { return r.application_id; })).to.include(want);",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "5. Submit Application",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       },
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.submit_application",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.submit_application"
+       ]
+      },
+      "description": "Moves Draft -> Processing through the workflow, which is what makes the application visible to the bank. Depends on the \"Draft --Send for Review--> Processing | A2C Farmer\" transition: Frappe authorises per transition row, so the farmer needs its own row alongside the Development Agent one. It lives in fixtures/workflow.json, because fixtures sync after patches on every migrate and overwrite the whole child table.\n\nOPEN GAP: there is no consent check here, though consent was decided to be mandatory on every submission. As written an application reaches a bank with no consent record.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"application_id\": \"{{application_id}}\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('No error envelope', function () {",
+         "    pm.expect(resEnv.status, JSON.stringify(resEnv.message || resEnv)).to.not.eql('error');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "6. Get Application (now Processing)",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.get_application?application_id={{application_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.get_application"
+       ],
+       "query": [
+        {
+         "key": "application_id",
+         "value": "{{application_id}}"
+        }
+       ]
+      },
+      "description": "Confirms apply_status_transition mirrored workflow_state onto the status field."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Now Processing', function () { pm.expect(resData.status).to.eql('Processing'); });"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "5. Dashboard",
+   "item": [
+    {
+     "name": "1. Get Dashboard Summary",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.dashboard.get_dashboard_summary",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.dashboard.get_dashboard_summary"
+       ]
+      },
+      "description": "Profile card, top three Active offers, available loan types and the five most recent applications.\n\nOPEN GAP: recent applications are filtered on owner = session user, while every other farmer read scopes on farmer_profile. An application a Development Agent filed for this farmer is owned by the agent, so it appears under \"My Applications\" but not here — the two lists disagree for exactly the farmers who were onboarded in the field."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Carries the four dashboard blocks', function () {",
+         "    ['farmer_profile', 'top_loan_offers', 'available_loan_types', 'recent_applications']",
+         "        .forEach(function (k) { pm.expect(resData).to.have.property(k); });",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "6. Guards & Negative Cases",
+   "description": "The checks that prove the boundary holds. Each asserts a refusal, so a passing run here means isolation is intact — a failure means something leaked.",
+   "item": [
+    {
+     "name": "1. Non-farmer is refused (Dev Agent token)",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{dev_agent_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.list_catalog?limit=5&start=0",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.list_catalog"
+       ],
+       "query": [
+        {
+         "key": "limit",
+         "value": "5"
+        },
+        {
+         "key": "start",
+         "value": "0"
+        }
+       ]
+      },
+      "description": "require_role([FARMER_ROLE]) must refuse every non-farmer, including bank-unbound staff. Set dev_agent_jwt from any non-farmer login first; skipped automatically if unset."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "if (!pm.collectionVariables.get('dev_agent_jwt')) {",
+         "    console.log('dev_agent_jwt not set — skipping the non-farmer guard check');",
+         "    pm.execution.skipRequest();",
+         "}"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Refused for a non-farmer', function () {",
+         "    const denied = pm.response.code === 403 || pm.response.code === 401 || resEnv.status === 'error';",
+         "    pm.expect(denied, 'a non-farmer reached the farmer catalog').to.be.true;",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "2. Unauthenticated request is refused",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.list_applications?page=1&page_size=5",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.list_applications"
+       ],
+       "query": [
+        {
+         "key": "page",
+         "value": "1"
+        },
+        {
+         "key": "page_size",
+         "value": "5"
+        }
+       ]
+      },
+      "description": "validate_jwt_request rejects any /api/method/oan_a2c.* path that is not in its allowlist before the endpoint runs, so this must be 401 regardless of DocPerms."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('401 without a token', function () { pm.response.to.have.status(401); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "3. Another farmer's application is refused",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.get_application?application_id={{foreign_application_id}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.get_application"
+       ],
+       "query": [
+        {
+         "key": "application_id",
+         "value": "{{foreign_application_id}}"
+        }
+       ]
+      },
+      "description": "Set foreign_application_id to an application belonging to a different farmer profile. bank_scope_doc's farmer branch must deny it. Skipped automatically if unset."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "if (!pm.collectionVariables.get('foreign_application_id')) {",
+         "    console.log('foreign_application_id not set — skipping the cross-farmer check');",
+         "    pm.execution.skipRequest();",
+         "}"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Cross-farmer read denied', function () {",
+         "    const denied = pm.response.code === 403 || resEnv.status === 'error';",
+         "    pm.expect(denied, 'a farmer read another farmer\\'s application').to.be.true;",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "4. Editing a submitted application is refused",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       },
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.update_application",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.update_application"
+       ]
+      },
+      "description": "Run after folder 4. Once the application left Draft, update_application must refuse — otherwise a farmer could change the amount after a bank started reviewing it.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"application_id\": \"{{application_id}}\",\n    \"requested_amount\": 99000\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Refused once out of Draft', function () {",
+         "    pm.expect(resEnv.status, 'a submitted application was still editable').to.eql('error');",
+         "});"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "5. Inactive product is refused",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       },
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.applications.create_application",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.applications.create_application"
+       ]
+      },
+      "description": "A product that is missing or not Active must never become an application.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"loan_product\": \"A2C-PRODUCT-DOES-NOT-EXIST\",\n    \"requested_amount\": 1000\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Refused', function () { pm.expect(resEnv.status).to.eql('error'); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "6. Duplicate phone is enumeration-safe",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.auth.register_user",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.auth.register_user"
+       ]
+      },
+      "description": "Re-registers the phone from folder 1 under a different email, so the phone branch is the one that fires. It must answer exactly as a duplicate email does — a soft success carrying already_exists — otherwise the difference between the two answers tells any caller whether a given number is registered.",
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"email\": \"different_{{$randomInt}}@example.com\",\n    \"full_name\": \"Duplicate Phone\",\n    \"password\": \"Farmer_dup!123\",\n    \"phone_number\": \"{{farmer_phone}}\",\n    \"role\": \"A2C Farmer\"\n}",
+       "options": {
+        "raw": {
+         "language": "json"
+        }
+       }
+      }
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Duplicate phone is not an error', function () {",
+         "    pm.expect(resEnv.status, 'phone duplicates must not answer differently from email duplicates').to.not.eql('error');",
+         "});",
+         "pm.test('Answers with already_exists', function () {",
+         "    pm.expect(resData.already_exists).to.eql(true);",
+         "});"
+        ]
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "variable": [
+  {
+   "key": "base_url",
+   "value": "http://localhost:8000"
+  },
+  {
+   "key": "farmer_jwt",
+   "value": ""
+  },
+  {
+   "key": "farmer_refresh_token",
+   "value": ""
+  },
+  {
+   "key": "farmer_email",
+   "value": ""
+  },
+  {
+   "key": "farmer_password",
+   "value": ""
+  },
+  {
+   "key": "farmer_phone",
+   "value": ""
+  },
+  {
+   "key": "farmer_full_name",
+   "value": ""
+  },
+  {
+   "key": "loan_product",
+   "value": ""
+  },
+  {
+   "key": "catalog_bank",
+   "value": ""
+  },
+  {
+   "key": "facet_tenure",
+   "value": ""
+  },
+  {
+   "key": "application_id",
+   "value": ""
+  },
+  {
+   "key": "profile_bound",
+   "value": ""
+  },
+  {
+   "key": "dev_agent_jwt",
+   "value": "",
+   "description": "Optional: any non-farmer token, for the guard check in folder 6."
+  },
+  {
+   "key": "foreign_application_id",
+   "value": "",
+   "description": "Optional: another farmer's application id, for the isolation check."
+  }
+ ]
+}

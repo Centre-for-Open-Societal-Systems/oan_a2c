@@ -340,8 +340,6 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 			password="TestPassword123!",
 			phone_number="+251911888888",
 		)
-		self.assertEqual(resp.get("status"), "error")
-		self.assertEqual(resp.get("code"), "VALIDATION_ERROR")
-		self.assertIn(
-			"already registered", resp.get("details", {}).get("phone_number", "") or resp.get("message", "")
-		)
+		self.assertEqual(resp.get("status"), "success")
+		self.assertTrue(resp.get("data", {}).get("already_exists"))
+		self.assertIn("already have an account", resp.get("data", {}).get("message", ""))
