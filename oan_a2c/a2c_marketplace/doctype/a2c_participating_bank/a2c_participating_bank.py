@@ -7,6 +7,27 @@ from frappe.model.document import Document
 
 
 class A2CParticipatingBank(Document):
+	def after_insert(self):
+		# Seed default stages for the newly created bank
+		default_stages = [
+			{"label": "Submitted", "archetype_state": "In Transition", "sequence": 1},
+			{"label": "Processed", "archetype_state": "In Transition", "sequence": 2},
+			{"label": "Verified", "archetype_state": "In Transition", "sequence": 3},
+			{"label": "Approved", "archetype_state": "In Transition", "sequence": 4},
+			{"label": "Disbursed", "archetype_state": "Completed", "sequence": 5},
+			{"label": "Rejected", "archetype_state": "Completed", "sequence": 6},
+		]
+		for stage in default_stages:
+			frappe.get_doc(
+				{
+					"doctype": "A2C Loan Status Stage",
+					"bank": self.name,
+					"label": stage["label"],
+					"archetype_state": stage["archetype_state"],
+					"sequence": stage["sequence"],
+				}
+			).insert(ignore_permissions=True)
+
 	def on_update(self):
 		# Only enforce activation requirements (and run status side effects) when the
 		# status actually transitions. on_update fires on every save, so gating on

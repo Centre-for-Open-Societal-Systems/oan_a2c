@@ -272,9 +272,9 @@ def loan_application_scope_query(user=None):
 		return f"({base}) and {AGENT_SOURCED_ONLY}" if base else AGENT_SOURCED_ONLY
 
 	# Bank users (Bank Admin, Bank Agent) DO see self-service applications, but only
-	# once they are no longer Draft.
-	draft_gate = "`status` != 'Draft'"
-	return f"({base}) and {draft_gate}" if base else draft_gate
+	# once the workflow moves them past the Active stage (which is farmer's private).
+	status_gate = "`status` != 'Active'"
+	return f"({base}) and {status_gate}" if base else status_gate
 
 
 def loan_product_scope_query(user=None):
@@ -354,10 +354,10 @@ def bank_scope_doc(doc, user=None):
 	allowed = bool(bank) and doc.bank == bank
 
 	if allowed and doc.doctype == "A2C Loan Application":
-		# Lifecycle gate: Bank users can't read Drafts
-		if doc.get("status") == "Draft":
+		# Lifecycle gate: Bank users can't read applications until the workflow marks them visible.
+		if doc.get("status") == "Active":
 			frappe.logger("bank_scope").info(
-				f"Denied Draft loan application to bank user: user={user} {doc.doctype}={doc.name}"
+				f"Denied hidden loan application to bank user: user={user} {doc.doctype}={doc.name}"
 			)
 			return False
 

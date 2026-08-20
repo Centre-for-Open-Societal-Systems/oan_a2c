@@ -17,7 +17,7 @@ class A2CLoanApplication(Document):
 
 	def after_insert(self):
 		"""Notify the bank's team that a new application has landed."""
-		if self.status == "Draft":
+		if self.status == "Active":
 			return
 		label = self.lead_id or self.name
 		notify_users(
@@ -36,7 +36,7 @@ class A2CLoanApplication(Document):
 		actor = frappe.session.user
 		old_status = self.get_value_before_save("status")
 
-		if old_status == "Draft" and self.status == "Processing":
+		if old_status == "Active" and self.status != "Active":
 			label = self.lead_id or self.name
 			notify_users(
 				self._bank_recipients(),

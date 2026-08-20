@@ -88,5 +88,32 @@
   "name": "Processing",
   "style": "",
   "workflow_state_name": "Processing"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-08-20 00:00:00.000000",
+  "name": "In Transition",
+  "style": "",
+  "workflow_state_name": "In Transition"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-08-20 00:00:00.000000",
+  "name": "Completed",
+  "style": "",
+  "workflow_state_name": "Completed"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow State",
+  "icon": "",
+  "modified": "2026-08-20 00:00:00.000000",
+  "name": "Cancelled",
+  "style": "",
+  "workflow_state_name": "Cancelled"
  }
 ]

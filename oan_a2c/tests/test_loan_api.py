@@ -2,6 +2,7 @@ import unittest
 
 import frappe
 
+from oan_a2c.api.utils import get_workflow_initial_state, status_has_tag
 from oan_a2c.api.v1.loan_applications import (
 	create_loan_application,
 	delete_supporting_document,
@@ -179,6 +180,12 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertEqual(res["data"]["tab_counts"]["all"], res["data"]["total"])
 		self.assertIn("my", res["data"]["tab_counts"])
 		self.assertIn("unassigned", res["data"]["tab_counts"])
+
+	def test_1b_workflow_helpers(self):
+		self.assertEqual(get_workflow_initial_state("A2C Loan Application"), "Draft")
+		self.assertFalse(status_has_tag("A2C Loan Application", "Draft", "visible_to_bank"))
+		self.assertTrue(status_has_tag("A2C Loan Application", "Processing", "visible_to_bank"))
+		self.assertTrue(status_has_tag("A2C Loan Application", "Approved", "success"))
 
 	def test_2_get_all_loans(self):
 		res = get_all_loans(status="Draft", page_size=10)
@@ -524,6 +531,13 @@ class TestLoansV1API(unittest.TestCase):
 		# The submitted record is frozen: a direct edit + save is blocked by docstatus.
 		doc.status = "Approved"
 		self.assertRaises(frappe.ValidationError, doc.save)
+
+	def test_7b_invalid_status_rejected_by_validator(self):
+		res = update_loan_status(application_id=self.app_id, status="NotARealState")
+		self.assertEqual(res["status"], "error")
+		self.assertEqual(res["code"], "VALIDATION_ERROR")
+		self.assertEqual(frappe.local.response.get("http_status_code"), 400)
+		frappe.local.response["http_status_code"] = 200
 
 	def test_8_create_loan_application_copies_profile_details(self):
 		# 1. Clean up any existing loan application for TEST_LEAD_999 first (since setUp creates one)

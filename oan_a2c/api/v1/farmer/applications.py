@@ -159,13 +159,13 @@ def get_application(**kwargs):
 @handle_api_errors
 @require_role([FARMER_ROLE])
 def update_application(**kwargs):
-	"""Allows a farmer to update their Draft application."""
+	"""Allows a farmer to update their Active application."""
 	application_id = kwargs.get("application_id")
 	frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
 
 	doc = _get_app(application_id)
-	if doc.status != "Draft":
-		frappe.throw(_("Only Draft applications can be updated."), frappe.ValidationError)
+	if doc.status != "Active":
+		frappe.throw(_("Only Active applications can be updated."), frappe.ValidationError)
 
 	changed = False
 	if kwargs.get("requested_amount") is not None:
@@ -187,7 +187,7 @@ def update_application(**kwargs):
 @handle_api_errors
 @require_role([FARMER_ROLE])
 def create_application(**kwargs):
-	"""Creates a Draft application for the farmer."""
+	"""Creates an Active application for the farmer."""
 	user = frappe.session.user
 	profile_name = frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
 	if not profile_name:
@@ -239,7 +239,7 @@ def create_application(**kwargs):
 			"loan_amount": kwargs["requested_amount"],
 			"loan_reason": kwargs.get("loan_reason"),
 			"consent_id": consent_id,
-			"status": "Draft",
+			"status": "Active",
 			"current_step": 1,
 			"first_name": profile.first_name,
 			"last_name": profile.last_name,
@@ -260,16 +260,21 @@ def create_application(**kwargs):
 @handle_api_errors
 @require_role([FARMER_ROLE])
 def submit_application(**kwargs):
-	"""Submits a Draft application to the bank (transitions to Processing)."""
+	"""Submits an Active application to the bank (transitions to In Transition)."""
 	application_id = kwargs.get("application_id")
 	frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
 
 	doc = _get_app(application_id)
-	if doc.status != "Draft":
-		frappe.throw(_("Only Draft applications can be submitted."), frappe.ValidationError)
+	if doc.status != "Active":
+		frappe.throw(_("Only Active applications can be submitted."), frappe.ValidationError)
 
-	# The workflow patch (update_loan_workflow_for_farmer) adds A2C Farmer to the
-	# Draft -> Processing transition.
-	apply_status_transition(doc, "Processing")
+	from oan_a2c.a2c_marketplace.stages import get_initial_pipeline_stage
+
+	initial_stage = get_initial_pipeline_stage(doc.bank)
+	if initial_stage:
+		doc.stage_id = initial_stage["stage_id"]
+		doc.stage_label = initial_stage["label"]
+
+	apply_status_transition(doc, "In Transition")
 
 	return success_response(message="Application submitted successfully")
