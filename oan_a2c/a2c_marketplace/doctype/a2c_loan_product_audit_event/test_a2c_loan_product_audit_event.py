@@ -139,7 +139,7 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 			str(res_act),
 		)
 
-	def test_archive_is_reversible_and_only_from_active(self):
+	def test_archive_is_reversible_and_any_product_can_be_archived(self):
 		product = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Product",
@@ -158,19 +158,22 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 
 		frappe.set_user("Administrator")
 
-		# Cannot archive a product that is not Active (transition guard).
-		res_bad = set_product_status(product_id=product.name, status="Archived", reason="Too soon")
-		self.assertEqual(res_bad.get("status"), "error")
-		self.assertIn("Only an Active product can be archived", str(res_bad))
-
 		# Archiving requires a reason.
-		res_activate = set_product_status(product_id=product.name, status="Active", reason="Approved")
-		self.assertEqual(res_activate.get("status"), "success", str(res_activate))
 		res_noreason = set_product_status(product_id=product.name, status="Archived")
 		self.assertEqual(res_noreason.get("status"), "error")
 		self.assertIn("Please provide a reason", str(res_noreason))
 
-		# Active -> Archived (retire), then Archived -> Active (restore).
+		# Any product (e.g. Pending Approval) can be archived with a reason.
+		res_arch_pending = set_product_status(
+			product_id=product.name, status="Archived", reason="Archived from Pending Approval"
+		)
+		self.assertEqual(res_arch_pending.get("status"), "success", str(res_arch_pending))
+		self.assertEqual(res_arch_pending.get("data", {}).get("status"), "Archived")
+
+		# Archived -> Active (restore), then Active -> Archived (retire).
+		res_activate = set_product_status(product_id=product.name, status="Active", reason="Approved")
+		self.assertEqual(res_activate.get("status"), "success", str(res_activate))
+
 		res_arch = set_product_status(
 			product_id=product.name, status="Archived", reason="Product discontinued"
 		)
@@ -181,12 +184,15 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 		self.assertEqual(res_restore.get("status"), "success", str(res_restore))
 		self.assertEqual(res_restore.get("data", {}).get("status"), "Active")
 
-		# The Active -> Archived transition is captured in the audit trail.
+		# The transitions to Archived are captured in the audit trail.
 		audit_logs = frappe.get_all(
 			"A2C Loan Product Audit Event",
 			filters={"loan_product": product.name, "to_status": "Archived"},
 			fields=["from_status", "to_status", "reason"],
+			order_by="creation asc",
 		)
-		self.assertTrue(len(audit_logs) >= 1)
-		self.assertEqual(audit_logs[0]["from_status"], "Active")
-		self.assertEqual(audit_logs[0]["reason"], "Product discontinued")
+		self.assertTrue(len(audit_logs) >= 2)
+		self.assertEqual(audit_logs[0]["from_status"], "Pending Approval")
+		self.assertEqual(audit_logs[0]["reason"], "Archived from Pending Approval")
+		self.assertEqual(audit_logs[1]["from_status"], "Active")
+		self.assertEqual(audit_logs[1]["reason"], "Product discontinued")

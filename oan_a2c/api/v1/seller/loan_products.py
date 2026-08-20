@@ -253,9 +253,6 @@ def set_product_status(**kwargs):
 			}
 		)
 
-	if status == "Archived" and doc.status != "Active":
-		frappe.throw(_("Only an Active product can be archived."), frappe.ValidationError)
-
 	if reason:
 		doc._status_reason = reason
 	doc.status = status
