@@ -61,8 +61,17 @@ def execute():
 	_create_lead_workflow()
 	_create_loan_workflow()
 	_seed_default_stages()
+	_cleanup_legacy_property_setters()
 	_backfill_workflow_state()
 	frappe.db.commit()
+
+
+def _cleanup_legacy_property_setters():
+	"""Remove any legacy Property Setter overriding `status` options so the DocType JSON rules."""
+	frappe.db.delete(
+		"Property Setter",
+		{"doc_type": "A2C Loan Application", "field_name": "status", "property": "options"},
+	)
 
 
 def _seed_default_stages():

@@ -38,14 +38,19 @@ class FarmerB2CFixtures(unittest.TestCase):
 
 		def _user(prefix, role):
 			email = f"{prefix}-{cls.h}@example.com"
-			frappe.get_doc(
-				{
-					"doctype": "User",
-					"email": email,
-					"first_name": prefix,
-					"roles": [{"role": role}],
-				}
-			).insert(ignore_permissions=True, ignore_mandatory=True)
+			if not frappe.db.exists("User", email):
+				frappe.flags.in_import = True
+				try:
+					frappe.get_doc(
+						{
+							"doctype": "User",
+							"email": email,
+							"first_name": prefix,
+							"roles": [{"role": role}],
+						}
+					).insert(ignore_permissions=True, ignore_mandatory=True)
+				finally:
+					frappe.flags.in_import = False
 			return email
 
 		cls.farmer_a = _user("b2c-farmer-a", FARMER_ROLE)
@@ -67,7 +72,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"user": cls.farmer_a,
 				"first_name": "A",
 				"last_name": "Farmer",
-				"phone_number": "1111111111",
+				"phone_number": f"+25191{int(cls.h[:6], 16):06d}",
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 		cls.profile_b = frappe.get_doc(
@@ -76,7 +81,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"user": cls.farmer_b,
 				"first_name": "B",
 				"last_name": "Farmer",
-				"phone_number": "2222222222",
+				"phone_number": f"+25192{int(cls.h[:6], 16):06d}",
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 
@@ -95,6 +100,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 
 		cls.prod_1 = _product(f"B2CProd1-{cls.h}")
 		cls.prod_2 = _product(f"B2CProd2-{cls.h}")
+		frappe.db.commit()
 
 	@classmethod
 	def tearDownClass(cls):
@@ -293,8 +299,8 @@ class TestApplicationSourceScoping(FarmerB2CFixtures):
 				}
 			).insert(ignore_permissions=True, ignore_mandatory=True)
 
-		cls.self_service_app = _app(cls.profile_a.name, "Self Service", "Processing", "10000001")
-		cls.agent_app = _app(cls.profile_a.name, "Agent", "Processing", "20000001")
+		cls.self_service_app = _app(cls.profile_a.name, "Self Service", "In Transition", "10000001")
+		cls.agent_app = _app(cls.profile_a.name, "Agent", "In Transition", "20000001")
 
 	def test_development_agent_does_not_see_self_service_applications(self):
 		import frappe
@@ -362,7 +368,7 @@ class TestFarmerApplicationCreation(FarmerB2CFixtures):
 		self.assertEqual(doc.application_source, "Self Service")
 		self.assertFalse(doc.lead_id, "the B2C flow deliberately creates no A2C Lead")
 		self.assertEqual(doc.farmer_profile, self.profile_a.name)
-		self.assertEqual(doc.status, "Draft")
+		self.assertEqual(doc.status, "Active")
 
 	def test_requested_amount_must_fit_the_product(self):
 		"""The cap is per-product, so the schema's global bound cannot enforce it."""

@@ -13,7 +13,7 @@ def resolve_bank_stage(bank, status_or_stage):
 		return {"archetype_state": status_or_stage, "stage_id": None, "stage_label": status_or_stage}
 
 	# Otherwise try to match a bank stage
-	stage = frappe.db.get_all(
+	stage = frappe.get_all(  # bank-scope-exempt: bank explicitly filtered
 		"A2C Loan Status Stage",
 		filters={"bank": bank},
 		or_filters={"stage_id": status_or_stage, "external_code": status_or_stage, "label": status_or_stage},
@@ -36,7 +36,7 @@ def resolve_bank_stage(bank, status_or_stage):
 
 def get_initial_pipeline_stage(bank):
 	"""Returns the first stage for 'In Transition' for the given bank, or None."""
-	stage = frappe.db.get_all(
+	stage = frappe.get_all(  # bank-scope-exempt: bank explicitly filtered
 		"A2C Loan Status Stage",
 		filters={"bank": bank, "archetype_state": "In Transition"},
 		fields=["stage_id", "label", "archetype_state"],

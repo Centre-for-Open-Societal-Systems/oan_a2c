@@ -853,7 +853,7 @@ def create_loan_application(**kwargs):
 	loan_app.loan_product = loan_product
 	loan_app.loan_product_name = frappe.db.get_value("A2C Loan Product", loan_product, "product_name")
 	loan_app.bank = bank
-	loan_app.status = "Draft"
+	loan_app.status = "Active"
 
 	loan_app.insert(ignore_permissions=False)
 

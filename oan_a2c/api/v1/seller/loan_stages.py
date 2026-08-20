@@ -74,7 +74,7 @@ def get_stages(bank: str | None = None):
 	"""List all loan status stages configured for the caller's bank."""
 	effective_bank = _resolve_bank(bank)
 
-	stages = frappe.get_all(
+	stages = frappe.get_list(
 		"A2C Loan Status Stage",
 		filters={"bank": effective_bank},
 		fields=[
@@ -90,13 +90,15 @@ def get_stages(bank: str | None = None):
 			"modified",
 		],
 		order_by="sequence asc, creation asc",
+		limit=None,
 	)
 
-	counts = frappe.get_all(
+	counts = frappe.get_list(
 		"A2C Loan Application",
 		filters={"bank": effective_bank},
 		fields=["stage_id", {"COUNT": "name", "as": "count"}],
 		group_by="stage_id",
+		limit=None,
 	)
 	count_map = {c.stage_id: c.count for c in counts if c.stage_id}
 
@@ -181,10 +183,11 @@ def sync_stages(bank: str | None = None, **kwargs):
 	effective_bank = _resolve_bank(bank)
 	stage_items = kwargs["stages"]
 
-	existing_stages = frappe.get_all(
+	existing_stages = frappe.get_list(
 		"A2C Loan Status Stage",
 		filters={"bank": effective_bank},
 		fields=["name", "stage_id", "label", "archetype_state", "sequence"],
+		limit=None,
 	)
 	existing_by_stage_id = {s.stage_id: s for s in existing_stages}
 

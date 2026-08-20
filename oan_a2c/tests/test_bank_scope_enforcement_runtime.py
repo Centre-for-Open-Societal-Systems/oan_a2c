@@ -86,7 +86,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 
-		# Application for Farmer A (Draft)
+		# Application for Farmer A (Active)
 		cls.app_a_draft = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Application",
@@ -94,14 +94,14 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"loan_product": cls.prod.name,
 				"requested_amount": 100,
 				"loan_amount": 100,
-				"status": "Draft",
+				"status": "Active",
 				"first_name": "A",
 				"last_name": "B",
 				"phone_number": "111",
 				"farmer_profile": cls.profile_a.name,
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
-		# Application for Farmer A (Processing)
+		# Application for Farmer A (In Transition)
 		cls.app_a_proc = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Application",
@@ -109,14 +109,14 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"loan_product": cls.prod.name,
 				"requested_amount": 100,
 				"loan_amount": 100,
-				"status": "Processing",
+				"status": "In Transition",
 				"first_name": "A",
 				"last_name": "B",
 				"phone_number": "222",
 				"farmer_profile": cls.profile_a.name,
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
-		# Application for Farmer B (Draft)
+		# Application for Farmer B (Active)
 		cls.app_b = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Application",
@@ -124,7 +124,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"loan_product": cls.prod.name,
 				"requested_amount": 100,
 				"loan_amount": 100,
-				"status": "Draft",
+				"status": "Active",
 				"first_name": "C",
 				"last_name": "D",
 				"phone_number": "333",

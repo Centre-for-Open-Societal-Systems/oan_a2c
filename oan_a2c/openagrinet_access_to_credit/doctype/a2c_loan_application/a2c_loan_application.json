@@ -82,6 +82,7 @@
    "options": "User"
   },
   {
+   "default": "Active",
    "fieldname": "status",
    "fieldtype": "Select",
    "in_list_view": 1,

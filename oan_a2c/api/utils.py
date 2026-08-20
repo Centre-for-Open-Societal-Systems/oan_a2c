@@ -177,12 +177,6 @@ def get_workflow_states_with_tag(doctype: str, tag: str) -> tuple[str, ...]:
 	return tuple(row["state"] for row in workflow["states"] if row.get(tag))
 
 
-def workflow_status_options(doctype: str) -> str:
-	"""Return a Select options string derived from the active workflow states."""
-	states = get_workflow_state_names(doctype)
-	return "\n" + "\n".join(states) if states else ""
-
-
 def resolve_workflow_transition(doc, target_status: str, roles: list[str] | None = None) -> dict:
 	"""Resolve a workflow transition for `doc` toward `target_status`.
 
@@ -431,10 +425,38 @@ def success_response(data=None, message="Success", meta=None, pagination=None):
 	}
 
 
+def extract_message_from_str(val):
+	if not val:
+		return val
+	if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
+		try:
+			import ast
+			import json
+
+			try:
+				parsed = json.loads(val)
+			except Exception:
+				parsed = ast.literal_eval(val)
+			if isinstance(parsed, dict) and "message" in parsed:
+				val = str(parsed["message"])
+		except Exception:
+			# Best-effort extraction only; unparseable input falls through to the
+			# raw value. Debug level so it's available when troubleshooting but
+			# doesn't add noise (this fires on any non-dict-shaped string).
+			frappe.logger().debug("Could not parse message payload; returning raw value")
+
+	if isinstance(val, str) and "<" in val and ">" in val:
+		import re
+
+		val = re.sub(r"<[^>]+>", "", val).strip()
+	return val
+
+
 def _envelope_success(data=None, message="Success", meta=None, pagination=None):
+	clean_message = extract_message_from_str(message) if isinstance(message, str) else str(message)
 	res = {
 		"status": "success",
-		"message": message,
+		"message": clean_message,
 		"data": data,
 		"meta": meta or {},
 	}
@@ -447,9 +469,10 @@ def _envelope_success(data=None, message="Success", meta=None, pagination=None):
 
 
 def error_response(message, code="GENERIC_ERROR", details=None):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
+	clean_message = extract_message_from_str(message) if isinstance(message, str) else str(message)
 	res = {
 		"status": "error",
-		"message": message,
+		"message": clean_message,
 		"code": code,
 		"details": details or {},
 	}
@@ -477,31 +500,6 @@ def check_rate_limit(key: str, limit: int, window: int):
 	pipeline.incr(key)
 	pipeline.expire(key, window)
 	pipeline.execute()
-
-
-def extract_message_from_str(val):
-	if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
-		try:
-			import ast
-			import json
-
-			try:
-				parsed = json.loads(val)
-			except Exception:
-				parsed = ast.literal_eval(val)
-			if isinstance(parsed, dict) and "message" in parsed:
-				val = str(parsed["message"])
-		except Exception:
-			# Best-effort extraction only; unparseable input falls through to the
-			# raw value. Debug level so it's available when troubleshooting but
-			# doesn't add noise (this fires on any non-dict-shaped string).
-			frappe.logger().debug("Could not parse message payload; returning raw value")
-
-	if isinstance(val, str) and "<" in val and ">" in val:
-		import re
-
-		val = re.sub(r"<[^>]+>", "", val).strip()
-	return val
 
 
 def get_error_message(e, default_msg="Validation Error"):
