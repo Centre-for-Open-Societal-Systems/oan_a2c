@@ -1,4 +1,5 @@
 import frappe
+from frappe.custom.doctype.property_setter.property_setter import make_property_setter
 
 from oan_a2c.api.utils import workflow_status_options
 
@@ -13,7 +14,7 @@ def setup_workflow_property_setters():
 		"Property Setter",
 		{"doc_type": "A2C Loan Application", "field_name": "status", "property": "options"},
 	)
-	frappe.make_property_setter(
+	make_property_setter(
 		"A2C Loan Application",
 		"status",
 		"options",
