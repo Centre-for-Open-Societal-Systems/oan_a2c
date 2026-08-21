@@ -5,6 +5,7 @@ import frappe
 from oan_a2c.a2c_marketplace.stats_cache import (
 	_COUNTERS,
 	_MAP_COUNTERS,
+	_PENDING_APPLICATION_STATUS,
 	_SCALAR_COUNTERS,
 	_compute_from_db,
 	compute_and_set,
@@ -335,3 +336,181 @@ class TestActiveExclusion(_BankFixtureMixin, unittest.TestCase):
 		reverted = get_stats_for_bank(self.bank_name)
 		self.assertEqual(reverted["total_applications"], 1)
 		self.assertEqual(reverted, _compute_from_db(self.bank_name))
+
+
+class TestApplicantAndPendingCounters(unittest.TestCase):
+	"""`total_applicants` (distinct farmers) and `pending_applications`.
+
+	The applicant counter is the interesting one: distinctness cannot be carried
+	in a running total, so the hooks ask the DB whether the farmer is still
+	represented before moving it. These tests pin that a second application from
+	the same farmer does not double-count, and that the incremental result always
+	matches a cold recompute.
+	"""
+
+	@classmethod
+	def setUpClass(cls):
+		frappe.set_user("Administrator")
+		suffix = frappe.generate_hash(length=6)
+		cls.bank = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"registered_city": "Test City",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO",
+				"ops_name": "Test Ops",
+				"bank_name": f"Applicants {suffix}",
+				"bank_code": f"TEST_APPLICANTS_{suffix}",
+				"status": "Active",
+				"entity_type": "Commercial Bank",
+				"registered_email": f"applicants_{suffix}@test.com",
+				"registered_phone": "+251911000003",
+				"registered_region": "Addis Ababa",
+				"registered_country": "Ethiopia",
+			}
+		).insert(ignore_permissions=True)
+		cls.bank_name = cls.bank.name
+
+		cls.consent = frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"consent_type": "Credit Assessment",
+				"purpose": "Applicant counter fixture",
+				"status": "Approved",
+			}
+		).insert(ignore_permissions=True)
+
+		cls.profiles = [
+			frappe.get_doc(
+				{
+					"doctype": "A2C Farmer Profile",
+					"first_name": "Farmer",
+					"last_name": label,
+					"phone_number": f"+2519110001{idx}",
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True)
+			for idx, label in enumerate(("One", "Two"))
+		]
+		cls.created_apps = []
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		for name in cls.created_apps:
+			if frappe.db.exists("A2C Loan Application", name):
+				frappe.delete_doc("A2C Loan Application", name, force=True)
+		for profile in cls.profiles:
+			frappe.delete_doc("A2C Farmer Profile", profile.name, force=True)
+		frappe.db.delete("A2C Loan Product", {"bank": cls.bank_name})
+		frappe.delete_doc("A2C Participating Bank", cls.bank_name, force=True)
+		frappe.delete_doc("A2C Consent Request", cls.consent.name, force=True)
+		frappe.db.commit()
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		for name in self.created_apps:
+			if frappe.db.exists("A2C Loan Application", name):
+				frappe.delete_doc("A2C Loan Application", name, force=True)
+		self.created_apps.clear()
+		frappe.cache().delete_keys(f"dashboard_stats:{self.bank_name}:*")
+
+	def _app(self, profile, status: str):
+		doc = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"bank": self.bank_name,
+				"farmer_profile": profile.name,
+				"consent_id": self.consent.name,
+				"first_name": "Stats",
+				"last_name": "Probe",
+				"phone_number": "+251911000004",
+				"loan_amount": 1000,
+				"requested_amount": 1000,
+				"status": status,
+			}
+		).insert(ignore_permissions=True)
+		self.created_apps.append(doc.name)
+		return doc
+
+	def test_repeat_applications_from_one_farmer_count_once(self):
+		"""Three applications, one farmer -> three applications, one applicant."""
+		for _ in range(3):
+			self._app(self.profiles[0], "In Transition")
+
+		stats = _compute_from_db(self.bank_name)
+		self.assertEqual(stats["total_applications"], 3)
+		self.assertEqual(stats["total_applicants"], 1)
+
+	def test_distinct_farmers_each_count(self):
+		self._app(self.profiles[0], "In Transition")
+		self._app(self.profiles[1], "In Transition")
+
+		stats = _compute_from_db(self.bank_name)
+		self.assertEqual(stats["total_applications"], 2)
+		self.assertEqual(stats["total_applicants"], 2)
+
+	def test_incremental_applicant_count_matches_recompute(self):
+		"""The hooks must not double-count a farmer who applies twice."""
+		self._app(self.profiles[0], "In Transition")
+		compute_and_set(self.bank_name)  # warm the cache
+
+		# Second application from the SAME farmer: applications moves, applicants does not.
+		self._app(self.profiles[0], "In Transition")
+		warm = get_stats_for_bank(self.bank_name)
+		self.assertEqual(warm["total_applications"], 2)
+		self.assertEqual(warm["total_applicants"], 1)
+
+		# First application from a DIFFERENT farmer: both move.
+		self._app(self.profiles[1], "In Transition")
+		warm = get_stats_for_bank(self.bank_name)
+		self.assertEqual(warm["total_applications"], 3)
+		self.assertEqual(warm["total_applicants"], 2)
+
+		self.assertEqual(warm, _compute_from_db(self.bank_name))
+
+	def test_deleting_one_of_two_keeps_the_applicant(self):
+		"""A farmer stays an applicant while any countable application survives."""
+		first = self._app(self.profiles[0], "In Transition")
+		self._app(self.profiles[0], "In Transition")
+		compute_and_set(self.bank_name)
+
+		frappe.delete_doc("A2C Loan Application", first.name, force=True)
+		self.created_apps.remove(first.name)
+
+		warm = get_stats_for_bank(self.bank_name)
+		self.assertEqual(warm["total_applications"], 1)
+		self.assertEqual(warm["total_applicants"], 1)
+		self.assertEqual(warm, _compute_from_db(self.bank_name))
+
+	def test_pending_tracks_the_in_transition_archetype(self):
+		"""Pending counts the bank's pipeline, whatever the bank names its stages."""
+		self._app(self.profiles[0], "In Transition")
+		self._app(self.profiles[1], "Completed")
+
+		stats = _compute_from_db(self.bank_name)
+		self.assertEqual(stats["total_applications"], 2)
+		self.assertEqual(stats["pending_applications"], 1)
+
+	def test_completing_an_application_clears_it_from_pending(self):
+		doc = self._app(self.profiles[0], "In Transition")
+		compute_and_set(self.bank_name)
+		self.assertEqual(get_stats_for_bank(self.bank_name)["pending_applications"], 1)
+
+		doc.reload()
+		doc.status = "Completed"
+		doc.save(ignore_permissions=True)
+
+		warm = get_stats_for_bank(self.bank_name)
+		self.assertEqual(warm["pending_applications"], 0)
+		self.assertEqual(warm["total_applications"], 1)
+		self.assertEqual(warm, _compute_from_db(self.bank_name))
+
+	def test_pending_status_literal_exists(self):
+		"""The archetype the pending counter filters on must be a real option."""
+		options = {
+			opt.strip()
+			for opt in (frappe.get_meta("A2C Loan Application").get_field("status").options or "").split("\n")
+			if opt.strip()
+		}
+		self.assertIn(_PENDING_APPLICATION_STATUS, options)
