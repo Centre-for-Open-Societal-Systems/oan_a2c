@@ -18,6 +18,13 @@ _COUNTERS = _SCALAR_COUNTERS + _MAP_COUNTERS
 
 _EXCLUDED_PRODUCT_STATUSES = set()
 
+# `Active` is the farmer's own pre-submission stage. loan_application_scope_query
+# hides it from bank users, so counting it would put a number on the dashboard
+# card that the list beneath it can never show -- and would disclose how many
+# hidden rows exist to exactly the users the scope query excludes. Kept out of
+# every application counter so the card and the list reconcile.
+_EXCLUDED_APPLICATION_STATUSES = {"Active"}
+
 
 def _key(bank: str, counter: str) -> str:
 	return f"dashboard_stats:{bank}:{counter}"
@@ -85,9 +92,13 @@ def _compute_from_db(bank: str) -> dict:
 	rejected_products = sum(item.count for item in product_counts if item.status == "Rejected")
 	archived_products = sum(item.count for item in product_counts if item.status == "Archived")
 
+	app_filters = dict(filters)
+	if _EXCLUDED_APPLICATION_STATUSES:
+		app_filters["status"] = ["not in", sorted(_EXCLUDED_APPLICATION_STATUSES)]
+
 	app_counts = frappe.get_all(  # bank-scope-exempt: bank scoped explicitly via filters above
 		"A2C Loan Application",
-		filters=filters,
+		filters=app_filters,
 		fields=["status", "stage_label", {"COUNT": "name", "as": "count"}],
 		group_by="status, stage_label",
 	)
@@ -224,10 +235,12 @@ def on_application_change(doc, event: str) -> None:
 
 	# Determine the effective stage name for this document
 	current_stage = doc.stage_label or doc.status
+	current_counted = doc.status not in _EXCLUDED_APPLICATION_STATUSES
 
 	if event == "after_insert":
-		_incr(bank, "total_applications")
-		_incr_stage(bank, current_stage, 1)
+		if current_counted:
+			_incr(bank, "total_applications")
+			_incr_stage(bank, current_stage, 1)
 
 	elif event == "on_update":
 		before = doc.get_doc_before_save()
@@ -235,13 +248,26 @@ def on_application_change(doc, event: str) -> None:
 			return  # after_insert already handled this
 
 		before_stage = before.stage_label or before.status
-		if before_stage != current_stage:
-			_incr_stage(bank, before_stage, -1)
-			_incr_stage(bank, current_stage, 1)
+		before_counted = before.status not in _EXCLUDED_APPLICATION_STATUSES
+
+		# Leaving `Active` (the farmer submits) is the moment an application first
+		# becomes countable; returning to it takes it back out. Without this the
+		# total would stay stuck at whatever it was when the row was inserted.
+		if before_counted and not current_counted:
+			_decr(bank, "total_applications")
+		elif current_counted and not before_counted:
+			_incr(bank, "total_applications")
+
+		if before_counted != current_counted or before_stage != current_stage:
+			if before_counted:
+				_incr_stage(bank, before_stage, -1)
+			if current_counted:
+				_incr_stage(bank, current_stage, 1)
 
 	elif event == "on_trash":
-		_decr(bank, "total_applications")
-		_incr_stage(bank, current_stage, -1)
+		if current_counted:
+			_decr(bank, "total_applications")
+			_incr_stage(bank, current_stage, -1)
 
 
 def reconcile_all_banks() -> None:

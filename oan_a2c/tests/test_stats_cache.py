@@ -7,7 +7,9 @@ from oan_a2c.a2c_marketplace.stats_cache import (
 	_MAP_COUNTERS,
 	_SCALAR_COUNTERS,
 	_compute_from_db,
+	compute_and_set,
 	get_dashboard_stats,
+	get_stats_for_bank,
 )
 
 
@@ -271,3 +273,65 @@ class TestAllBanksView(_BankFixtureMixin, unittest.TestCase):
 		self.assertNotIn("by_bank", payload)
 		self.assertEqual(payload["stats"]["total_applications"], 1)
 		self.assertEqual(payload["stats"]["stage_counts"], {"In Transition": 1})
+
+
+class TestActiveExclusion(_BankFixtureMixin, unittest.TestCase):
+	"""`Active` is the farmer's own pre-submission stage.
+
+	loan_application_scope_query hides it from bank users, so a counter that
+	included it would put a number on the dashboard card that the list beneath it
+	can never show -- and would disclose how many hidden rows exist.
+	"""
+
+	@classmethod
+	def setUpClass(cls):
+		frappe.set_user("Administrator")
+		cls._make_bank("Active Exclusion", "+251911000005")
+		cls.visible_app = cls._make_application("In Transition")
+		cls.farmer_private_app = cls._make_application("Active")
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		for app in (cls.visible_app, cls.farmer_private_app):
+			frappe.delete_doc("A2C Loan Application", app.name, force=True)
+		cls._drop_bank_fixture()
+		frappe.db.commit()
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		frappe.cache().delete_keys(f"dashboard_stats:{self.bank_name}:*")
+
+	def test_active_applications_are_excluded_from_db_computation(self):
+		"""`Active` never reaches a bank counter."""
+		stats = _compute_from_db(self.bank_name)
+
+		# Two applications exist on this bank; only the non-Active one counts.
+		self.assertEqual(frappe.db.count("A2C Loan Application", {"bank": self.bank_name}), 2)
+		self.assertEqual(stats["total_applications"], 1)
+		self.assertNotIn("Active", stats["stage_counts"])
+
+	def test_submitting_moves_an_application_into_the_counters(self):
+		"""Leaving `Active` is when an application first becomes countable."""
+		compute_and_set(self.bank_name)  # warm the cache so incr/decr apply
+		self.assertEqual(get_stats_for_bank(self.bank_name)["total_applications"], 1)
+
+		self.farmer_private_app.reload()
+		self.farmer_private_app.status = "In Transition"
+		self.farmer_private_app.save(ignore_permissions=True)
+
+		warm = get_stats_for_bank(self.bank_name)
+		self.assertEqual(warm["total_applications"], 2)
+		self.assertEqual(warm["stage_counts"], {"In Transition": 2})
+
+		# The incremental hooks must agree with a cold recompute, or the hourly
+		# reconcile would silently correct a number the user already acted on.
+		self.assertEqual(warm, _compute_from_db(self.bank_name))
+
+		self.farmer_private_app.status = "Active"
+		self.farmer_private_app.save(ignore_permissions=True)
+
+		reverted = get_stats_for_bank(self.bank_name)
+		self.assertEqual(reverted["total_applications"], 1)
+		self.assertEqual(reverted, _compute_from_db(self.bank_name))
