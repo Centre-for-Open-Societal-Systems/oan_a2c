@@ -30,12 +30,14 @@ class TestPydanticValidation(unittest.TestCase):
 	def setUpClass(cls):
 		cls.agent_email = "pydantic_agent@test.com"
 		if not frappe.db.exists("User", cls.agent_email):
-			frappe.get_doc({
-				"doctype": "User",
-				"email": cls.agent_email,
-				"first_name": "Pydantic Agent",
-				"roles": [{"role": "A2C Bank Agent"}]
-			}).insert(ignore_permissions=True, ignore_mandatory=True)
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": cls.agent_email,
+					"first_name": "Pydantic Agent",
+					"roles": [{"role": "A2C Bank Agent"}],
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True)
 
 	def setUp(self):
 		# Reset response and message log state

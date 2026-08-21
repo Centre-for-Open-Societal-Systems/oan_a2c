@@ -33,20 +33,27 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 
 		cls.agent_email = "audit_agent@test.com"
 		if not frappe.db.exists("User", cls.agent_email):
-			frappe.get_doc({
-				"doctype": "User",
-				"email": cls.agent_email,
-				"first_name": "Audit Agent",
-				"roles": [{"role": "A2C Bank Agent"}]
-			}).insert(ignore_permissions=True, ignore_mandatory=True)
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": cls.agent_email,
+					"first_name": "Audit Agent",
+					"roles": [{"role": "A2C Bank Agent"}],
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True)
 
-		if not frappe.db.exists("User Permission", {"user": cls.agent_email, "allow": "A2C Participating Bank", "for_value": cls.bank_name}):
-			frappe.get_doc({
-				"doctype": "User Permission",
-				"user": cls.agent_email,
-				"allow": "A2C Participating Bank",
-				"for_value": cls.bank_name
-			}).insert(ignore_permissions=True)
+		if not frappe.db.exists(
+			"User Permission",
+			{"user": cls.agent_email, "allow": "A2C Participating Bank", "for_value": cls.bank_name},
+		):
+			frappe.get_doc(
+				{
+					"doctype": "User Permission",
+					"user": cls.agent_email,
+					"allow": "A2C Participating Bank",
+					"for_value": cls.bank_name,
+				}
+			).insert(ignore_permissions=True)
 
 	def test_audit_event_logged_on_status_change(self):
 		frappe.set_user(self.agent_email)

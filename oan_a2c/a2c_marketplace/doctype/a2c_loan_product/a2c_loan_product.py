@@ -75,7 +75,7 @@ class A2CLoanProduct(Document):
 				has_content_changes = any(
 					self.has_value_changed(f) and (before.get(f) or self.get(f)) for f in self.CONTENT_FIELDS
 				)
-				
+
 				if has_content_changes and is_bank_admin:
 					self.status = "Active"
 

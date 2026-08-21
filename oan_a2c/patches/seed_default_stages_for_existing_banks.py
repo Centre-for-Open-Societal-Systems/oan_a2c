@@ -1,5 +1,6 @@
 import frappe
 
+
 def execute():
 	default_stages = [
 		{"label": "Submitted", "archetype_state": "In Transition", "sequence": 1},
@@ -9,7 +10,7 @@ def execute():
 		{"label": "Disbursed", "archetype_state": "Completed", "sequence": 5},
 		{"label": "Rejected", "archetype_state": "Completed", "sequence": 6},
 	]
-	
+
 	for bank in frappe.get_all("A2C Participating Bank", pluck="name"):
 		if not frappe.db.exists("A2C Loan Status Stage", {"bank": bank}):
 			for stage in default_stages:
