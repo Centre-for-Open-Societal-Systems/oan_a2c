@@ -177,6 +177,8 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 				if isinstance(val, dict):
 					farmer_info_dict = val
 					break
+			if not farmer_info_dict:
+				farmer_info_dict = raw_selected_data
 
 		# Spelling-tolerant accessor over the farmer info dict.
 		g = build_field_getter(farmer_info_dict)
@@ -335,23 +337,26 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		# Binding a profile to a User grants that account visibility of this farmer's
 		# applications, so it is only done on an exact match against a user who
 		# already holds the farmer role -- never as a side effect of a loose lookup.
-		if phone_number and not farmer_profile.user:
-			# Find matching user by phone and role
-			import re
+		if not farmer_profile.user:
+			if owner and frappe.db.exists("Has Role", {"parent": owner, "role": "A2C Farmer"}):
+				farmer_profile.user = owner
+			elif phone_number:
+				import re
 
-			candidates = [c for c in (phone_number, re.sub(r"\D", "", phone_number)) if c]
-			farmer_user = None
-			for field in ("mobile_no", "phone"):
-				for cand in candidates:
-					match = frappe.db.get_value("User", {field: cand, "enabled": 1}, "name")
-					if match:
-						farmer_user = match
+				candidates = [c for c in (phone_number, re.sub(r"\D", "", phone_number)) if c]
+				farmer_user = None
+				for field in ("mobile_no", "phone"):
+					for cand in candidates:
+						match = frappe.db.get_value("User", {field: cand, "enabled": 1}, "name")
+						if match:
+							farmer_user = match
+							break
+					if farmer_user:
 						break
-				if farmer_user:
-					break
-
-			if farmer_user and frappe.db.exists("Has Role", {"parent": farmer_user, "role": "A2C Farmer"}):
-				farmer_profile.user = farmer_user
+				if farmer_user and frappe.db.exists(
+					"Has Role", {"parent": farmer_user, "role": "A2C Farmer"}
+				):
+					farmer_profile.user = farmer_user
 
 		# ignore_permissions=True is required because this background job processes webhooks
 		# from OpenG2P asynchronously. The user context set (or Administrator fallback) may

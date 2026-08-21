@@ -59,9 +59,13 @@ class DriftWarnModel(BaseModel):
 			pass
 
 
+from typing import Any
+
+
 class OpenG2PResponse(DriftWarnModel):
 	success: bool
 	message: str | None = None
+	data: Any | None = None
 
 
 class OpenG2PFarmerSchema(DriftWarnModel):

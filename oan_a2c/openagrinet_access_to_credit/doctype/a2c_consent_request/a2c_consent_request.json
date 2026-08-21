@@ -153,7 +153,8 @@
   {
    "create": 1,
    "read": 1,
-   "role": "A2C Farmer"
+   "role": "A2C Farmer",
+   "write": 1
   }
  ],
  "row_format": "Dynamic",

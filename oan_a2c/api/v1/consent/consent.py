@@ -419,11 +419,23 @@ def verify_otp(**kwargs):
 		frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
 
 	farmer_db_id = cr_doc.farmer
-	client.verify_otp(
+	otp_response = client.verify_otp(
 		farmer_id=farmer_db_id,
 		transaction_id=transaction_id,
 		otp_code=otp_code,
 	)
+
+	response_data = otp_response.get("data") if isinstance(otp_response, dict) else None
+	if response_data:
+		frappe.get_doc(
+			{
+				"doctype": "Comment",
+				"comment_type": "Info",
+				"reference_doctype": "A2C Consent Request",
+				"reference_name": consent_request,
+				"content": f"OpenG2P Verify OTP Data: {frappe.as_json(response_data)}",
+			}
+		).insert(ignore_permissions=True)
 
 	# In the reverted schema, the only valid options are Draft, Pending OTP, and Approved.
 	# Keep status at "Pending OTP" and record the verification timestamp.
@@ -477,6 +489,7 @@ def _save_direct_consent_response_to_lead(consent_request, response_data, openg2
 				"status": "approved",
 				"approved_at": to_tz_aware_iso(now_datetime()),
 			},
+			"farmer": {"id": response_data.get("id", 1)},
 			"selected_data": response_data,
 		}
 		# enforce_permission=False: called in-process, not via authenticated HTTP.
