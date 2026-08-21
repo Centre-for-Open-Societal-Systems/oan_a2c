@@ -1,16 +1,20 @@
 import frappe
 
-from oan_a2c.api.utils import status_has_tag
-
-_COUNTERS = (
+# Counters are split by value shape because the all-banks view aggregates them
+# differently: scalars sum, maps merge key-wise. Adding a counter to the wrong
+# tuple is a TypeError in _all_banks_view rather than a silently wrong number.
+_SCALAR_COUNTERS = (
 	"total_products",
 	"active_products",
 	"pending_products",
 	"rejected_products",
 	"archived_products",
 	"total_applications",
-	"stage_counts",
 )
+
+_MAP_COUNTERS = ("stage_counts",)
+
+_COUNTERS = _SCALAR_COUNTERS + _MAP_COUNTERS
 
 _EXCLUDED_PRODUCT_STATUSES = set()
 
@@ -119,20 +123,27 @@ def compute_and_set(bank: str) -> dict:
 def _all_banks_view() -> dict:
 	"""Admin (all-banks) view: platform totals plus a per-bank breakdown.
 
-	Every counter is additive, so the platform total is just the sum of the
-	per-bank values. This reuses the per-bank caches the incr/decr hooks already
-	keep consistent — no separate 'all banks' key to maintain. A cold bank falls
-	back to its own compute_and_set (a per-bank query), warming it as a side
-	effect. We deliberately never issue one cross-bank aggregate here.
+	Scalar counters sum; `stage_counts` merges key-wise. Either way the platform
+	total is derived from the per-bank values, reusing the caches the incr/decr
+	hooks already keep consistent — no separate 'all banks' key to maintain. A cold
+	bank falls back to its own compute_and_set (a per-bank query), warming it as a
+	side effect. We deliberately never issue one cross-bank aggregate here.
 	"""
-	totals = dict.fromkeys(_COUNTERS, 0)
+	totals = dict.fromkeys(_SCALAR_COUNTERS, 0)
+	stage_totals: dict[str, int] = {}
 	by_bank = []
 	for bank in frappe.get_all("A2C Participating Bank", pluck="name"):
 		stats = get_stats_for_bank(bank) or compute_and_set(bank)
 		by_bank.append({"bank": bank, **stats})
-		for counter in _COUNTERS:
+		for counter in _SCALAR_COUNTERS:
 			totals[counter] += stats[counter]
-	return {"stats": totals, "by_bank": by_bank}
+		# Stage labels are per-bank by design (each bank names its own pipeline
+		# stages), so the platform view is a key-wise merge, not a sum. Two banks
+		# that happen to use the same label are added together; distinct labels
+		# stay as separate buckets.
+		for stage, count in (stats["stage_counts"] or {}).items():
+			stage_totals[stage] = stage_totals.get(stage, 0) + count
+	return {"stats": {**totals, "stage_counts": stage_totals}, "by_bank": by_bank}
 
 
 def get_dashboard_stats(bank: str | None) -> dict:

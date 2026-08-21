@@ -3,10 +3,11 @@ import unittest
 import frappe
 
 from oan_a2c.a2c_marketplace.stats_cache import (
+	_COUNTERS,
+	_MAP_COUNTERS,
+	_SCALAR_COUNTERS,
 	_compute_from_db,
-	compute_and_set,
-	get_stats_for_bank,
-	on_product_change,
+	get_dashboard_stats,
 )
 
 
@@ -137,3 +138,136 @@ class TestStatsCache(unittest.TestCase):
 		self.assertEqual(stats_resumed["total_products"], 4)
 		self.assertEqual(stats_resumed["active_products"], 1)
 		self.assertEqual(stats_resumed["rejected_products"], 1)
+
+
+class _BankFixtureMixin:
+	"""A bank, an approved consent, and a helper to hang applications off them.
+
+	`A2CLoanApplication.before_save` refuses the move into `In Transition` without
+	an approved consent, so the consent is part of the fixture rather than
+	something individual tests opt into.
+	"""
+
+	@classmethod
+	def _make_bank(cls, label: str, phone: str):
+		suffix = frappe.generate_hash(length=6)
+		slug = label.replace(" ", "")
+		bank = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"registered_city": "Test City",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO",
+				"ops_name": "Test Ops",
+				"bank_name": f"{label} {suffix}",
+				"bank_code": f"TEST_{slug.upper()}_{suffix}",
+				"status": "Active",
+				"entity_type": "Commercial Bank",
+				"registered_email": f"{slug.lower()}_{suffix}@test.com",
+				"registered_phone": phone,
+				"registered_region": "Addis Ababa",
+				"registered_country": "Ethiopia",
+			}
+		).insert(ignore_permissions=True)
+		cls.bank_name = bank.name
+		cls.consent = frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"consent_type": "Credit Assessment",
+				"purpose": "Stats cache fixture",
+				"status": "Approved",
+			}
+		).insert(ignore_permissions=True)
+		return bank
+
+	@classmethod
+	def _make_application(cls, status: str, farmer_profile: str | None = None):
+		doc = {
+			"doctype": "A2C Loan Application",
+			"bank": cls.bank_name,
+			"first_name": "Stats",
+			"last_name": status.replace(" ", ""),
+			"phone_number": "+251911000002",
+			"loan_amount": 1000,
+			"requested_amount": 1000,
+			"status": status,
+			"consent_id": cls.consent.name,
+		}
+		if farmer_profile:
+			doc["farmer_profile"] = farmer_profile
+		return frappe.get_doc(doc).insert(ignore_permissions=True)
+
+	@classmethod
+	def _drop_bank_fixture(cls):
+		# Products before the bank: force-deleting the bank first would leave rows
+		# pointing at a bank that no longer exists, and those orphans are invisible
+		# to the all-banks view, which walks the bank table.
+		frappe.db.delete("A2C Loan Product", {"bank": cls.bank_name})
+		frappe.delete_doc("A2C Participating Bank", cls.bank_name, force=True)
+		frappe.delete_doc("A2C Consent Request", cls.consent.name, force=True)
+
+
+class TestAllBanksView(_BankFixtureMixin, unittest.TestCase):
+	"""The platform-admin (bank=None) aggregation.
+
+	Regression cover for the all-banks view summing `stage_counts` -- a dict --
+	into an int accumulator, which raised TypeError for every unbound admin the
+	moment a single Participating Bank existed.
+	"""
+
+	@classmethod
+	def setUpClass(cls):
+		frappe.set_user("Administrator")
+		cls._make_bank("All Banks View", "+251911000001")
+		cls.visible_app = cls._make_application("In Transition")
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Loan Application", cls.visible_app.name, force=True)
+		cls._drop_bank_fixture()
+		frappe.db.commit()
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		frappe.cache().delete_keys(f"dashboard_stats:{self.bank_name}:*")
+
+	def test_counter_tuples_partition_counters(self):
+		"""Every counter is aggregated exactly once, by exactly one strategy."""
+		self.assertEqual(set(_SCALAR_COUNTERS) | set(_MAP_COUNTERS), set(_COUNTERS))
+		self.assertEqual(set(_SCALAR_COUNTERS) & set(_MAP_COUNTERS), set())
+		self.assertEqual(len(_SCALAR_COUNTERS) + len(_MAP_COUNTERS), len(_COUNTERS))
+
+	def test_all_banks_view_does_not_raise_on_map_counter(self):
+		"""bank=None must aggregate, not TypeError, once any bank exists."""
+		payload = get_dashboard_stats(None)
+
+		self.assertIn("stats", payload)
+		self.assertIn("by_bank", payload)
+		self.assertIsInstance(payload["stats"]["stage_counts"], dict)
+		for counter in _SCALAR_COUNTERS:
+			self.assertIsInstance(payload["stats"][counter], int)
+
+	def test_all_banks_view_merges_stage_counts_key_wise(self):
+		"""Stage buckets merge by label; they are not summed into one number."""
+		payload = get_dashboard_stats(None)
+
+		by_bank = {row["bank"]: row for row in payload["by_bank"]}
+		self.assertIn(self.bank_name, by_bank)
+		self.assertEqual(by_bank[self.bank_name]["stage_counts"], {"In Transition": 1})
+		self.assertEqual(by_bank[self.bank_name]["total_applications"], 1)
+
+		# The platform bucket for this stage includes our row, and the scalar
+		# total is at least our contribution -- other banks on the site may add
+		# to both, so this asserts a floor rather than an exact figure.
+		self.assertGreaterEqual(payload["stats"]["stage_counts"].get("In Transition", 0), 1)
+		self.assertGreaterEqual(payload["stats"]["total_applications"], 1)
+
+	def test_single_bank_view_is_unwrapped(self):
+		"""bank=<code> returns just that bank's stats, with no by_bank breakdown."""
+		payload = get_dashboard_stats(self.bank_name)
+
+		self.assertNotIn("by_bank", payload)
+		self.assertEqual(payload["stats"]["total_applications"], 1)
+		self.assertEqual(payload["stats"]["stage_counts"], {"In Transition": 1})
