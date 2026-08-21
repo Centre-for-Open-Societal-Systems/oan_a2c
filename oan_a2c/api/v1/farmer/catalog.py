@@ -2,7 +2,6 @@ from typing import Literal
 
 import frappe
 from frappe import _
-
 from oan_a2c.a2c_marketplace.roles import FARMER_ROLE, DEVELOPMENT_AGENT_ROLE
 from oan_a2c.api.utils import (
 	handle_api_errors,
@@ -14,6 +13,27 @@ from oan_a2c.api.utils import (
 )
 from oan_a2c.api.v1.loan_applications import BrowseProductsSchema
 from pydantic import BaseModel, Field
+
+from oan_a2c.a2c_marketplace.doctype_schemas import (
+	MAX_INTEREST_RATE,
+	MAX_LOAN_AMOUNT,
+	MAX_TENURE_MONTHS,
+)
+from pydantic import BaseModel, Field
+
+from oan_a2c.a2c_marketplace.doctype_schemas import (
+	MAX_INTEREST_RATE,
+	MAX_LOAN_AMOUNT,
+	MAX_TENURE_MONTHS,
+)
+from oan_a2c.api.utils import (
+	handle_api_errors,
+	success_response,
+	to_tz_aware_iso,
+	validate_request,
+)
+from oan_a2c.api.v1.loan_applications import BrowseProductsSchema
+
 
 class SaveProductSchema(BaseModel):
 	loan_product: str = Field(..., min_length=1, max_length=140)
@@ -55,9 +75,11 @@ class FarmerCatalogSchema(BrowseProductsSchema):
 	# exact filter. Comma-separated ("6,12") because the chips are a multi-select;
 	# min_/max_tenure_months stay for callers that genuinely want a range.
 	tenure_months: str | None = Field(None, max_length=140)
-	min_tenure_months: int | None = Field(None, ge=0, le=600)
-	max_tenure_months: int | None = Field(None, ge=0, le=600)
-	max_interest_rate: float | None = Field(None, ge=0, le=100)
+	region: str | None = Field(None, max_length=140)
+	is_saved: bool | None = Field(None)
+	min_tenure_months: int | None = Field(None, ge=0, le=MAX_TENURE_MONTHS)
+	max_tenure_months: int | None = Field(None, ge=0, le=MAX_TENURE_MONTHS)
+	max_interest_rate: float | None = Field(None, ge=0, le=MAX_INTEREST_RATE)
 	sort_by: Literal[
 		"product_name",
 		"interest_low_high",
@@ -67,6 +89,7 @@ class FarmerCatalogSchema(BrowseProductsSchema):
 		"tenure_low_high",
 		"newest",
 	] = "product_name"
+
 
 class PaginationSchema(BaseModel):
 	limit: int = Field(20, ge=1, le=100)
@@ -98,7 +121,6 @@ def _annotate_saved(products: list[dict]) -> None:
 	for product in products:
 		product["is_saved"] = product["name"] in saved
 
-
 def _products_in_category(category: str) -> list[str]:
 	"""Loan product ids carrying `category`.
 
@@ -108,27 +130,89 @@ def _products_in_category(category: str) -> list[str]:
 	permission-filtered — a product the farmer may not see cannot be pulled into
 	the result by naming it here.
 	"""
-	return frappe.get_all(
+	# ids only ever narrow the permission-filtered product query below
+	return frappe.get_all(  # bank-scope-exempt: see docstring
 		"A2C Term Relationship",
 		filters={"term_type": "Category", "term_category": category},
 		pluck="loan_product",
 	)
 
 
+def _empty_catalog_page(kwargs):
+	"""A well-formed empty page.
+
+	A filter that provably matches nothing short-circuits before the product query
+	rather than sending an empty `IN ()` to the database, but the response shape
+	must stay identical to a populated page so clients need no special case.
+	"""
+	return success_response(
+		data={"products": []},
+		message="Catalog retrieved successfully",
+		pagination={
+			"page": (kwargs["start"] // kwargs["limit"]) + 1,
+			"limit": kwargs["limit"],
+			"total": 0,
+			"total_pages": 0,
+			"has_next": False,
+		},
+	)
+
+
+def _narrow_by_names(filters: dict, candidates: list[str]) -> bool:
+	"""Intersect the `name` filter with `candidates`; False if nothing survives.
+
+	Several filters (category, is_saved, an explicit loan_product) all constrain
+	`name`, and a dict holds one value per key -- so each must intersect with what
+	is already there instead of overwriting it. The scalar case matters: an
+	explicit `loan_product` sets `name` to a bare string, and treating that as
+	"nothing set yet" silently drops the caller's filter.
+	"""
+	existing = filters.get("name")
+	if existing is None:
+		surviving = list(candidates)
+	elif isinstance(existing, str):
+		surviving = [existing] if existing in candidates else []
+	else:
+		# ["in", [...]] from an earlier narrowing.
+		surviving = [n for n in existing[1] if n in set(candidates)]
+
+	if not surviving:
+		return False
+	filters["name"] = ["in", surviving]
+	return True
+
+
 @frappe.whitelist(allow_guest=False)
 @validate_request(FarmerCatalogSchema)
 @handle_api_errors
-@require_role([FARMER_ROLE, DEVELOPMENT_AGENT_ROLE])
-def list_catalog(**kwargs):
-	"""Active loan products across every bank, for a signed-in farmer.
 
-	The permission_query_conditions hook on A2C Loan Product automatically limits
-	farmers to status='Active', and because farmers are not bank-bound, they see
-	offerings from all participating banks.
+def list_catalog(**kwargs):
+	"""Active loan products across every bank, for any signed-in user.
+
+	Not farmer-only: browsing the catalog is open to anyone signed in. What each
+	caller sees is still decided by loan_product_scope_query -- a farmer sees
+	Active products across every bank, a bank user sees only their own bank.
 	"""
+	frappe.has_permission("A2C Loan Product", "read", throw=True)
+
 	filters = {"status": "Active"}
 	if kwargs.get("bank"):
 		filters["bank"] = kwargs["bank"]
+
+	if kwargs.get("region"):
+		banks_in_region = frappe.get_all(
+			"A2C Participating Bank",
+			filters={"registered_region": kwargs["region"], "status": "Active"},
+			pluck="name",
+		)
+		if not banks_in_region:
+			return _empty_catalog_page(kwargs)
+		if "bank" in filters:
+			if filters["bank"] not in banks_in_region:
+				return _empty_catalog_page(kwargs)
+		else:
+			filters["bank"] = ["in", banks_in_region]
+
 	if kwargs.get("loan_product"):
 		filters["name"] = kwargs["loan_product"]
 	if kwargs.get("search"):
@@ -177,23 +261,17 @@ def list_catalog(**kwargs):
 				filters["tenure_months"] = ["<=", int(kwargs["max_tenure_months"])]
 
 	if kwargs.get("category"):
-		matching = _products_in_category(kwargs["category"])
-		if kwargs.get("loan_product"):
-			# Both narrow `name`. Intersect rather than overwrite, or naming a
-			# product id would smuggle it past the category filter.
-			matching = [m for m in matching if m == kwargs["loan_product"]]
-		if not matching:
-			pagination = {
-				"page": (kwargs["start"] // kwargs["limit"]) + 1,
-				"limit": kwargs["limit"],
-				"total": 0,
-				"total_pages": 0,
-				"has_next": False,
-			}
-			return success_response(
-				data={"products": []}, message="Catalog retrieved successfully", pagination=pagination
-			)
-		filters["name"] = ["in", matching]
+		if not _narrow_by_names(filters, _products_in_category(kwargs["category"])):
+			return _empty_catalog_page(kwargs)
+
+	if kwargs.get("is_saved"):
+		saved = frappe.get_all(
+			"A2C Saved Product",
+			filters={"user": frappe.session.user},
+			pluck="loan_product",
+		)
+		if not _narrow_by_names(filters, saved):
+			return _empty_catalog_page(kwargs)
 
 	limit = kwargs["limit"]
 	start = kwargs["start"]
@@ -206,6 +284,7 @@ def list_catalog(**kwargs):
 			"product_name",
 			"slug",
 			"bank",
+			"image as image_url",
 			"min_interest_rate",
 			"max_interest_rate",
 			"min_amount",
@@ -247,25 +326,32 @@ def list_catalog(**kwargs):
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(SaveProductSchema)
 @handle_api_errors
-@require_role([FARMER_ROLE])
 def save_product(**kwargs):
-	"""Bookmarks a loan product for the farmer."""
-	user = frappe.session.user
-	profile_name = frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
-	if not profile_name:
-		frappe.throw(_("You must have a Farmer Profile to bookmark products."), frappe.ValidationError)
+	"""Bookmarks a loan product for the calling user.
 
+	Keyed on the User, not on A2C Farmer Profile: bookmarking is a browsing
+	convenience open to anyone signed in, and a profile only exists once consent
+	has bound one -- requiring it would mean nobody could save a product until
+	after they had already applied for one.
+	"""
+	user = frappe.session.user
 	loan_product = kwargs["loan_product"]
 	if not frappe.db.exists("A2C Loan Product", loan_product):
 		frappe.throw(_("Loan Product not found."), frappe.NotFoundError)
 
-	if not frappe.db.exists("A2C Saved Product", {"farmer_profile": profile_name, "loan_product": loan_product}):
-		doc = frappe.get_doc({
-			"doctype": "A2C Saved Product",
-			"farmer_profile": profile_name,
-			"loan_product": loan_product
-		})
+	if frappe.db.exists("A2C Saved Product", {"user": user, "loan_product": loan_product}):
+		# Saving twice is the same outcome as saving once, so a double-tap is a
+		# success rather than a duplicate error.
+		return success_response(message="Product saved successfully")
+
+	doc = frappe.get_doc({"doctype": "A2C Saved Product", "user": user, "loan_product": loan_product})
+	frappe.db.savepoint("save_product")
+	try:
 		doc.insert(ignore_permissions=False)
+	except frappe.DuplicateEntryError:
+		# Lost the race against a concurrent save of the same product; the unique
+		# index on (user, loan_product) held, and the caller's intent is satisfied.
+		frappe.db.rollback(save_point="save_product")
 
 	return success_response(message="Product saved successfully")
 
@@ -273,16 +359,11 @@ def save_product(**kwargs):
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(SaveProductSchema)
 @handle_api_errors
-@require_role([FARMER_ROLE])
 def unsave_product(**kwargs):
-	"""Removes a bookmarked loan product for the farmer."""
+	"""Removes a bookmarked loan product for the calling user."""
 	user = frappe.session.user
-	profile_name = frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
-	if not profile_name:
-		frappe.throw(_("You must have a Farmer Profile to bookmark products."), frappe.ValidationError)
-
 	loan_product = kwargs["loan_product"]
-	saved = frappe.db.get_value("A2C Saved Product", {"farmer_profile": profile_name, "loan_product": loan_product}, "name")
+	saved = frappe.db.get_value("A2C Saved Product", {"user": user, "loan_product": loan_product}, "name")
 	if saved:
 		frappe.delete_doc("A2C Saved Product", saved, ignore_permissions=False)
 
@@ -292,28 +373,25 @@ def unsave_product(**kwargs):
 @frappe.whitelist(allow_guest=False)
 @validate_request(PaginationSchema)
 @handle_api_errors
-@require_role([FARMER_ROLE])
 def get_saved_products(**kwargs):
-	"""Returns the farmer's bookmarked loan products."""
+	"""Returns the calling user's bookmarked loan products."""
 	user = frappe.session.user
-	profile_name = frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
-	if not profile_name:
-		return success_response(data={"products": []}, message="No saved products", pagination={"page": 1, "limit": 20, "total": 0, "total_pages": 0, "has_next": False})
-
 	limit = kwargs["limit"]
 	start = kwargs["start"]
 
-	# We fetch the links from A2C Saved Product and join with A2C Loan Product details
+	# We fetch the links from A2C Saved Product and join with A2C Loan Product details.
+	# `name asc` tiebreaks: bookmarks saved in the same second would otherwise have no
+	# defined order, and this query is paginated.
 	saved_docs = frappe.get_all(
 		"A2C Saved Product",
-		filters={"farmer_profile": profile_name},
+		filters={"user": user},
 		pluck="loan_product",
-		order_by="creation desc",
+		order_by="creation desc, name asc",
 		limit_page_length=limit,
 		limit_start=start,
 	)
 
-	total = frappe.db.count("A2C Saved Product", filters={"farmer_profile": profile_name})
+	total = frappe.db.count("A2C Saved Product", filters={"user": user})
 
 	products = []
 	if saved_docs:
@@ -330,6 +408,7 @@ def get_saved_products(**kwargs):
 				"product_name",
 				"slug",
 				"bank",
+				"image as image_url",
 				"min_interest_rate",
 				"max_interest_rate",
 				"min_amount",
@@ -359,75 +438,97 @@ def get_saved_products(**kwargs):
 	)
 
 
-
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
-@require_role([FARMER_ROLE, DEVELOPMENT_AGENT_ROLE])
+
 def get_catalog_facets(**kwargs):
-	"""Filter options for the discovery sidebar, derived from live catalog data.
-
-	Every option returned here is backed by at least one product the caller can
-	actually see, so the sidebar can never offer a filter that returns nothing --
-	and can never offer one the catalog endpoint does not implement. An empty
-	catalog yields empty facets rather than a fabricated default list.
-
-	Note what is absent: there is no region facet, because A2C Loan Product has no
-	region field. A product is offered by a bank, not into a place.
-	"""
+	"""Static filter options for the discovery sidebar, using global definitions."""
 	frappe.has_permission("A2C Loan Product", "read", throw=True)
 
-	# get_list applies loan_product_scope_query: Active only, across all banks.
-	products = frappe.get_list(
-		"A2C Loan Product",
-		filters={"status": "Active"},
-		fields=["name", "tenure_months", "min_amount", "max_amount", "min_interest_rate"],
-		limit_page_length=0,
+	categories = frappe.get_all("A2C Term Category", pluck="name")
+	tags = frappe.get_all("A2C Term Tag", pluck="name")
+
+	# Fetch unique regions from active banks
+	bank_regions = frappe.get_all(
+		"A2C Participating Bank", filters={"status": "Active"}, pluck="registered_region", distinct=True
 	)
-
-	if not products:
-		return success_response(
-			data={"categories": [], "tenures": [], "amount_range": None, "max_interest_rate": None},
-			message="No active products",
-		)
-
-	product_names = [p["name"] for p in products]
-
-	# bank-scope-exempt: A2C Term Relationship is bank-scoped and a farmer is
-	# bank-bound, so get_list returns nothing. Restricted to product_names, which
-	# came from the permission-filtered query above -- nothing invisible leaks in.
-	term_rows = frappe.get_all(
-		"A2C Term Relationship",
-		filters={"loan_product": ["in", product_names], "term_type": "Category"},
-		fields=["term_category"],
-	)
-	counts: dict[str, int] = {}
-	for row in term_rows:
-		if row.term_category:
-			counts[row.term_category] = counts.get(row.term_category, 0) + 1
-	categories = [
-		{"name": name, "count": count}
-		for name, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-	]
-
-	tenures = sorted({int(p["tenure_months"]) for p in products if p.get("tenure_months")})
-
-	min_amounts = [float(p["min_amount"]) for p in products if p.get("min_amount") is not None]
-	max_amounts = [float(p["max_amount"]) for p in products if p.get("max_amount") is not None]
-	# Derived from min_interest_rate because that is what list_catalog filters and
-	# what the card displays. Taken from max_interest_rate, the ceiling sat well
-	# above every headline rate, so the whole upper half of the slider was inert --
-	# dragging it changed nothing until it fell below the cheapest product.
-	rates = [float(p["min_interest_rate"]) for p in products if p.get("min_interest_rate") is not None]
+	regions = sorted(list(set(r for r in bank_regions if r)))
 
 	return success_response(
 		data={
-			"categories": categories,
-			"tenures": tenures,
+			"categories": [{"name": c, "count": None} for c in categories],
+			"tags": tags,
+			"regions": regions,
+			"tenures": [],  # Kept for backward compatibility if frontend maps it
+			"tenure_range": {"min": 1, "max": MAX_TENURE_MONTHS},
 			"amount_range": {
-				"min": min(min_amounts) if min_amounts else 0.0,
-				"max": max(max_amounts) if max_amounts else 0.0,
+				"min": 0.0,
+				"max": float(MAX_LOAN_AMOUNT),
 			},
-			"max_interest_rate": max(rates) if rates else None,
+			"max_interest_rate": float(MAX_INTEREST_RATE),
 		},
 		message="Catalog facets retrieved successfully",
+	)
+
+
+class GetBankDetailsSchema(BaseModel):
+	bank: str = Field(..., min_length=1, max_length=140)
+
+
+# The storefront view of a bank: the fields a borrower needs to decide whether to
+# apply. Everything else on A2C Participating Bank -- contacts, onboarding state,
+# internal notes -- is deliberately absent, and this list is the allowlist rather
+# than a denylist so a field added to the doctype later cannot leak by default.
+_BANK_PUBLIC_FIELDS = (
+	"name",
+	"bank_name",
+	"bank_code",
+	"brand_name",
+	"entity_type",
+	"website",
+	"logo",
+	"registered_region",
+	"registered_country",
+	"status",
+)
+
+
+@frappe.whitelist(allow_guest=False)
+@validate_request(GetBankDetailsSchema)
+@handle_api_errors
+def get_bank_details(**kwargs):
+	"""Storefront detail for one Active bank, for any signed-in user.
+
+	Reads via frappe.db.get_value rather than get_doc, which bypasses DocPerm on
+	A2C Participating Bank -- farmers hold none. That exemption is safe only
+	because of the two constraints below, so neither may be relaxed without
+	revisiting it: the response is built from a fixed public-field allowlist, and
+	an inactive bank is indistinguishable from a missing one, so this cannot be
+	used to enumerate banks that are not yet live on the marketplace.
+	"""
+	bank_name = kwargs.get("bank")
+
+	bank_info = frappe.db.get_value(
+		"A2C Participating Bank",
+		bank_name,
+		list(_BANK_PUBLIC_FIELDS),
+		as_dict=True,
+	)
+
+	if not bank_info or bank_info.status != "Active":
+		frappe.throw(_("Bank not found"), frappe.DoesNotExistError)
+
+	return success_response(
+		data={
+			"bank": bank_info.name,
+			"bank_name": bank_info.bank_name,
+			"bank_code": bank_info.bank_code,
+			"brand_name": bank_info.brand_name,
+			"entity_type": bank_info.entity_type,
+			"website": bank_info.website,
+			"logo_url": bank_info.logo,
+			"registered_region": bank_info.registered_region,
+			"registered_country": bank_info.registered_country,
+		},
+		message="Bank details retrieved successfully",
 	)

@@ -33,16 +33,22 @@ def assert_bank_active(bank: str | None) -> None:
 		)
 
 
-from oan_a2c.a2c_marketplace.doctype_schemas import ProductMetaSchema, SingleProductSchema
+from oan_a2c.a2c_marketplace.doctype_schemas import (
+	MAX_INTEREST_RATE,
+	MAX_LOAN_AMOUNT,
+	MAX_TENURE_MONTHS,
+	ProductMetaSchema,
+	SingleProductSchema,
+)
 
 
 class CreateProductSchema(BaseModel):
 	product_name: str | None = Field(None, min_length=1, max_length=140)
-	min_interest_rate: float | None = Field(None, ge=0, le=20.0)
-	max_interest_rate: float | None = Field(None, ge=0, le=20.0)
-	min_amount: int | None = Field(None, ge=0, le=999999)
-	max_amount: int | None = Field(None, ge=0, le=999999)
-	tenure_months: int | None = Field(None, ge=1, le=1200)
+	min_interest_rate: float | None = Field(None, ge=0, le=MAX_INTEREST_RATE)
+	max_interest_rate: float | None = Field(None, ge=0, le=MAX_INTEREST_RATE)
+	min_amount: int | None = Field(None, ge=0, le=MAX_LOAN_AMOUNT)
+	max_amount: int | None = Field(None, ge=0, le=MAX_LOAN_AMOUNT)
+	tenure_months: int | None = Field(None, ge=1, le=MAX_TENURE_MONTHS)
 	description: str | None = Field(None, max_length=2000)
 	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None
@@ -82,11 +88,11 @@ class CreateProductSchema(BaseModel):
 class UpdateProductSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
 	product_name: str | None = Field(None, max_length=140)
-	min_interest_rate: float | None = Field(None, ge=0, le=20.0)
-	max_interest_rate: float | None = Field(None, ge=0, le=20.0)
-	min_amount: int | None = Field(None, ge=0, le=999999)
-	max_amount: int | None = Field(None, ge=0, le=999999)
-	tenure_months: int | None = Field(None, ge=1, le=1200)
+	min_interest_rate: float | None = Field(None, ge=0, le=MAX_INTEREST_RATE)
+	max_interest_rate: float | None = Field(None, ge=0, le=MAX_INTEREST_RATE)
+	min_amount: int | None = Field(None, ge=0, le=MAX_LOAN_AMOUNT)
+	max_amount: int | None = Field(None, ge=0, le=MAX_LOAN_AMOUNT)
+	tenure_months: int | None = Field(None, ge=1, le=MAX_TENURE_MONTHS)
 	description: str | None = Field(None, max_length=2000)
 	image: str | None = Field(None, max_length=500)
 	product_meta: list[ProductMetaSchema] | None = None

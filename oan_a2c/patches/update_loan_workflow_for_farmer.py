@@ -30,9 +30,7 @@ def execute():
 
 	wf = frappe.get_doc("Workflow", WORKFLOW)
 
-	if any(
-		t.state == "Draft" and t.action == ACTION and t.allowed == FARMER_ROLE for t in wf.transitions
-	):
+	if any(t.state == "Draft" and t.action == ACTION and t.allowed == FARMER_ROLE for t in wf.transitions):
 		return
 
 	wf.append(

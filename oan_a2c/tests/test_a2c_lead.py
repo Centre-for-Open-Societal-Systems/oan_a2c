@@ -57,7 +57,8 @@ def _make_lead_verifiable(lead_id):
 	consent = frappe.get_doc(
 		{
 			"doctype": "A2C Consent Request",
-			"lead": lead_id,
+			"reference_doctype": "A2C Lead",
+			"reference_name": lead_id,
 			"status": "Approved",
 		}
 	).insert(ignore_permissions=True)

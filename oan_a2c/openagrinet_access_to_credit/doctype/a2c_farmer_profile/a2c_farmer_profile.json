@@ -238,7 +238,8 @@
   {
    "fieldname": "farmer_id",
    "fieldtype": "Data",
-   "label": "Farmer ID"
+   "label": "Farmer ID",
+   "search_index": 1
   },
   {
    "fieldname": "user",

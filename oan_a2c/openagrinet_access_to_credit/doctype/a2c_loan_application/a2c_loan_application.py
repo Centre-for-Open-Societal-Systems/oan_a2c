@@ -32,10 +32,10 @@ class A2CLoanApplication(Document):
 		"""Notify the bank's team when the application status changes."""
 		if self.is_new() or not self.has_value_changed("status"):
 			return
-		
+
 		actor = frappe.session.user
 		old_status = self.get_value_before_save("status")
-		
+
 		if old_status == "Draft" and self.status == "Processing":
 			label = self.lead_id or self.name
 			notify_users(
@@ -60,7 +60,9 @@ class A2CLoanApplication(Document):
 
 	def validate(self):
 		if self.is_new() and self.lead_id:
-			lead_status, lead_source = frappe.db.get_value("A2C Lead", self.lead_id, ["status", "lead_source"])
+			lead_status, lead_source = frappe.db.get_value(
+				"A2C Lead", self.lead_id, ["status", "lead_source"]
+			)
 			if lead_status not in ["Verified", "Processed"] and lead_source != "Self Service":
 				frappe.throw(_("A Loan Application can only be created for a Verified or Processed Lead."))
 

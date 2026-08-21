@@ -28,19 +28,19 @@ class SearchFarmerSchema(BaseModel):
 
 class RequestOTPSchema(BaseModel):
 	fayda_id: str = Field(..., min_length=1)
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str | None = None
 	idempotency_key: str | None = None
 
 
 class VerifyOTPSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str | None = None
 	otp_code: str = Field(..., min_length=1)
 	transaction_id: str | None = None
 	consent_request: str = Field(..., min_length=1)
 
 
 class SubmitConsentSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1)
+	lead_id: str | None = None
 	consent_request: str = Field(..., min_length=1)
 	consent_type: str | None = "specific"
 	consent_reason_id: int | None = 1
@@ -251,6 +251,22 @@ def get_partner_allowed_data_field_ids():
 	)
 
 
+def _lead_for_consent_request(cr_doc, claimed_lead_id=None) -> str | None:
+	"""The lead a consent request belongs to, taken from the request itself.
+
+	`lead_id` is an optional request parameter, so it can never be the thing that
+	decides which lead is written to -- a caller that simply omits it must not
+	thereby skip the ownership check. The server-side link is authoritative; a
+	client-supplied `lead_id` is only ever accepted as an assertion to verify.
+
+	Returns None for a self-service consent, which is legitimately lead-less.
+	"""
+	actual = cr_doc.reference_name if cr_doc.reference_doctype == "A2C Lead" else None
+	if claimed_lead_id and claimed_lead_id != actual:
+		frappe.throw(_("Consent Request does not belong to the specified lead."), frappe.ValidationError)
+	return actual
+
+
 # 3 ───────────────────────────────────────────────────────────────────────────
 @frappe.whitelist(allow_guest=False)
 @validate_request(RequestOTPSchema)
@@ -263,9 +279,16 @@ def request_otp(**kwargs):
 	lead_id = kwargs.get("lead_id")
 	idempotency_key = kwargs.get("idempotency_key")
 
-	if not frappe.db.exists("A2C Lead", lead_id):
-		frappe.throw(_("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
-	frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
+	if lead_id:
+		lead_status = frappe.db.get_value("A2C Lead", lead_id, "status")
+		if not lead_status:
+			frappe.throw(_("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
+		if lead_status in ["Converted", "Rejected"]:
+			frappe.throw(
+				_("Cannot request new consent because the lead is already {0}.").format(lead_status),
+				frappe.ValidationError,
+			)
+		frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
 
 	# Idempotency lock & check using Redis cache
 	if idempotency_key:
@@ -301,13 +324,33 @@ def request_otp(**kwargs):
 		farmer_dict = client.get_farmer_by_fayda_id(fayda_id)
 		farmer_db_id = farmer_dict.get("id")
 
-		# Open the pending consent request
+		# Open the pending consent request.
+		#
+		# Two links, answering two different questions:
+		#
+		#   reference_doctype/reference_name  "which lead is THIS consent for?"
+		#   A2C Lead.consent_id               "what is this lead's CURRENT consent?"
+		#
+		# The pointer on the consent request is the relationship and cannot be
+		# dropped in favour of the one on the lead: request_otp opens a fresh consent
+		# request on every call (OTP expiry, Rejected, Failed), so the lead's pointer
+		# is overwritten each time. OpenG2P's webhook arrives holding a consent
+		# request name and has to resolve its lead -- only this direction can still
+		# answer that for an earlier, superseded attempt whose delivery is in flight.
 		doc = frappe.new_doc("A2C Consent Request")
-		doc.lead = lead_id
 		doc.farmer = farmer_db_id
 		doc.farmer_fayda_id = fayda_id
+		if lead_id:
+			doc.reference_doctype = "A2C Lead"
+			doc.reference_name = lead_id
 		doc.status = "Pending OTP"
 		doc.insert(ignore_permissions=False)
+
+		if lead_id:
+			# Denormalised "latest attempt" cache, mirroring A2C Farmer Profile.consent_id.
+			# db.set_value deliberately: a consent write must not run (or trip) unrelated
+			# Lead validation such as the phone-uniqueness and verification gates.
+			frappe.db.set_value("A2C Lead", lead_id, "consent_id", doc.name, update_modified=False)
 
 		# client call — request the OTP from Fayda via Odoo.
 		otp_data = client.request_otp(farmer_id=farmer_db_id)
@@ -359,12 +402,15 @@ def verify_otp(**kwargs):
 	otp_code = kwargs.get("otp_code")
 	consent_request = kwargs.get("consent_request")
 
-	frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
 	frappe.has_permission("A2C Consent Request", "write", doc=consent_request, throw=True)
 
 	cr_doc, client, transaction_id = _get_consent_request_and_client(
 		consent_request, expected_status="Pending OTP"
 	)
+	lead_id = _lead_for_consent_request(cr_doc, lead_id)
+	if lead_id:
+		frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
+
 	farmer_db_id = cr_doc.farmer
 	client.verify_otp(
 		farmer_id=farmer_db_id,
@@ -457,7 +503,6 @@ def submit_consent(**kwargs):
 	consent_form_base64 = kwargs.get("consent_form_base64")
 	allowed_data_field_ids = kwargs.get("allowed_data_field_ids") or []
 
-	frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
 	frappe.has_permission("A2C Consent Request", "write", doc=consent_request, throw=True)
 
 	# 1. Idempotency Check (Pessimistic lock row first to check status safely)
@@ -467,18 +512,23 @@ def submit_consent(**kwargs):
 			_("A2C Consent Request '{0}' not found.").format(consent_request), frappe.DoesNotExistError
 		)
 
+	# The lead comes from the consent request, not from the caller -- see
+	# _lead_for_consent_request. Resolved before any branch so both the replay path
+	# and the live path are checked identically.
+	lead_id = _lead_for_consent_request(frappe.get_doc("A2C Consent Request", consent_request), lead_id)
+	if lead_id:
+		frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
+
 	if status == "Approved":
 		cr_doc = frappe.get_doc("A2C Consent Request", consent_request)
-		if cr_doc.lead != lead_id:
-			frappe.throw(_("Consent Request does not belong to the specified lead."), frappe.ValidationError)
 		return success_response(
 			data={
-				"lead_id": cr_doc.lead,
+				"lead_id": lead_id,
 				"consent_request": cr_doc.name,
 				"status": "Approved",
 				"openg2p_consent_id": cr_doc.openg2p_consent_id,
 				"consent_receipt": cr_doc.consent_receipt,
-				"farmer_preview": _get_farmer_preview_from_lead(cr_doc.lead),
+				"farmer_preview": _get_farmer_preview_from_lead(lead_id) if lead_id else {},
 			},
 			message="Consent already submitted and approved.",
 		)
@@ -525,13 +575,21 @@ def submit_consent(**kwargs):
 		# save_file dedupes by content hash, so an identical consent PDF saved by another
 		# user leaves a private File that validate_private_file_access blocks this caller
 		# from re-attaching. This is a trusted server-side write, so bypass that check.
+		#
+		# Attach to the lead when there is one, otherwise to the consent request
+		# itself. NOT to A2C Farmer Profile keyed on `cr_doc.farmer`: that field
+		# holds the OpenG2P farmer id, not a Farmer Profile name, so the File would
+		# link to a document that does not exist.
+		attached_doctype = "A2C Lead" if lead_id else "A2C Consent Request"
+		attached_name = lead_id if lead_id else cr_doc.name
+
 		file_doc = frappe.get_doc(
 			{
 				"doctype": "File",
 				"file_name": consent_form_filename,
 				"content": file_content,
-				"attached_to_doctype": "A2C Lead",
-				"attached_to_name": lead_id,
+				"attached_to_doctype": attached_doctype,
+				"attached_to_name": attached_name,
 				"is_private": 1,
 			}
 		)
@@ -622,25 +680,28 @@ def submit_consent(**kwargs):
 		)
 
 		# Persist the farmer profile onto the lead and sync the headline fields.
-		farmer_preview = _save_farmer_data_to_lead(lead_id, farmer_dict, openg2p_consent_id)
+		if lead_id:
+			farmer_preview = _save_farmer_data_to_lead(lead_id, farmer_dict, openg2p_consent_id)
 
-		given_name = farmer_preview.get("given_name", "")
-		family_name = farmer_preview.get("family_name", "")
-		phone_list = farmer_preview.get("phone_no") or []
-		mobile = phone_list[0] if isinstance(phone_list, list) and phone_list else ""
+			given_name = farmer_preview.get("given_name", "")
+			family_name = farmer_preview.get("family_name", "")
+			phone_list = farmer_preview.get("phone_no") or []
+			mobile = phone_list[0] if isinstance(phone_list, list) and phone_list else ""
 
-		if given_name or family_name or mobile:
-			try:
-				lead = frappe.get_doc("A2C Lead", lead_id)
-				if given_name:
-					lead.first_name = given_name
-				if family_name:
-					lead.last_name = family_name
-				if mobile and not lead.phone_number:
-					lead.phone_number = mobile
-				lead.save(ignore_permissions=False)
-			except Exception as e:
-				frappe.logger().warning(f"Could not save farmer name fields: {e}")
+			if given_name or family_name or mobile:
+				try:
+					lead = frappe.get_doc("A2C Lead", lead_id)
+					if given_name:
+						lead.first_name = given_name
+					if family_name:
+						lead.last_name = family_name
+					if mobile and not lead.phone_number:
+						lead.phone_number = mobile
+					lead.save(ignore_permissions=False)
+				except Exception as e:
+					frappe.logger().warning(f"Could not save farmer name fields: {e}")
+		else:
+			farmer_preview = {}
 
 	except ConsentNotApproved as e:
 		# Upstream (OpenG2P) declined the consent. Roll back the partial writes,

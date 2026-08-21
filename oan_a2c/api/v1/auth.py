@@ -34,9 +34,6 @@ class RegisterUserSchema(BaseModel):
 		return validate_password_complexity(v)
 
 
-
-
-
 def create_user_account(
 	email: str,
 	full_name: str,
@@ -91,7 +88,9 @@ def create_user_account(
 @frappe.whitelist(allow_guest=True)
 @validate_request(RegisterUserSchema)
 @handle_api_errors
-def register_user(full_name: str, password: str, phone_number: str, email: str | None = None, role: str = BANK_ADMIN_ROLE):
+def register_user(
+	full_name: str, password: str, phone_number: str, email: str | None = None, role: str = BANK_ADMIN_ROLE
+):
 	check_rate_limit(f"rl:register_user:{getattr(frappe.local, 'request_ip', 'guest')}", limit=50, window=60)
 	check_rate_limit(f"rl:register_phone:{phone_number}", limit=5, window=60)
 
@@ -130,6 +129,3 @@ def register_user(full_name: str, password: str, phone_number: str, email: str |
 		role=role,
 	)
 	return success_response(data={"message": _("Account created successfully.")})
-
-
-

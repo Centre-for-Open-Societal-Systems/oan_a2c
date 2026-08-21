@@ -40,9 +40,7 @@ def get_dashboard_summary(**kwargs):
 	farmer_profile = None
 	profile_name = frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
 	if profile_name:
-		row = frappe.db.get_value(
-			"A2C Farmer Profile", profile_name, list(_PROFILE_FIELDS), as_dict=True
-		)
+		row = frappe.db.get_value("A2C Farmer Profile", profile_name, list(_PROFILE_FIELDS), as_dict=True)
 		if row:
 			farmer_profile = {k: row.get(k) for k in _PROFILE_FIELDS}
 			farmer_profile["farmer_id"] = farmer_profile.get("farmer_id") or profile_name
@@ -103,7 +101,7 @@ def get_dashboard_summary(**kwargs):
 		# bank-scope-exempt: A2C Term Relationship is bank-scoped and a farmer is
 		# bank-bound. Restricted to `visible`, which came from the permission-filtered
 		# query above, so nothing the farmer may not see can enter the result.
-		rows = frappe.get_all(
+		rows = frappe.get_all(  # bank-scope-exempt: see comment above
 			"A2C Term Relationship",
 			filters={"loan_product": ["in", visible], "term_type": "Category"},
 			pluck="term_category",

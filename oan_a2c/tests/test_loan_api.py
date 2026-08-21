@@ -28,7 +28,10 @@ class TestLoansV1API(unittest.TestCase):
 			"DELETE FROM `tabA2C Farmer Profile` WHERE lead_id='TEST_LEAD_999' OR phone_number='+251999888777'"
 		)
 		frappe.db.sql("DELETE FROM `tabA2C Lead` WHERE name='TEST_LEAD_999'")
-		frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead='TEST_LEAD_999'")
+		frappe.db.sql(
+			"DELETE FROM `tabA2C Consent Request` "
+			"WHERE reference_doctype='A2C Lead' AND reference_name='TEST_LEAD_999'"
+		)
 		frappe.db.sql(
 			"DELETE FROM `tabA2C Loan Application Audit Event` WHERE loan_application IN "
 			"(SELECT name FROM `tabA2C Loan Application` WHERE lead_id='TEST_LEAD_999')"
@@ -97,14 +100,18 @@ class TestLoansV1API(unittest.TestCase):
 
 		farmer_profile_name = frappe.db.get_value("A2C Lead", "TEST_LEAD_999", "farmer_profile")
 
-		if not frappe.db.exists("A2C Consent Request", {"lead": "TEST_LEAD_999"}):
+		if not frappe.db.exists(
+			"A2C Consent Request",
+			{"reference_doctype": "A2C Lead", "reference_name": "TEST_LEAD_999"},
+		):
 			consent = frappe.get_doc(
 				{
 					"doctype": "A2C Consent Request",
 					"farmer": "API_TEST_FARMER Test",
 					"farmer_fayda_id": "123456789",
 					"partner": "Test Partner",
-					"lead": "TEST_LEAD_999",
+					"reference_doctype": "A2C Lead",
+					"reference_name": "TEST_LEAD_999",
 					"status": "Approved",
 					"otp_verified_at": "2026-06-11 12:00:00",
 					"consent_receipt": "{'signed': true}",
@@ -149,7 +156,10 @@ class TestLoansV1API(unittest.TestCase):
 			# can be force-deleted without the cancel-first guard.
 			frappe.db.sql("UPDATE `tabA2C Loan Application` SET docstatus=0 WHERE name=%s", self.app_id)
 			frappe.delete_doc("A2C Loan Application", self.app_id, ignore_permissions=True, force=True)
-		frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead='TEST_LEAD_999'")
+		frappe.db.sql(
+			"DELETE FROM `tabA2C Consent Request` "
+			"WHERE reference_doctype='A2C Lead' AND reference_name='TEST_LEAD_999'"
+		)
 
 		# Reset response state to avoid test pollution
 		if getattr(frappe.local, "response", None):
@@ -283,7 +293,10 @@ class TestLoansV1API(unittest.TestCase):
 		# Ensure no farmer profile is linked
 		frappe.db.set_value("A2C Lead", lead_name, "farmer_profile", None)
 		# Delete any existing consent requests for this test lead
-		frappe.db.sql("DELETE FROM `tabA2C Consent Request` WHERE lead=%s", (lead_name,))
+		frappe.db.sql(
+			"DELETE FROM `tabA2C Consent Request` WHERE reference_doctype='A2C Lead' AND reference_name=%s",
+			(lead_name,),
+		)
 		frappe.db.commit()
 
 		# 2. Call get_basic_profile - should return 400 ValidationError response
@@ -301,7 +314,8 @@ class TestLoansV1API(unittest.TestCase):
 				"farmer": "Pending Farmer",
 				"farmer_fayda_id": "987654321",
 				"partner": "Test Partner",
-				"lead": lead_name,
+				"reference_doctype": "A2C Lead",
+				"reference_name": lead_name,
 				"status": "Pending OTP",
 			}
 		)

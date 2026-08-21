@@ -316,6 +316,9 @@
          "});",
          "if (products.length) {",
          "    pm.collectionVariables.set('loan_product', products[0].name);",
+         "    if (products[0].bank) {",
+         "        pm.collectionVariables.set('catalog_bank', products[0].bank);",
+         "    }",
          "    console.log('Using product:', products[0].name, '-', products[0].product_name);",
          "}",
          "pm.test('Only Active products are returned', function () {",
@@ -683,6 +686,70 @@
          "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
          "const resData = resEnv.data || {};",
          "pm.test('Removed', function () { pm.expect(resEnv.status).to.not.eql('error'); });"
+        ]
+       }
+      }
+     ]
+    },
+    {
+     "name": "8. Get Bank Details",
+     "request": {
+      "method": "GET",
+      "header": [
+       {
+        "key": "Authorization",
+        "value": "Bearer {{farmer_jwt}}",
+        "type": "text"
+       }
+      ],
+      "url": {
+       "raw": "{{base_url}}/api/method/oan_a2c.api.v1.farmer.catalog.get_bank_details?bank={{catalog_bank}}",
+       "host": [
+        "{{base_url}}"
+       ],
+       "path": [
+        "api",
+        "method",
+        "oan_a2c.api.v1.farmer.catalog.get_bank_details"
+       ],
+       "query": [
+        {
+         "key": "bank",
+         "value": "{{catalog_bank}}",
+         "description": "Bank name or bank code to retrieve storefront details for."
+        }
+       ]
+      },
+      "description": "Storefront details for an Active bank: brand name, entity type, website, logo URL, region, and country."
+     },
+     "response": [],
+     "event": [
+      {
+       "listen": "prerequest",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "if (!pm.collectionVariables.get('catalog_bank')) {",
+         "    console.log('catalog_bank not set — run \"1. List Catalog\" first');",
+         "    pm.execution.skipRequest();",
+         "}"
+        ]
+       }
+      },
+      {
+       "listen": "test",
+       "script": {
+        "type": "text/javascript",
+        "exec": [
+         "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+         "const j = pm.response.json();",
+         "const resEnv = (j && j.message && typeof j.message === 'object') ? j.message : j;",
+         "const resData = resEnv.data || {};",
+         "pm.test('Bank details retrieved successfully', function () {",
+         "    pm.expect(resEnv.status).to.not.eql('error');",
+         "    pm.expect(resData).to.have.property('bank_name');",
+         "    pm.expect(resData).to.have.property('bank_code');",
+         "});"
         ]
        }
       }
@@ -1445,6 +1512,10 @@
   },
   {
    "key": "loan_product",
+   "value": ""
+  },
+  {
+   "key": "catalog_bank",
    "value": ""
   },
   {

@@ -19,7 +19,12 @@ class SelectedDataSchema(BaseModel):
 
 
 class FarmerInfoSchema(BaseModel):
-	id: int | None = None
+	# `id` is the OpenG2P farmer id and is the identity this webhook upserts an
+	# A2C Farmer Profile on, so it is required rather than optional. OpenG2P always
+	# sends it; declaring that here means a malformed payload is rejected at
+	# validation with a clear error, instead of falling through to a weaker key and
+	# silently creating a profile nothing can later match.
+	id: int = Field(..., ge=1)
 	farmer_id: Any | None = None
 	name: str | None = None
 
@@ -39,7 +44,7 @@ class ReceiveConsentDataSchema(BaseModel):
 	event_type: str | None = None
 	published_at: str | None = None
 	consent: ConsentInfoSchema
-	farmer: FarmerInfoSchema | None = None
+	farmer: FarmerInfoSchema
 	selected_data: dict[str, Any] | None = None
 
 
@@ -160,7 +165,9 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 			frappe.db.set_value("A2C Consent Request", consent_doc_name, updates_dict)
 
 		# Parse Farmer Data
-		farmer_data = validated.farmer or FarmerInfoSchema()
+		# Both `farmer` and its `id` are required by the schema, so this is always a
+		# populated block by the time validation has passed.
+		farmer_data = validated.farmer
 
 		raw_selected_data = validated.selected_data or {}
 		farmer_info_dict = {}
@@ -196,7 +203,11 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 
 		# Fetch Consent Request to check links
 		consent_doc = frappe.get_doc("A2C Consent Request", consent_doc_name)
-		lead_id = consent_doc.get("lead")
+		# Resolved from the consent request, never from A2C Lead.consent_id: that field
+		# only holds the lead's *latest* attempt, so a superseded request -- which is
+		# exactly what an in-flight redelivery is -- would no longer be found. A
+		# self-service consent has no lead at all, which is not an error.
+		lead_id = consent_doc.reference_name if consent_doc.reference_doctype == "A2C Lead" else None
 
 		# Parse Source of income
 		source_of_income_list = g("Source of Income", [])
@@ -295,50 +306,64 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 			"certification_photo_url": certification_photo_url,
 		}
 
+		# Identity for the upsert. `farmer_id` (the OpenG2P farmer id) is the key; the
+		# schema guarantees it is present, so a redelivery of the same webhook always
+		# resolves to the same profile instead of inserting another one.
+		#
+		# Phone number is only a secondary match, for profiles created before
+		# farmer_id was populated. It must never be the primary key: it is unique on
+		# this doctype, so two farmers who share or inherit a number would collapse
+		# onto one profile -- and since farmer_profile is what scopes loan-application
+		# visibility, that hands one farmer's applications to the other.
+		existing_profile_name = frappe.db.get_value(
+			"A2C Farmer Profile", {"farmer_id": farmer_data.id}, "name"
+		)
+		if not existing_profile_name and phone_number:
+			existing_profile_name = frappe.db.get_value(
+				"A2C Farmer Profile", {"phone_number": phone_number}, "name"
+			)
+
+		if existing_profile_name:
+			farmer_profile = frappe.get_doc("A2C Farmer Profile", existing_profile_name)
+		else:
+			farmer_profile = frappe.new_doc("A2C Farmer Profile")
+
+		for k, v in updates.items():
+			if v is not None and v != "":
+				farmer_profile.set(k, v)
+
+		# Binding a profile to a User grants that account visibility of this farmer's
+		# applications, so it is only done on an exact match against a user who
+		# already holds the farmer role -- never as a side effect of a loose lookup.
+		if phone_number and not farmer_profile.user:
+			# Find matching user by phone and role
+			import re
+
+			candidates = [c for c in (phone_number, re.sub(r"\D", "", phone_number)) if c]
+			farmer_user = None
+			for field in ("mobile_no", "phone"):
+				for cand in candidates:
+					match = frappe.db.get_value("User", {field: cand, "enabled": 1}, "name")
+					if match:
+						farmer_user = match
+						break
+				if farmer_user:
+					break
+
+			if farmer_user and frappe.db.exists("Has Role", {"parent": farmer_user, "role": "A2C Farmer"}):
+				farmer_profile.user = farmer_user
+
+		# ignore_permissions=True is required because this background job processes webhooks
+		# from OpenG2P asynchronously. The user context set (or Administrator fallback) may
+		# not have direct write permissions on A2C Farmer Profile, but the system must persist
+		# the verified profile details. Approved by: Lead Architect.
+		if existing_profile_name:
+			farmer_profile.save(ignore_permissions=True)
+		else:
+			farmer_profile.insert(ignore_permissions=True)
+
 		if lead_id:
 			lead_doc = frappe.get_doc("A2C Lead", lead_id)
-			existing_profile_name = None
-			if phone_number:
-				existing_profile_name = frappe.db.get_value(
-					"A2C Farmer Profile", {"phone_number": phone_number}, "name"
-				)
-
-			if existing_profile_name:
-				farmer_profile = frappe.get_doc("A2C Farmer Profile", existing_profile_name)
-			else:
-				farmer_profile = frappe.new_doc("A2C Farmer Profile")
-
-			for k, v in updates.items():
-				if v is not None and v != "":
-					farmer_profile.set(k, v)
-
-			if phone_number and not farmer_profile.user:
-				# Find matching user by phone and role
-				import re
-				candidates = [phone_number, re.sub(r"\D", "", phone_number)]
-				farmer_user = None
-				for field in ("mobile_no", "phone"):
-					for cand in candidates:
-						if not cand: continue
-						match = frappe.db.get_value("User", {field: cand, "enabled": 1}, "name")
-						if match:
-							farmer_user = match
-							break
-					if farmer_user:
-						break
-				
-				if farmer_user and frappe.db.exists("Has Role", {"parent": farmer_user, "role": "A2C Farmer"}):
-					farmer_profile.user = farmer_user
-
-			# ignore_permissions=True is required because this background job processes webhooks
-			# from OpenG2P asynchronously. The user context set (or Administrator fallback) may
-			# not have direct write permissions on A2C Farmer Profile, but the system must persist
-			# the verified profile details. Approved by: Lead Architect.
-			if existing_profile_name:
-				farmer_profile.save(ignore_permissions=True)
-			else:
-				farmer_profile.insert(ignore_permissions=True)
-
 			# db_set is used here to link the farmer profile back to the lead, bypassing
 			# validation, because this is an automated background webhook update. Approved by: Lead Architect.
 			lead_doc.db_set("farmer_profile", farmer_profile.name)
@@ -421,7 +446,10 @@ def validate_and_enqueue_consent(data, enforce_permission=True, sync=False, enqu
 	consent_doc_name = consent_docs[0].name
 
 	# Pre-validate linked lead existence (Option 3)
-	lead_id = frappe.db.get_value("A2C Consent Request", consent_doc_name, "lead")
+	ref = frappe.db.get_value(
+		"A2C Consent Request", consent_doc_name, ["reference_doctype", "reference_name"], as_dict=True
+	)
+	lead_id = ref.reference_name if ref and ref.reference_doctype == "A2C Lead" else None
 	if lead_id and not frappe.db.exists("A2C Lead", lead_id):
 		frappe.throw(frappe._("Linked Lead not found: {0}").format(lead_id), frappe.DoesNotExistError)
 

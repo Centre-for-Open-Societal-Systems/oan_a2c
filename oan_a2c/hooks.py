@@ -165,6 +165,11 @@ permission_query_conditions["A2C Consent Request"] = (
 permission_query_conditions["A2C Lead"] = (
 	"oan_a2c.a2c_marketplace.permissions.farmer_own_lead_query"
 )
+# Bookmarking is open to every signed-in user (DocPerm role "All"), so this hook is
+# the only thing scoping one user's saved list away from another's.
+permission_query_conditions["A2C Saved Product"] = (
+	"oan_a2c.a2c_marketplace.permissions.saved_product_own_query"
+)
 has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d in BANK_SCOPED}
 # The three farmer-owned doctypes above are scoped per document as well as per
 # list: a query condition filters get_list, but `frappe.has_permission(dt, "write",
