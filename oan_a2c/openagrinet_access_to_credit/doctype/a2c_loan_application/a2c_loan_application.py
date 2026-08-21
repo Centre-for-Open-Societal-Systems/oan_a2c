@@ -34,12 +34,19 @@ class A2CLoanApplication(Document):
 
 		if self.farmer_profile:
 			profile_consent = frappe.db.get_value("A2C Farmer Profile", self.farmer_profile, "consent_id")
-			if profile_consent and frappe.db.get_value("A2C Consent Request", profile_consent, "status") == "Approved":
+			if (
+				profile_consent
+				and frappe.db.get_value("A2C Consent Request", profile_consent, "status") == "Approved"
+			):
 				self.consent_id = profile_consent
 				return
 			approved_by_ref = frappe.db.get_value(
 				"A2C Consent Request",
-				{"reference_doctype": "A2C Farmer Profile", "reference_name": self.farmer_profile, "status": "Approved"},
+				{
+					"reference_doctype": "A2C Farmer Profile",
+					"reference_name": self.farmer_profile,
+					"status": "Approved",
+				},
 				"name",
 			)
 			if approved_by_ref:
@@ -48,7 +55,10 @@ class A2CLoanApplication(Document):
 
 		if self.lead_id:
 			lead_consent = frappe.db.get_value("A2C Lead", self.lead_id, "consent_id")
-			if lead_consent and frappe.db.get_value("A2C Consent Request", lead_consent, "status") == "Approved":
+			if (
+				lead_consent
+				and frappe.db.get_value("A2C Consent Request", lead_consent, "status") == "Approved"
+			):
 				self.consent_id = lead_consent
 				return
 			approved_by_lead_ref = frappe.db.get_value(
