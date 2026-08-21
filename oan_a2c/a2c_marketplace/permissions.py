@@ -376,12 +376,29 @@ def bank_scope_doc(doc, user=None):
 def saved_product_own_query(user=None):
 	"""permission_query_conditions for A2C Saved Product.
 
-	Bookmarking is open to every signed-in user (DocPerm role "All"), so row
-	visibility is the only thing standing between one user's saved list and
-	another's. Platform admins keep the unscoped view for support.
+	Bookmarking is open to every role that browses the catalog -- farmers, bank
+	users and development agents alike -- so row visibility is the only thing
+	standing between one user's saved list and another's. Platform admins keep the
+	unscoped view for support.
 	"""
 	if not user:
 		user = frappe.session.user
 	if is_platform_admin(user):
 		return ""
 	return f"`user` = {frappe.db.escape(user)}"
+
+
+def saved_product_own_doc(doc, user=None):
+	"""has_permission for A2C Saved Product -- the doc-level twin of the query above.
+
+	permission_query_conditions only fires on list queries, so on its own it leaves
+	`frappe.client.get("A2C Saved Product", "<name>")` open to anyone holding read
+	DocPerm: the row would be another user's bookmark. Writes are already safe (the
+	controller stamps `user` from the session), but reads and deletes by name need
+	this to make "you only see what you saved" true outside the API layer too.
+	"""
+	if not user:
+		user = frappe.session.user
+	if is_platform_admin(user):
+		return True
+	return doc.get("user") == user

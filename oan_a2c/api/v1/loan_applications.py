@@ -11,7 +11,6 @@ from oan_a2c.api.utils import (
 	SafeDate,
 	SafeEmail,
 	apply_status_transition,
-	assert_amount_within_product_range,
 	get_workflow_state_names,
 	handle_api_errors,
 	parse_multi_value,
@@ -814,25 +813,13 @@ def create_loan_application(**kwargs):
 			frappe.ValidationError,
 		)
 
-	# bank-scope-exempt — reading the product's own bank and amount range to stamp and
-	# validate the application; not a cross-bank query.
-	product = (
-		frappe.db.get_value(
-			"A2C Loan Product", loan_product, ["bank", "min_amount", "max_amount"], as_dict=True
-		)
-		or {}
-	)
-	bank = product.get("bank")
+	# bank-scope-exempt — reading the product's own bank to stamp the application;
+	# not a cross-bank query.
+	bank = frappe.db.get_value("A2C Loan Product", loan_product, "bank")
 	if not bank:
 		frappe.throw(
 			_("Loan Product {0} is not linked to a bank.").format(loan_product), frappe.ValidationError
 		)
-
-	# Same per-product rule the self-service path enforces: an amount the chosen
-	# product cannot offer would reach the bank as something it can never approve.
-	assert_amount_within_product_range(
-		credit_info.get("loan_amount"), product.get("min_amount"), product.get("max_amount")
-	)
 
 	loan_app = frappe.new_doc("A2C Loan Application")
 	loan_app.lead_id = lead_id

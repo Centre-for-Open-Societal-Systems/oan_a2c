@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
 from oan_a2c.api.utils import (
 	apply_status_transition,
-	assert_amount_within_product_range,
 	handle_api_errors,
 	require_role,
 	success_response,
@@ -195,12 +194,6 @@ def create_application(**kwargs):
 	product = frappe.get_doc("A2C Loan Product", kwargs["loan_product"])
 	if product.status != "Active":
 		frappe.throw(_("This loan product is not active."), frappe.ValidationError)
-
-	# The requested amount has to fit the product being applied for. The schema only
-	# bounds it at >= 1, because the real limit is per-product rather than global --
-	# without this a farmer could ask for more than any bank has offered, and the
-	# application would sit in a bank's queue as something it can never approve.
-	assert_amount_within_product_range(kwargs["requested_amount"], product.min_amount, product.max_amount)
 
 	profile = frappe.get_doc("A2C Farmer Profile", profile_name)
 

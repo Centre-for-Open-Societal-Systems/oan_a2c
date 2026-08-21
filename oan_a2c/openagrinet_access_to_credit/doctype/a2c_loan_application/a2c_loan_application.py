@@ -15,12 +15,6 @@ class A2CLoanApplication(Document):
 		"""Bank Admins + Agents of this application's bank (actor excluded downstream)."""
 		return get_bank_members(self.bank, roles=BANK_ROLES)
 
-	def before_save(self):
-		if not self.is_new():
-			db_status = self.get_db_value("status")
-			if self.status == "In Transition" and db_status != "In Transition":
-				self._enforce_submission_prerequisites()
-
 	def _enforce_submission_prerequisites(self):
 		"""
 		A loan application may only transition to 'In Transition' (submitted to a bank)
@@ -40,18 +34,22 @@ class A2CLoanApplication(Document):
 			):
 				self.consent_id = profile_consent
 				return
-			approved_by_ref = frappe.db.get_value(
-				"A2C Consent Request",
-				{
-					"reference_doctype": "A2C Farmer Profile",
-					"reference_name": self.farmer_profile,
-					"status": "Approved",
-				},
-				"name",
-			)
-			if approved_by_ref:
-				self.consent_id = approved_by_ref
-				return
+			# Self-service consents carry no reference_doctype/reference_name: request_otp
+			# only stamps those for the lead-anchored (agent) flow, and nothing stamps
+			# A2C Farmer Profile.consent_id outside the consent webhook. The one link that
+			# always exists is ownership -- the farmer opened the consent request as
+			# themselves -- so fall back to their most recent approved consent.
+			profile_user = frappe.db.get_value("A2C Farmer Profile", self.farmer_profile, "user")
+			if profile_user:
+				owned = frappe.db.get_value(
+					"A2C Consent Request",
+					{"owner": profile_user, "status": "Approved"},
+					"name",
+					order_by="creation desc",
+				)
+				if owned:
+					self.consent_id = owned
+					return
 
 		if self.lead_id:
 			lead_consent = frappe.db.get_value("A2C Lead", self.lead_id, "consent_id")
@@ -147,7 +145,17 @@ class A2CLoanApplication(Document):
 				"A2C Loan Product", self.loan_product, "product_name"
 			)
 
-		if self.loan_product:
+		# Only on create or when the amount/product actually moved. Re-running this on
+		# every save would let a bank narrowing its product range retroactively wedge
+		# live applications: the workflow save inside apply_status_transition, the
+		# Completed submit and any approved_amount edit would all start throwing, with
+		# no way left to advance or cancel the application.
+		if self.loan_product and (
+			self.is_new()
+			or self.has_value_changed("loan_product")
+			or self.has_value_changed("requested_amount")
+			or self.has_value_changed("loan_amount")
+		):
 			product_amounts = frappe.db.get_value(
 				"A2C Loan Product", self.loan_product, ["min_amount", "max_amount"], as_dict=True
 			)
@@ -159,6 +167,15 @@ class A2CLoanApplication(Document):
 					assert_amount_within_product_range(
 						amount, product_amounts.get("min_amount"), product_amounts.get("max_amount")
 					)
+
+		# Consent gate lives here rather than in before_save: before_save is skipped on
+		# insert-with-status and on submit, both of which can land a document in the
+		# bank's queue. apply_status_transition calls this explicitly too, since the
+		# workflow moves `status` with db_set and never runs controller hooks.
+		if self.status == "In Transition" and (
+			self.is_new() or self.get_db_value("status") != "In Transition"
+		):
+			self._enforce_submission_prerequisites()
 
 		self._sync_bank_from_product()
 
