@@ -572,6 +572,8 @@ def get_all_loans(**kwargs):
 			"loan_product_name",
 			"location",
 			"phone_number",
+			"first_name",
+			"last_name",
 			"creation",
 		],
 		order_by=order_by,
@@ -584,6 +586,14 @@ def get_all_loans(**kwargs):
 		r["loan_amount"] = float(r["loan_amount"]) if r.get("loan_amount") else 0.0
 		r["step"] = cint(r.get("step"))
 		r["creation"] = to_tz_aware_iso(r["creation"])
+		r["loan_type"] = r.get("loan_type") or ""
+		r["loan_product"] = r.get("loan_product") or ""
+		r["loan_product_name"] = r.get("loan_product_name") or ""
+		r["location"] = r.get("location") or ""
+		r["phone_number"] = r.get("phone_number") or ""
+		r["first_name"] = r.get("first_name") or ""
+		r["last_name"] = r.get("last_name") or ""
+		r["status"] = r.get("status") or "Unknown"
 
 	total_pages = -(-total_records // page_size)
 	has_next = offset + page_size < total_records

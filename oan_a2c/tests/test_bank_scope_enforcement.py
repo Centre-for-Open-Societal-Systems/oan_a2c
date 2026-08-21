@@ -16,9 +16,45 @@ BYPASS_LIST_CALLS = {
 	"frappe.db.get_list",
 }
 
-# Legitimate unscoped access can opt out with a trailing `# bank-scope-exempt`
-# comment on any line of the call. Use sparingly and with a reason.
+# Legitimate unscoped access opts out with a `# bank-scope-exempt` marker and a
+# reason -- on the call itself, in the comment block directly above it, or in the
+# enclosing function's docstring. All three are accepted because the reason is
+# usually a paragraph, and a scanner that only read one line above the call
+# rejected every real justification in the app while a genuinely unmarked call
+# sat unnoticed among the false positives.
 EXEMPT_MARKER = "# bank-scope-exempt"
+# The docstring form loses the leading "#", so match on the phrase itself there.
+EXEMPT_PHRASE = "bank-scope-exempt"
+
+
+def _docstring_spans(tree):
+	"""(start, end, docstring) for every function whose docstring carries a marker."""
+	spans = []
+	for node in ast.walk(tree):
+		if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+			continue
+		doc = ast.get_docstring(node) or ""
+		if EXEMPT_PHRASE in doc:
+			spans.append((node.lineno, node.end_lineno or node.lineno))
+	return spans
+
+
+def _is_exempt(node, lines, doc_spans):
+	"""Whether this call carries an exemption marker the author actually wrote."""
+	start = node.lineno - 1
+	end = node.end_lineno or node.lineno
+	if any(EXEMPT_MARKER in ln for ln in lines[start:end]):
+		return True
+
+	# The contiguous comment block directly above the call -- no blank line in
+	# between, so a marker cannot leak in from an unrelated comment further up.
+	probe = start - 1
+	while probe >= 0 and lines[probe].strip().startswith("#"):
+		if EXEMPT_MARKER in lines[probe]:
+			return True
+		probe -= 1
+
+	return any(begin <= node.lineno <= finish for begin, finish in doc_spans)
 
 
 def _dotted_name(node):
@@ -95,6 +131,7 @@ class TestBankScopeEnforcement(unittest.TestCase):
 				except SyntaxError:
 					continue
 				lines = source.splitlines()
+				doc_spans = _docstring_spans(tree)
 
 				for node in ast.walk(tree):
 					if not isinstance(node, ast.Call):
@@ -103,12 +140,7 @@ class TestBankScopeEnforcement(unittest.TestCase):
 						continue
 					if _first_doctype(node) not in bank_scoped:
 						continue
-
-					# Exempted? Accept the marker on the call span or on the line
-					# immediately above (comment-above-call is a common style).
-					start = node.lineno - 1
-					span = lines[max(0, start - 1) : (node.end_lineno or node.lineno)]
-					if any(EXEMPT_MARKER in ln for ln in span):
+					if _is_exempt(node, lines, doc_spans):
 						continue
 
 					rel = os.path.relpath(filepath, app_dir)
@@ -185,8 +217,30 @@ class TestBankScopeRuntime(unittest.TestCase):
 		from oan_a2c.a2c_marketplace.roles import FARMER_ROLE, BANK_AGENT_ROLE
 
 		cls.h = frappe.generate_hash(length=8)
-		cls.bank = f"Bank-{cls.h}"
-		frappe.get_doc({"doctype": "A2C Participating Bank", "bank_name": cls.bank, "bank_code": cls.bank, "status": "Active"}).insert(ignore_permissions=True)
+		cls.bank_label = f"Bank-{cls.h}"
+		# A2C Participating Bank has mandatory registration fields; omitting them
+		# made setUpClass raise MandatoryError before a single assertion ran.
+		bank_doc = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"bank_name": cls.bank_label,
+				"bank_code": cls.bank_label,
+				"status": "Active",
+				"entity_type": "Commercial Bank",
+				"registered_email": f"{cls.bank_label}@example.com",
+				"registered_phone": "+251911000000",
+				"registered_city": "Test City",
+				"registered_region": "Addis Ababa",
+				"registered_country": "Ethiopia",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO",
+				"ops_name": "Test Ops",
+			}
+		).insert(ignore_permissions=True)
+		# The doctype autonames to PB-#####, so the label we passed in is not the
+		# link target. Every `bank` link and User Permission below needs the real
+		# name, or they fail link validation before any test body runs.
+		cls.bank = bank_doc.name
 
 		cls.bank_agent = f"agent-{cls.h}@example.com"
 		frappe.get_doc({"doctype": "User", "email": cls.bank_agent, "first_name": "Agent", "roles": [{"role": BANK_AGENT_ROLE}]}).insert(ignore_permissions=True)
@@ -212,9 +266,23 @@ class TestBankScopeRuntime(unittest.TestCase):
 		# Application for Farmer B (Draft)
 		cls.app_b = frappe.get_doc({"doctype": "A2C Loan Application", "bank": cls.bank, "loan_product": cls.prod.name, "requested_amount": 100, "loan_amount": 100, "status": "Draft", "first_name": "C", "last_name": "D", "phone_number": "333", "farmer_profile": cls.profile_b.name}).insert(ignore_permissions=True)
 
+	def tearDown(self):
+		# Every test here impersonates a fixture user and none of them owned
+		# putting the session back.
+		from oan_a2c.tests import end_impersonation
+
+		end_impersonation()
+		super().tearDown()
+
 	@classmethod
 	def tearDownClass(cls):
 		import frappe
+
+		from oan_a2c.tests import end_impersonation
+
+		# Before the rollback, not after: the rollback is what makes the fixture
+		# users vanish, and anything cached against them has to go with them.
+		end_impersonation()
 		frappe.db.rollback()
 
 	def test_farmer_sees_own_applications(self):

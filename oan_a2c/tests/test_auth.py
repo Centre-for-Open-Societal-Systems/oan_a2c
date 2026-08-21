@@ -1,4 +1,5 @@
 import datetime
+import random
 import unittest
 
 import frappe
@@ -329,19 +330,34 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 		self.assertIn("already have an account", resp.get("data", {}).get("message", ""))
 
 	def test_16_register_user_duplicate_phone(self):
+		"""A taken phone ends the same way a taken email does.
+
+		register_user answers both with the `already_exists` success payload -- one
+		message, "You already have an account. Please log in.", whichever field was
+		the duplicate. This test still asserted the older contract (an error with
+		code VALIDATION_ERROR) that only the email branch was moved off, so it
+		failed against behaviour that is deliberate and is what test_15 asserts.
+
+		The email is unique per run on purpose: a leftover `new_unique_email@test.com`
+		would be caught by the *email* branch above the phone one, and this test
+		would pass without the phone check running at all.
+		"""
 		from oan_a2c.api.v1.auth import register_user
 
-		# Set mobile_no for test_email user
-		frappe.db.set_value("User", self.test_email, "mobile_no", "+251911888888")
+		# Numeric: User.mobile_no is validated as a phone number.
+		phone = f"+25191{random.randint(1000000, 9999999)}"
+		frappe.db.set_value("User", self.test_email, "mobile_no", phone)
+		unused_email = f"dup_phone_{frappe.generate_hash(length=8)}@test.com"
 
 		resp = register_user(
-			email="new_unique_email@test.com",
+			email=unused_email,
 			full_name="Test Agent",
 			password="TestPassword123!",
-			phone_number="+251911888888",
+			phone_number=phone,
 		)
-		self.assertEqual(resp.get("status"), "error")
-		self.assertEqual(resp.get("code"), "VALIDATION_ERROR")
-		self.assertIn(
-			"already registered", resp.get("details", {}).get("phone_number", "") or resp.get("message", "")
-		)
+
+		self.assertEqual(resp.get("status"), "success")
+		self.assertTrue(resp.get("data", {}).get("already_exists"))
+		self.assertIn("already have an account", resp.get("data", {}).get("message", ""))
+		# The point of the check: the second account is not created.
+		self.assertFalse(frappe.db.exists("User", unused_email))

@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
 from oan_a2c.api.utils import handle_api_errors, validate_request, success_response, to_tz_aware_iso, require_role, apply_status_transition
 from oan_a2c.api.v1.loan_applications import GetAllLoansSchema, LoanApplicationIDSchema, _get_app
+from oan_a2c.api.v1.farmer.consent import get_or_create_self_service_lead
 
 class CreateFarmerApplicationSchema(BaseModel):
 	loan_product: str = Field(..., min_length=1, max_length=140)
@@ -58,6 +59,10 @@ def list_applications(**kwargs):
 			"loan_product_name",
 			"bank",
 			"creation",
+			# Terms the application was made under. Snapshotted at creation, so a
+			# later edit to the product cannot rewrite what the farmer applied for.
+			"interest_rate",
+			"tenure_months",
 		],
 		order_by=order_by,
 		limit_start=offset,
@@ -69,6 +74,11 @@ def list_applications(**kwargs):
 		r["loan_amount"] = float(r["loan_amount"]) if r.get("loan_amount") else 0.0
 		r["requested_amount"] = float(r["requested_amount"]) if r.get("requested_amount") else 0.0
 		r["creation"] = to_tz_aware_iso(r["creation"])
+		# Left as None rather than defaulted to 0: an application created before
+		# terms were snapshotted has no rate, and "0%" is not a truthful stand-in
+		# for one. The client renders a placeholder for null.
+		r["interest_rate"] = flt(r["interest_rate"]) if r.get("interest_rate") else None
+		r["tenure_months"] = cint(r["tenure_months"]) if r.get("tenure_months") else None
 
 	pagination = {
 		"page": page,
@@ -104,6 +114,8 @@ def get_application(**kwargs):
 		"loan_reason": doc.loan_reason,
 		"status": doc.status,
 		"creation": to_tz_aware_iso(doc.creation),
+		"interest_rate": flt(doc.interest_rate) if doc.interest_rate else None,
+		"tenure_months": cint(doc.tenure_months) if doc.tenure_months else None,
 	}
 	return success_response(data=data, message="Application retrieved successfully")
 
@@ -151,24 +163,19 @@ def create_application(**kwargs):
 		frappe.throw(_("This loan product is not active."), frappe.ValidationError)
 
 	profile = frappe.get_doc("A2C Farmer Profile", profile_name)
-	
-	# Create the A2C Lead that consent and the rest of the pipeline are anchored on.
-	# Only fields that exist on A2C Lead are set: Frappe keeps an unknown key on the
-	# in-memory doc and drops it on insert, so a typo here reads as working code.
-	# "Active" is the lead workflow's entry state; the doctype has no "Lead" state,
-	# and location fields live on the farmer profile rather than the lead.
-	lead = frappe.get_doc({
-		"doctype": "A2C Lead",
-		"lead_source": "Self Service",
-		"farmer_profile": profile.name,
-		"status": "Active",
-		"first_name": profile.first_name,
-		"last_name": profile.last_name,
-		"phone_number": profile.phone_number or frappe.db.get_value("User", user, "mobile_no"),
-		"email": profile.email or user,
-	})
-	lead.insert(ignore_permissions=False)
-	
+
+	# The A2C Lead that consent and the rest of the pipeline are anchored on already
+	# exists: the apply page calls farmer.consent.start_consent to mint it *before*
+	# the consent step, because consent needs a lead_id and is itself what creates
+	# the farmer profile this endpoint requires. Reuse it rather than inserting a
+	# second lead — a duplicate here would be a lead with no consent attached.
+	lead = get_or_create_self_service_lead(user)
+
+	# Backfill the profile link if this lead predates it (the consent webhook sets
+	# farmer_profile, but only on the lead the consent ran against).
+	if not lead.farmer_profile:
+		lead.db_set("farmer_profile", profile.name)
+
 	# Create Application
 	app = frappe.get_doc({
 		"doctype": "A2C Loan Application",
@@ -178,6 +185,12 @@ def create_application(**kwargs):
 		"loan_product": product.name,
 		"requested_amount": kwargs["requested_amount"],
 		"loan_amount": kwargs["requested_amount"],
+		# The offer the farmer accepted, copied onto the application. The product
+		# stays editable by its bank, so reading terms back through the live
+		# product would silently restate an application in someone else's numbers.
+		# min_interest_rate is the headline rate the catalog card advertises.
+		"interest_rate": product.min_interest_rate,
+		"tenure_months": product.tenure_months,
 		"loan_reason": kwargs.get("loan_reason"),
 		"status": "Draft",
 		"current_step": 1,

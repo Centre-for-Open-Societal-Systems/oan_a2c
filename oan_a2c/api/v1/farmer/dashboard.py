@@ -37,7 +37,7 @@ def get_dashboard_summary(**kwargs):
 	"""
 	user = frappe.session.user
 
-	farmer_profile = {}
+	farmer_profile = None
 	profile_name = frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
 	if profile_name:
 		row = frappe.db.get_value(
@@ -46,6 +46,23 @@ def get_dashboard_summary(**kwargs):
 		if row:
 			farmer_profile = {k: row.get(k) for k in _PROFILE_FIELDS}
 			farmer_profile["farmer_id"] = farmer_profile.get("farmer_id") or profile_name
+
+			# Fallback to User table if the farmer profile is missing the names
+			if not farmer_profile.get("first_name") and not farmer_profile.get("last_name"):
+				user_row = frappe.db.get_value("User", user, ["first_name", "last_name"], as_dict=True)
+				if user_row:
+					farmer_profile["first_name"] = user_row.get("first_name")
+					farmer_profile["last_name"] = user_row.get("last_name")
+	
+	if not farmer_profile:
+		# If no profile exists, construct a fallback using User table so the UI isn't empty
+		user_row = frappe.db.get_value("User", user, ["first_name", "last_name"], as_dict=True)
+		if user_row:
+			farmer_profile = {
+				"first_name": user_row.get("first_name"),
+				"last_name": user_row.get("last_name"),
+				"farmer_id": None
+			}
 
 	# get_list applies loan_product_scope_query: Active only, across all banks.
 	offers = frappe.get_list(

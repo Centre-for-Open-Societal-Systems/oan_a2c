@@ -3,8 +3,15 @@ from typing import Literal
 import frappe
 from frappe import _
 
-from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
-from oan_a2c.api.utils import handle_api_errors, validate_request, success_response, require_role, to_tz_aware_iso
+from oan_a2c.a2c_marketplace.roles import FARMER_ROLE, DEVELOPMENT_AGENT_ROLE
+from oan_a2c.api.utils import (
+	handle_api_errors,
+	parse_multi_value,
+	require_role,
+	success_response,
+	to_tz_aware_iso,
+	validate_request,
+)
 from oan_a2c.api.v1.loan_applications import BrowseProductsSchema
 from pydantic import BaseModel, Field
 
@@ -14,14 +21,24 @@ class SaveProductSchema(BaseModel):
 
 # Sort keys are an allowlist rather than free text: order_by is interpolated into
 # SQL, so anything the client can name has to be something we chose.
+#
+# Every key sorts by the column the discovery card actually shows. "Amount"
+# used to order by min_amount while the card displays Max Amount, and "Interest:
+# High to Low" used max_interest_rate while the card displays the headline (min)
+# rate -- the rows did move, just not by anything the farmer could see, which
+# reads as sorting doing nothing.
+#
+# `name asc` breaks ties on every key. Without it MariaDB may order equal rows
+# differently between queries, so paging through a catalog where most products
+# share a rate or tenure silently repeats some products and skips others.
 _SORT_COLUMNS = {
-	"product_name": "product_name asc",
-	"interest_low_high": "min_interest_rate asc",
-	"interest_high_low": "max_interest_rate desc",
-	"amount_low_high": "min_amount asc",
-	"amount_high_low": "max_amount desc",
-	"tenure_low_high": "tenure_months asc",
-	"newest": "creation desc",
+	"product_name": "product_name asc, name asc",
+	"interest_low_high": "min_interest_rate asc, name asc",
+	"interest_high_low": "min_interest_rate desc, name asc",
+	"amount_low_high": "max_amount asc, name asc",
+	"amount_high_low": "max_amount desc, name asc",
+	"tenure_low_high": "tenure_months asc, name asc",
+	"newest": "creation desc, name asc",
 }
 
 
@@ -34,6 +51,10 @@ class FarmerCatalogSchema(BrowseProductsSchema):
 	"""
 
 	category: str | None = Field(None, max_length=140)
+	# The sidebar offers the exact tenures present in the catalog, so it needs an
+	# exact filter. Comma-separated ("6,12") because the chips are a multi-select;
+	# min_/max_tenure_months stay for callers that genuinely want a range.
+	tenure_months: str | None = Field(None, max_length=140)
 	min_tenure_months: int | None = Field(None, ge=0, le=600)
 	max_tenure_months: int | None = Field(None, ge=0, le=600)
 	max_interest_rate: float | None = Field(None, ge=0, le=100)
@@ -50,6 +71,33 @@ class FarmerCatalogSchema(BrowseProductsSchema):
 class PaginationSchema(BaseModel):
 	limit: int = Field(20, ge=1, le=100)
 	start: int = Field(0, ge=0)
+
+def _annotate_saved(products: list[dict]) -> None:
+	"""Stamp `is_saved` on each product for the calling farmer, in one query.
+
+	A farmer with no profile yet has no bookmarks rather than an error -- browsing
+	the catalog before a consent binds a profile is a normal state.
+	"""
+	if not products:
+		return
+
+	profile_name = frappe.db.get_value("A2C Farmer Profile", {"user": frappe.session.user}, "name")
+	saved: set[str] = set()
+	if profile_name:
+		saved = set(
+			frappe.get_all(
+				"A2C Saved Product",
+				filters={
+					"farmer_profile": profile_name,
+					"loan_product": ["in", [p["name"] for p in products]],
+				},
+				pluck="loan_product",
+			)
+		)
+
+	for product in products:
+		product["is_saved"] = product["name"] in saved
+
 
 def _products_in_category(category: str) -> list[str]:
 	"""Loan product ids carrying `category`.
@@ -70,7 +118,7 @@ def _products_in_category(category: str) -> list[str]:
 @frappe.whitelist(allow_guest=False)
 @validate_request(FarmerCatalogSchema)
 @handle_api_errors
-@require_role([FARMER_ROLE])
+@require_role([FARMER_ROLE, DEVELOPMENT_AGENT_ROLE])
 def list_catalog(**kwargs):
 	"""Active loan products across every bank, for a signed-in farmer.
 
@@ -85,27 +133,55 @@ def list_catalog(**kwargs):
 		filters["name"] = kwargs["loan_product"]
 	if kwargs.get("search"):
 		filters["product_name"] = ["like", f"%{kwargs['search']}%"]
+	# Amount is an overlap test between what the farmer wants to borrow and what
+	# the product lends, not a containment test on the product's own bounds.
+	# Comparing the product's max_amount against the farmer's ceiling did the
+	# opposite of what the slider promises: asking for "up to ETB 100,000" threw
+	# away every product that lends up to ETB 300,000 -- the ones that most
+	# clearly cover the request -- and kept the ones capped at ETB 1,000.
 	if kwargs.get("min_amount") is not None:
-		filters["min_amount"] = [">=", float(kwargs["min_amount"])]
+		filters["max_amount"] = [">=", float(kwargs["min_amount"])]
 	if kwargs.get("max_amount") is not None:
-		filters["max_amount"] = ["<=", float(kwargs["max_amount"])]
+		filters["min_amount"] = ["<=", float(kwargs["max_amount"])]
+	# The rate filter tests min_interest_rate because that is the headline rate
+	# the discovery card shows. get_catalog_facets derives the slider ceiling from
+	# the same column so every position on the slider changes the result set.
 	if kwargs.get("max_interest_rate") is not None:
 		filters["min_interest_rate"] = ["<=", float(kwargs["max_interest_rate"])]
-	if kwargs.get("min_tenure_months") is not None:
-		filters["tenure_months"] = [">=", int(kwargs["min_tenure_months"])]
-	if kwargs.get("max_tenure_months") is not None:
-		# Two bounds on one column need the range form; the dict above would drop
-		# whichever was written second.
-		if "tenure_months" in filters:
-			filters["tenure_months"] = [
-				"between",
-				[int(kwargs["min_tenure_months"]), int(kwargs["max_tenure_months"])],
-			]
-		else:
-			filters["tenure_months"] = ["<=", int(kwargs["max_tenure_months"])]
+
+	# Exact tenures win over the range bounds: a farmer who picked "6 Mon" and
+	# "12 Mon" means those two, not "anything up to 12". As an upper bound,
+	# selecting the longest tenure on offer matched the entire catalog, which is
+	# indistinguishable from the filter being ignored.
+	selected_tenures = parse_multi_value(kwargs.get("tenure_months"))
+	if selected_tenures:
+		try:
+			tenure_values = [int(t) for t in selected_tenures]
+		except ValueError:
+			frappe.throw(
+				_("tenure_months must be whole numbers of months."), frappe.ValidationError
+			)
+		filters["tenure_months"] = ["in", tenure_values]
+	else:
+		if kwargs.get("min_tenure_months") is not None:
+			filters["tenure_months"] = [">=", int(kwargs["min_tenure_months"])]
+		if kwargs.get("max_tenure_months") is not None:
+			# Two bounds on one column need the range form; the dict above would drop
+			# whichever was written second.
+			if "tenure_months" in filters:
+				filters["tenure_months"] = [
+					"between",
+					[int(kwargs["min_tenure_months"]), int(kwargs["max_tenure_months"])],
+				]
+			else:
+				filters["tenure_months"] = ["<=", int(kwargs["max_tenure_months"])]
 
 	if kwargs.get("category"):
 		matching = _products_in_category(kwargs["category"])
+		if kwargs.get("loan_product"):
+			# Both narrow `name`. Intersect rather than overwrite, or naming a
+			# product id would smuggle it past the category filter.
+			matching = [m for m in matching if m == kwargs["loan_product"]]
 		if not matching:
 			pagination = {
 				"page": (kwargs["start"] // kwargs["limit"]) + 1,
@@ -140,6 +216,11 @@ def list_catalog(**kwargs):
 		limit_page_length=limit,
 		limit_start=start,
 	)
+
+	# Bookmark state travels with the product so the card can render it. Without
+	# it the client has no way to know, and every card came back un-bookmarked on
+	# reload however many the farmer had saved.
+	_annotate_saved(products)
 
 	count_res = frappe.get_list(
 		"A2C Loan Product",
@@ -236,7 +317,12 @@ def get_saved_products(**kwargs):
 
 	products = []
 	if saved_docs:
-		products = frappe.get_all(
+		# get_list, not get_all: A2C Loan Product is bank-scoped, and the farmer
+		# branch of loan_product_scope_query also limits the catalog to Active
+		# products. get_all skipped both, so a product archived after the farmer
+		# bookmarked it kept coming back here in full -- visible on the saved list
+		# and nowhere else, and still applyable from the card.
+		products = frappe.get_list(
 			"A2C Loan Product",
 			filters={"name": ["in", saved_docs]},
 			fields=[
@@ -254,6 +340,9 @@ def get_saved_products(**kwargs):
 		# Sort them to match the recent creation order from A2C Saved Product
 		order_map = {name: i for i, name in enumerate(saved_docs)}
 		products.sort(key=lambda p: order_map.get(p.name, 999))
+		# Same shape as list_catalog so one card component renders both lists.
+		for product in products:
+			product["is_saved"] = True
 
 	pagination = {
 		"page": (start // limit) + 1,
@@ -273,7 +362,7 @@ def get_saved_products(**kwargs):
 
 @frappe.whitelist(allow_guest=False)
 @handle_api_errors
-@require_role([FARMER_ROLE])
+@require_role([FARMER_ROLE, DEVELOPMENT_AGENT_ROLE])
 def get_catalog_facets(**kwargs):
 	"""Filter options for the discovery sidebar, derived from live catalog data.
 
@@ -291,7 +380,7 @@ def get_catalog_facets(**kwargs):
 	products = frappe.get_list(
 		"A2C Loan Product",
 		filters={"status": "Active"},
-		fields=["name", "tenure_months", "min_amount", "max_amount", "min_interest_rate", "max_interest_rate"],
+		fields=["name", "tenure_months", "min_amount", "max_amount", "min_interest_rate"],
 		limit_page_length=0,
 	)
 
@@ -324,7 +413,11 @@ def get_catalog_facets(**kwargs):
 
 	min_amounts = [float(p["min_amount"]) for p in products if p.get("min_amount") is not None]
 	max_amounts = [float(p["max_amount"]) for p in products if p.get("max_amount") is not None]
-	rates = [float(p["max_interest_rate"]) for p in products if p.get("max_interest_rate") is not None]
+	# Derived from min_interest_rate because that is what list_catalog filters and
+	# what the card displays. Taken from max_interest_rate, the ceiling sat well
+	# above every headline rate, so the whole upper half of the slider was inert --
+	# dragging it changed nothing until it fell below the cheapest product.
+	rates = [float(p["min_interest_rate"]) for p in products if p.get("min_interest_rate") is not None]
 
 	return success_response(
 		data={

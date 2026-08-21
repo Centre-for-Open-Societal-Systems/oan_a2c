@@ -273,14 +273,56 @@ def farmer_own_profile_query(user=None):
 	return f"`name` = {frappe.db.escape(profile)}" if profile else "1=0"
 
 
-def farmer_own_consent_query(user=None):
-	"""permission_query_conditions for A2C Consent Request."""
+def _own_lead_clauses(user):
+	"""The `tabA2C Lead` conditions that make a lead belong to `user` (a farmer).
+
+	Ownership has two sources, and both are needed:
+
+	  - `owner` — the farmer inserted the lead themselves when they started a
+	    self-service application. This is the ONLY match available before consent
+	    completes, because the A2C Farmer Profile does not exist yet: the consent
+	    webhook is what creates it (see get_user_farmer_profile).
+	  - `farmer_profile` — written onto the lead by the consent webhook. This also
+	    covers a lead a Development Agent raised on the farmer's behalf, which the
+	    farmer never inserted but which is nonetheless about them. Same reasoning
+	    as the "no owner filter" note in loan_application_scope_query.
+	"""
+	profile = get_user_farmer_profile(user)
+	clauses = [f"`owner` = {frappe.db.escape(user)}"]
+	if profile:
+		clauses.append(f"`farmer_profile` = {frappe.db.escape(profile)}")
+	return " or ".join(clauses)
+
+
+def farmer_own_lead_query(user=None):
+	"""permission_query_conditions for A2C Lead.
+
+	A2C Lead is not bank-scoped, so before farmers existed it had no query hook at
+	all and every role holding DocPerm read saw every lead. That is correct for the
+	Development Agent (platform staff; leads are its workload) but not for a
+	farmer, who must only ever see their own.
+	"""
 	if not user:
 		user = frappe.session.user
 	if not is_farmer(user) or is_bank_unbound(user):
 		return ""
-	profile = get_user_farmer_profile(user)
-	return f"`farmer` = {frappe.db.escape(profile)}" if profile else "1=0"
+	return f"({_own_lead_clauses(user)})"
+
+
+def farmer_own_consent_query(user=None):
+	"""permission_query_conditions for A2C Consent Request.
+
+	Scoped through the linked lead rather than the `farmer` field: `farmer` is a
+	Data column holding the *OpenG2P* farmer id (set from the registry lookup in
+	consent.request_otp), not an A2C Farmer Profile name. Comparing it to a
+	profile name never matched, so this hook silently hid a farmer's own consent
+	records instead of scoping them.
+	"""
+	if not user:
+		user = frappe.session.user
+	if not is_farmer(user) or is_bank_unbound(user):
+		return ""
+	return f"`lead` in (select `name` from `tabA2C Lead` where {_own_lead_clauses(user)})"
 
 
 def bank_scope_doc(doc, user=None):
@@ -328,6 +370,56 @@ def bank_scope_doc(doc, user=None):
 		frappe.logger("bank_scope").warning(
 			f"Denied cross-bank access: user={user} bank={bank} "
 			f"{doc.doctype}={doc.name} doc_bank={doc.get('bank')}"
+		)
+
+	return allowed
+
+
+def farmer_own_doc_permission(doc, user=None):
+	"""has_permission doc hook for A2C Lead / A2C Consent Request / A2C Farmer Profile.
+
+	None of the three is bank-scoped, so none had a doc hook. The query hooks above
+	only filter *list* reads; `frappe.has_permission(dt, ptype, doc=...)` and
+	`frappe.get_doc(...)` come through here instead. Without this, granting a
+	farmer DocPerm write on A2C Lead — which the consent endpoints all require,
+	since each checks write on the lead — would mean write on *every* lead.
+
+	Returns True for every non-farmer so the Development Agent and admin paths are
+	unchanged; this hook exists only to bound the farmer role.
+	"""
+	if not user:
+		user = frappe.session.user
+
+	if not is_farmer(user) or is_bank_unbound(user):
+		return True
+
+	profile = get_user_farmer_profile(user)
+
+	if doc.doctype == "A2C Farmer Profile":
+		allowed = bool(profile) and doc.name == profile
+	elif doc.doctype == "A2C Lead":
+		allowed = doc.get("owner") == user or (bool(profile) and doc.get("farmer_profile") == profile)
+	elif doc.doctype == "A2C Consent Request":
+		# Ownership is a property of the linked lead (see farmer_own_consent_query).
+		lead = doc.get("lead")
+		if not lead:
+			allowed = False
+		else:
+			lead_row = frappe.db.get_value(
+				"A2C Lead", lead, ["owner", "farmer_profile"], as_dict=True
+			)
+			allowed = bool(lead_row) and (
+				lead_row.get("owner") == user
+				or (bool(profile) and lead_row.get("farmer_profile") == profile)
+			)
+	else:
+		return True
+
+	if not allowed:
+		# File logger rather than log_error: probing is potentially high volume and
+		# this would otherwise bloat the Error Log. Same treatment as bank_scope_doc.
+		frappe.logger("bank_scope").warning(
+			f"Denied cross-farmer access: user={user} profile={profile} {doc.doctype}={doc.name}"
 		)
 
 	return allowed

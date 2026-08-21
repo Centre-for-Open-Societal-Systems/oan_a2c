@@ -158,7 +158,19 @@ permission_query_conditions["A2C Farmer Profile"] = (
 permission_query_conditions["A2C Consent Request"] = (
 	"oan_a2c.a2c_marketplace.permissions.farmer_own_consent_query"
 )
+# A2C Lead isn't bank-scoped either. It needs a hook now that a farmer can hold
+# read/write on it to run their own consent — without one, "read a lead" means
+# "read every lead". Non-farmers are returned unfiltered, so the Development
+# Agent's view of its workload is unchanged.
+permission_query_conditions["A2C Lead"] = (
+	"oan_a2c.a2c_marketplace.permissions.farmer_own_lead_query"
+)
 has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d in BANK_SCOPED}
+# The three farmer-owned doctypes above are scoped per document as well as per
+# list: a query condition filters get_list, but `frappe.has_permission(dt, "write",
+# doc=...)` — which every consent endpoint calls — consults has_permission instead.
+for _dt in ("A2C Lead", "A2C Consent Request", "A2C Farmer Profile"):
+	has_permission[_dt] = "oan_a2c.a2c_marketplace.permissions.farmer_own_doc_permission"
 
 # Document Events
 # ---------------
