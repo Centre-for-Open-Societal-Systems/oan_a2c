@@ -187,6 +187,30 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertIn("my", res["data"]["tab_counts"])
 		self.assertIn("unassigned", res["data"]["tab_counts"])
 
+	def test_1a_loan_summary_exposes_every_archetype_bucket(self):
+		"""`by_status` is the contract the bank and agent KPI cards read.
+
+		They key on archetype names directly, so a bucket that goes missing renders
+		as a dash or -- worse, behind a `?? 0` -- as a confident zero. Seeding every
+		state server-side is what makes a quiet status readable as a real 0.
+		"""
+		from oan_a2c.a2c_marketplace.stages import ARCHETYPE_STATES
+
+		data = get_loan_summary()["data"]
+
+		self.assertIn("by_status", data)
+		self.assertEqual(set(data["by_status"]), set(ARCHETYPE_STATES))
+		for state, count in data["by_status"].items():
+			self.assertIsInstance(count, int, f"{state} is not a count")
+
+		# Buckets may not exceed the total. They can fall short of it only because a
+		# row carries a status from before the archetype refactor, which is counted
+		# in `total` but deliberately not invented as a new bucket.
+		self.assertLessEqual(sum(data["by_status"].values()), data["total"])
+
+		# `stages` is the bank-defined view of the same rows, so it must agree.
+		self.assertEqual(sum(data["stages"].values()), data["total"])
+
 	def test_1b_workflow_helpers(self):
 		self.assertEqual(get_workflow_initial_state("A2C Loan Application"), "Active")
 

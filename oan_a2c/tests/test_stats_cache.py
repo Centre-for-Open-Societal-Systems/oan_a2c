@@ -4,6 +4,8 @@ import frappe
 
 from oan_a2c.a2c_marketplace.stats_cache import (
 	_COUNTERS,
+	_EXCLUDED_APPLICATION_STATUSES,
+	_EXCLUDED_PRODUCT_STATUSES,
 	_MAP_COUNTERS,
 	_PENDING_APPLICATION_STATUS,
 	_SCALAR_COUNTERS,
@@ -336,6 +338,83 @@ class TestActiveExclusion(_BankFixtureMixin, unittest.TestCase):
 		reverted = get_stats_for_bank(self.bank_name)
 		self.assertEqual(reverted["total_applications"], 1)
 		self.assertEqual(reverted, _compute_from_db(self.bank_name))
+
+
+class TestStatusLiteralDrift(unittest.TestCase):
+	"""Guard against the counters filtering on statuses the doctypes cannot hold.
+
+	A status literal that no longer appears in its Select options matches nothing,
+	so the counter it guards silently reads zero forever -- which is how
+	`_PENDING_STATUSES = {"Submitted", "Under Review"}` survived in this module
+	against a doctype that offered neither. Cheap to assert, and it fails at the
+	moment the options change rather than on a dashboard weeks later.
+	"""
+
+	def _select_options(self, doctype: str, fieldname: str) -> set[str]:
+		field = frappe.get_meta(doctype).get_field(fieldname)
+		self.assertIsNotNone(field, f"{doctype}.{fieldname} does not exist")
+		return {opt.strip() for opt in (field.options or "").split("\n") if opt.strip()}
+
+	def test_excluded_application_statuses_exist(self):
+		valid = self._select_options("A2C Loan Application", "status")
+		self.assertTrue(
+			_EXCLUDED_APPLICATION_STATUSES <= valid,
+			f"stats_cache filters on {_EXCLUDED_APPLICATION_STATUSES - valid}, "
+			f"which A2C Loan Application.status cannot hold (options: {sorted(valid)})",
+		)
+
+	def test_product_status_literals_exist(self):
+		valid = self._select_options("A2C Loan Product", "status")
+		# The statuses on_product_change and _compute_from_db branch on, plus any
+		# configured exclusions. Every one has to be a value the field can take.
+		counted = {"Active", "Pending Approval", "Rejected", "Archived"}
+		self.assertTrue(
+			counted <= valid,
+			f"stats_cache branches on {counted - valid}, "
+			f"which A2C Loan Product.status cannot hold (options: {sorted(valid)})",
+		)
+		self.assertTrue(
+			_EXCLUDED_PRODUCT_STATUSES <= valid,
+			f"stats_cache excludes {_EXCLUDED_PRODUCT_STATUSES - valid}, which is not a valid status",
+		)
+
+	def test_archetype_states_match_the_doctype(self):
+		"""ARCHETYPE_STATES is what every dashboard buckets loans by.
+
+		If it drifts from the Select options, `by_status` grows a bucket nothing
+		can land in (reads 0 forever) or silently drops a real one from the
+		breakdown while `total` still counts it.
+		"""
+		from oan_a2c.a2c_marketplace.stages import ARCHETYPE_STATES
+
+		valid = self._select_options("A2C Loan Application", "status")
+		self.assertEqual(
+			set(ARCHETYPE_STATES),
+			valid,
+			f"ARCHETYPE_STATES {sorted(ARCHETYPE_STATES)} != "
+			f"A2C Loan Application.status options {sorted(valid)}",
+		)
+
+	def test_lead_summary_covers_every_lead_status(self):
+		"""get_lead_summary both filters and totals on this list.
+
+		A status missing from it is excluded from `total` as well as from
+		`by_status`, so the dashboard undercounts rather than merely omitting a
+		bucket -- and nothing on screen shows that leads are missing.
+		"""
+		import inspect
+
+		from oan_a2c.api.v1.leads import get_lead_summary
+
+		source = inspect.getsource(get_lead_summary)
+		valid = self._select_options("A2C Lead", "status")
+		missing = sorted(status for status in valid if f'"{status}"' not in source)
+		self.assertEqual(
+			missing,
+			[],
+			f"A2C Lead statuses {missing} are never counted by get_lead_summary, "
+			f"so they are absent from both by_status and total",
+		)
 
 
 class TestApplicantAndPendingCounters(unittest.TestCase):

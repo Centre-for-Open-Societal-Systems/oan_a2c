@@ -1,6 +1,18 @@
 import frappe
 from frappe import _
 
+# The archetype states, in lifecycle order. Platform constants: a bank names the
+# stages *inside* `In Transition`, it never renames these. Anything reporting on
+# loan state should bucket by these rather than by a stage label, which is
+# tenant-defined free text and differs between banks.
+#
+# NOTE: docs/loan-status-workflow-plan.md also specifies a `Rejected` archetype,
+# which was never implemented -- the live workflow has no Reject transition, so a
+# declined loan lands on `Completed` alongside a disbursed one and the two cannot
+# be told apart except by the bank's own stage label. Any "approved vs rejected"
+# metric is blocked on that gap.
+ARCHETYPE_STATES = ("Active", "In Transition", "Completed", "Cancelled")
+
 
 def resolve_bank_stage(bank, status_or_stage):
 	"""
@@ -8,8 +20,7 @@ def resolve_bank_stage(bank, status_or_stage):
 	return a dict with 'archetype_state' and 'stage_id' (if resolved to a specific stage).
 	"""
 	# Direct match for archetype states
-	archetypes = ["Active", "In Transition", "Completed", "Cancelled"]
-	if status_or_stage in archetypes:
+	if status_or_stage in ARCHETYPE_STATES:
 		return {"archetype_state": status_or_stage, "stage_id": None, "stage_label": status_or_stage}
 
 	# Otherwise try to match a bank stage

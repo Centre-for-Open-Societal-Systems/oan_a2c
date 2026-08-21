@@ -351,7 +351,14 @@ def get_loan_summary():
 		"A2C Loan Application", fields=fields, group_by=group_by, ignore_permissions=False
 	)
 
-	summary = {"total": 0, "stages": {}}
+	from oan_a2c.a2c_marketplace.stages import ARCHETYPE_STATES
+
+	# Two buckets, deliberately. `stages` is what the owning bank calls each step and
+	# differs between tenants, so it cannot be keyed on by a caller that spans banks.
+	# `by_status` is the archetype -- platform constants -- and is seeded with every
+	# state so an absent one reads 0 rather than going missing from the payload and
+	# rendering as a dash.
+	summary = {"total": 0, "stages": {}, "by_status": dict.fromkeys(ARCHETYPE_STATES, 0)}
 	my_applications = 0
 	unassigned = 0
 
@@ -365,6 +372,12 @@ def get_loan_summary():
 		if stage_name not in summary["stages"]:
 			summary["stages"][stage_name] = 0
 		summary["stages"][stage_name] += count
+
+		# Rows carrying a status from before the archetype refactor would otherwise
+		# add a key nobody expects, so unknown values are counted in the total and
+		# the stage breakdown but never invent a new archetype bucket.
+		if row.status in summary["by_status"]:
+			summary["by_status"][row.status] += count
 
 		if has_loan_officer:
 			if row.loan_officer == user:
