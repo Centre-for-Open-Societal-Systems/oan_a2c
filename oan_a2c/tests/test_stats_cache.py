@@ -36,17 +36,24 @@ class TestStatsCache(unittest.TestCase):
 
 		cls.agent_email = "stats_agent@test.com"
 		if not frappe.db.exists("User", cls.agent_email):
-			frappe.get_doc({
-				"doctype": "User",
-				"email": cls.agent_email,
-				"first_name": "Stats Agent",
-				"roles": [{"role": "A2C Bank Agent"}]
-			}).insert(ignore_permissions=True, ignore_mandatory=True)
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": cls.agent_email,
+					"first_name": "Stats Agent",
+					"roles": [{"role": "A2C Bank Agent"}],
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True)
 		frappe.db.commit()
 
 	@classmethod
 	def tearDownClass(cls):
 		frappe.set_user("Administrator")
+		# Products first: force-deleting the bank leaves its products behind as rows
+		# pointing at a bank that no longer exists. Those orphans are invisible to
+		# the all-banks view (which walks the bank table) but still counted by any
+		# unscoped list, so leaking them makes dashboard numbers irreproducible.
+		frappe.db.delete("A2C Loan Product", {"bank": cls.bank_name})
 		frappe.delete_doc("A2C Participating Bank", cls.bank_name, force=True)
 		frappe.db.commit()
 
