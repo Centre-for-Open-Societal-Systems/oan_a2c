@@ -75,8 +75,8 @@ class TestNotifications(unittest.TestCase):
 			filters["document_type"] = doctype
 		return frappe.get_all("Notification Log", filters=filters, fields=["subject", "document_name"])
 
-	def _make_product(self, status="Pending Approval"):
-		return frappe.get_doc(
+	def _make_product(self, status="Pending Approval", actor=AGENT_USER):
+		doc = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Product",
 				"product_name": f"Notif Product {frappe.generate_hash(length=6)}",
@@ -86,7 +86,13 @@ class TestNotifications(unittest.TestCase):
 				"tenure_months": 12,
 				"status": status,
 			}
-		).insert(ignore_permissions=True)
+		)
+		frappe.set_user(actor)
+		try:
+			doc.insert(ignore_permissions=True)
+		finally:
+			frappe.set_user("Administrator")
+		return doc
 
 	# --- Loan product ------------------------------------------------------
 
@@ -129,7 +135,7 @@ class TestNotifications(unittest.TestCase):
 		"""The user who acts is never notified about their own action."""
 		frappe.set_user(ADMIN_USER)
 		try:
-			self._make_product()
+			self._make_product(actor=ADMIN_USER)
 		finally:
 			frappe.set_user("Administrator")
 		self.assertFalse(self._logs_for(ADMIN_USER, "A2C Loan Product"))

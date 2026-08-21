@@ -33,6 +33,15 @@ class TestStatsCache(unittest.TestCase):
 			}
 		).insert(ignore_permissions=True)
 		cls.bank_name = cls.bank.name
+
+		cls.agent_email = "stats_agent@test.com"
+		if not frappe.db.exists("User", cls.agent_email):
+			frappe.get_doc({
+				"doctype": "User",
+				"email": cls.agent_email,
+				"first_name": "Stats Agent",
+				"roles": [{"role": "A2C Bank Agent"}]
+			}).insert(ignore_permissions=True, ignore_mandatory=True)
 		frappe.db.commit()
 
 	@classmethod
@@ -48,6 +57,7 @@ class TestStatsCache(unittest.TestCase):
 		frappe.cache().delete_keys(f"dashboard_stats:{self.bank_name}:*")
 
 	def test_total_products_excludes_archived(self):
+		frappe.set_user(self.agent_email)
 		# Create 1 Pending Approval, 1 Active, 1 Rejected product
 		frappe.get_doc(
 			{

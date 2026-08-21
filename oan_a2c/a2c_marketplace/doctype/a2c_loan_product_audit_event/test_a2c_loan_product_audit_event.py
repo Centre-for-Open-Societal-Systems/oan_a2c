@@ -31,7 +31,25 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 			bank_name = bank_doc.name
 		cls.bank_name = bank_name
 
+		cls.agent_email = "audit_agent@test.com"
+		if not frappe.db.exists("User", cls.agent_email):
+			frappe.get_doc({
+				"doctype": "User",
+				"email": cls.agent_email,
+				"first_name": "Audit Agent",
+				"roles": [{"role": "A2C Bank Agent"}]
+			}).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		if not frappe.db.exists("User Permission", {"user": cls.agent_email, "allow": "A2C Participating Bank", "for_value": cls.bank_name}):
+			frappe.get_doc({
+				"doctype": "User Permission",
+				"user": cls.agent_email,
+				"allow": "A2C Participating Bank",
+				"for_value": cls.bank_name
+			}).insert(ignore_permissions=True)
+
 	def test_audit_event_logged_on_status_change(self):
+		frappe.set_user(self.agent_email)
 		product = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Product",
@@ -68,6 +86,7 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 		self.assertEqual(latest_log["reason"], "Interest rate policy violation")
 
 	def test_audit_event_logged_on_resubmission_with_field_diffs(self):
+		frappe.set_user(self.agent_email)
 		product = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Product",
@@ -85,7 +104,7 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 		from oan_a2c.api.v1.seller.loan_products import update_product
 
 		# Resubmit product with lower interest rate
-		frappe.set_user("Administrator")
+		frappe.set_user(self.agent_email)
 		res = update_product(
 			product_id=product.name, min_interest_rate=10, reason="Adjusted interest rate to 10%"
 		)
@@ -108,6 +127,7 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 		self.assertIn("min_interest_rate", latest_log["event_description"])
 
 	def test_rejection_and_approval_require_reason(self):
+		frappe.set_user(self.agent_email)
 		product = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Product",
@@ -140,6 +160,7 @@ class TestA2CLoanProductAuditEvent(unittest.TestCase):
 		)
 
 	def test_archive_is_reversible_and_any_product_can_be_archived(self):
+		frappe.set_user(self.agent_email)
 		product = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Product",
