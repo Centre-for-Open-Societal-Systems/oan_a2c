@@ -159,9 +159,8 @@ permission_query_conditions["A2C Farmer Profile"] = (
 permission_query_conditions["A2C Consent Request"] = (
 	"oan_a2c.a2c_marketplace.permissions.farmer_own_consent_query"
 )
-# Bookmarking is open to every catalog-browsing role, so these two hooks are the only
-# thing scoping one user's saved list away from another's -- the query hook for lists,
-# the has_permission twin below for reads/deletes by name.
+# Bookmarking is open to every signed-in user (DocPerm role "All"), so this hook is
+# the only thing scoping one user's saved list away from another's.
 permission_query_conditions["A2C Saved Product"] = (
 	"oan_a2c.a2c_marketplace.permissions.saved_product_own_query"
 )

@@ -15,6 +15,12 @@ class A2CLoanApplication(Document):
 		"""Bank Admins + Agents of this application's bank (actor excluded downstream)."""
 		return get_bank_members(self.bank, roles=BANK_ROLES)
 
+	def before_save(self):
+		if not self.is_new():
+			db_status = self.get_db_value("status")
+			if self.status == "In Transition" and db_status != "In Transition":
+				self._enforce_submission_prerequisites()
+
 	def _enforce_submission_prerequisites(self):
 		"""
 		A loan application may only transition to 'In Transition' (submitted to a bank)
@@ -167,15 +173,6 @@ class A2CLoanApplication(Document):
 					assert_amount_within_product_range(
 						amount, product_amounts.get("min_amount"), product_amounts.get("max_amount")
 					)
-
-		# Consent gate lives here rather than in before_save: before_save is skipped on
-		# insert-with-status and on submit, both of which can land a document in the
-		# bank's queue. apply_status_transition calls this explicitly too, since the
-		# workflow moves `status` with db_set and never runs controller hooks.
-		if self.status == "In Transition" and (
-			self.is_new() or self.get_db_value("status") != "In Transition"
-		):
-			self._enforce_submission_prerequisites()
 
 		self._sync_bank_from_product()
 

@@ -388,7 +388,7 @@ def saved_product_own_query(user=None):
 	return f"`user` = {frappe.db.escape(user)}"
 
 
-def saved_product_own_doc(doc, user=None):
+def saved_product_own_doc(doc, ptype=None, user=None):
 	"""has_permission for A2C Saved Product -- the doc-level twin of the query above.
 
 	permission_query_conditions only fires on list queries, so on its own it leaves
@@ -397,6 +397,11 @@ def saved_product_own_doc(doc, user=None):
 	controller stamps `user` from the session), but reads and deletes by name need
 	this to make "you only see what you saved" true outside the API layer too.
 	"""
+	# `create` is checked before validate() stamps `user`, so the row is still
+	# blank here -- and the controller forces it to the session user anyway,
+	# which makes creating into someone else's list impossible regardless.
+	if ptype == "create":
+		return True
 	if not user:
 		user = frappe.session.user
 	if is_platform_admin(user):
