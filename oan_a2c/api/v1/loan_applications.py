@@ -3,16 +3,19 @@ from typing import Literal
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, sanitize_html
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from oan_a2c.a2c_marketplace.doctype_schemas import MAX_LOAN_AMOUNT, MAX_QUERY_AMOUNT
+from oan_a2c.a2c_marketplace.roles import ADMIN_ROLE, BANK_ADMIN_ROLE, BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
 from oan_a2c.api.utils import (
 	SafeDate,
 	SafeEmail,
 	apply_status_transition,
-	assert_amount_within_product_range,
+	get_workflow_state_names,
 	handle_api_errors,
 	parse_multi_value,
+	require_role,
+	status_has_tag,
 	success_response,
 	to_tz_aware_iso,
 	validate_request,
@@ -68,6 +71,21 @@ class GetAllLoansSchema(BaseModel):
 				raise ValueError("min_loan_amount cannot be greater than max_loan_amount.")
 		return self
 
+	@field_validator("status")
+	@classmethod
+	def validate_statuses(cls, value: str | None):
+		if value is None:
+			return value
+		allowed_statuses = get_workflow_state_names("A2C Loan Application")
+		if allowed_statuses:
+			requested = parse_multi_value(value)
+			invalid = [status for status in requested if status not in allowed_statuses]
+			if invalid:
+				raise ValueError(
+					"Invalid value '{0}'. Allowed values: {1}".format(invalid[0], ", ".join(allowed_statuses))
+				)
+		return value
+
 
 class BrowseProductsSchema(BaseModel):
 	search: str | None = Field(None, max_length=140)
@@ -94,12 +112,6 @@ class DownloadSupportingDocumentSchema(BaseModel):
 class DeleteSupportingDocumentSchema(BaseModel):
 	application_id: str = Field(..., min_length=1, max_length=140)
 	file_id: str = Field(..., min_length=1, max_length=140)
-
-
-class UpdateLoanStatusSchema(BaseModel):
-	application_id: str = Field(..., min_length=1, max_length=140)
-	status: Literal["Draft", "Processing", "Approved", "Rejected"]
-	reason: str | None = Field(None, max_length=2000)
 
 
 class UpdateLoanStepSchema(BaseModel):
@@ -273,12 +285,10 @@ def get_full_profile(**kwargs):
 	application_id = kwargs.get("application_id")
 	frappe.has_permission("A2C Loan Application", "read", doc=application_id, throw=True)
 	doc = _get_app(application_id)
-	farmer_profile = frappe.db.get_value("A2C Lead", doc.lead_id, "farmer_profile")
 
 	data = {
 		"application_id": doc.name,
 		"lead_id": doc.lead_id,
-		"farmer_profile": farmer_profile,
 		"first_name": doc.first_name,
 		"last_name": doc.last_name,
 		"region": doc.region,
@@ -331,17 +341,17 @@ def get_loan_summary():
 	meta = frappe.get_meta("A2C Loan Application")
 	has_loan_officer = meta.has_field("loan_officer")
 
-	fields = ["status", {"COUNT": "*"}]
-	group_by = "status"
+	fields = ["status", "stage_label", {"COUNT": "*"}]
+	group_by = "status, stage_label"
 	if has_loan_officer:
-		fields.insert(1, "loan_officer")
-		group_by = "status, loan_officer"
+		fields.insert(2, "loan_officer")
+		group_by += ", loan_officer"
 
 	counts = frappe.get_list(
 		"A2C Loan Application", fields=fields, group_by=group_by, ignore_permissions=False
 	)
 
-	summary = {"total": 0, "processing": 0, "approved": 0, "rejected": 0}
+	summary = {"total": 0, "stages": {}}
 	my_applications = 0
 	unassigned = 0
 
@@ -350,12 +360,11 @@ def get_loan_summary():
 		count = row.get("COUNT(*)", 0)
 		summary["total"] += count
 
-		if row.status == "Processing":
-			summary["processing"] += count
-		elif row.status == "Approved":
-			summary["approved"] += count
-		elif row.status == "Rejected":
-			summary["rejected"] += count
+		# If the bank has defined a stage, use it, else fallback to the archetype status
+		stage_name = row.stage_label or row.status
+		if stage_name not in summary["stages"]:
+			summary["stages"][stage_name] = 0
+		summary["stages"][stage_name] += count
 
 		if has_loan_officer:
 			if row.loan_officer == user:
@@ -428,7 +437,7 @@ def get_all_loans(**kwargs):
 	filters = {}
 
 	if status:
-		allowed_statuses = ("Draft", "Processing", "Approved", "Rejected")
+		allowed_statuses = get_workflow_state_names("A2C Loan Application")
 		valid_statuses = parse_multi_value(status, allowed_statuses)
 		if valid_statuses:
 			filters["status"] = ["in", valid_statuses]
@@ -804,25 +813,13 @@ def create_loan_application(**kwargs):
 			frappe.ValidationError,
 		)
 
-	# bank-scope-exempt — reading the product's own bank and amount range to stamp and
-	# validate the application; not a cross-bank query.
-	product = (
-		frappe.db.get_value(
-			"A2C Loan Product", loan_product, ["bank", "min_amount", "max_amount"], as_dict=True
-		)
-		or {}
-	)
-	bank = product.get("bank")
+	# bank-scope-exempt — reading the product's own bank to stamp the application;
+	# not a cross-bank query.
+	bank = frappe.db.get_value("A2C Loan Product", loan_product, "bank")
 	if not bank:
 		frappe.throw(
 			_("Loan Product {0} is not linked to a bank.").format(loan_product), frappe.ValidationError
 		)
-
-	# Same per-product rule the self-service path enforces: an amount the chosen
-	# product cannot offer would reach the bank as something it can never approve.
-	assert_amount_within_product_range(
-		credit_info.get("loan_amount"), product.get("min_amount"), product.get("max_amount")
-	)
 
 	loan_app = frappe.new_doc("A2C Loan Application")
 	loan_app.lead_id = lead_id
@@ -841,7 +838,7 @@ def create_loan_application(**kwargs):
 	loan_app.loan_product = loan_product
 	loan_app.loan_product_name = frappe.db.get_value("A2C Loan Product", loan_product, "product_name")
 	loan_app.bank = bank
-	loan_app.status = "Draft"
+	loan_app.status = "Active"
 
 	loan_app.insert(ignore_permissions=False)
 
@@ -857,7 +854,6 @@ def create_loan_application(**kwargs):
 			"application": {
 				"name": loan_app.name,
 				"status": loan_app.status,
-				"farmer_profile": loan_app.farmer_profile,
 				"first_name": loan_app.first_name,
 				"last_name": loan_app.last_name,
 				"loan_type": loan_app.loan_type,
@@ -869,15 +865,26 @@ def create_loan_application(**kwargs):
 	)
 
 
+class UpdateLoanStatusSchema(BaseModel):
+	application_id: str = Field(..., min_length=1, max_length=140)
+	status: str = Field(..., min_length=1, max_length=140)
+	reason: str | None = Field(None, max_length=2000)
+
+	# Removed strict status validation because status can now be a stage_id or label.
+	# Validation will happen in the endpoint using resolve_bank_stage.
+
+
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(UpdateLoanStatusSchema)
 @handle_api_errors
+@require_role([ADMIN_ROLE, BANK_ADMIN_ROLE, BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE, "System Manager"])
 def update_loan_status(**kwargs):
 	"""
-	Updates the status of a loan application. Cannot update if current status is Rejected or Approved.
+	Updates the status of a loan application. Cannot update if current status is terminal.
+	Accepts an archetype status ('Completed') or a bank-defined stage ID/label.
 	"""
 	application_id = kwargs.get("application_id")
-	status = kwargs.get("status")
+	status_input = kwargs.get("status")
 	reason = kwargs.get("reason")
 
 	if reason:
@@ -893,13 +900,27 @@ def update_loan_status(**kwargs):
 	doc = _get_app(application_id)
 	doc.flags.ignore_permissions = True
 
+	from oan_a2c.a2c_marketplace.stages import resolve_bank_stage
+
+	resolved = resolve_bank_stage(doc.bank, status_input)
+
+	target_archetype = resolved["archetype_state"]
+
 	# Apply the status change through the A2C Loan Application Workflow. The workflow enforces
 	# legal transitions and per-role gating, and submits the doc (docstatus 1) on
-	# Approve/Reject. Illegal/unauthorised targets raise ValidationError.
-	apply_status_transition(doc, status)
+	# Approve/Reject (Completed). Illegal/unauthorised targets raise ValidationError.
+	apply_status_transition(doc, target_archetype)
+
+	# Update the stage on the document
+	if resolved["stage_id"]:
+		doc.db_set("stage_id", resolved["stage_id"])
+		doc.db_set("stage_label", resolved["stage_label"])
+	else:
+		doc.db_set("stage_id", None)
+		doc.db_set("stage_label", resolved["stage_label"])
 
 	# Insert Loan Application Audit Event
-	description = _("Changed to {0}").format(status)
+	description = _("Changed to {0} ({1})").format(resolved["stage_label"], target_archetype)
 	if reason:
 		description += f"\nReason: {reason}"
 	description += f"\nUpdated by: {frappe.session.user}"
@@ -912,7 +933,7 @@ def update_loan_status(**kwargs):
 	audit_event.event_description = description
 	audit_event.insert()
 
-	return success_response(message=_("Loan status updated to {0}.").format(status))
+	return success_response(message=_("Loan status updated to {0}.").format(resolved["stage_label"]))
 
 
 @frappe.whitelist(allow_guest=False, methods=["POST"])

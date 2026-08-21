@@ -61,5 +61,19 @@
   "modified": "2026-06-29 13:03:16.413313",
   "name": "Send for Review",
   "workflow_action_name": "Send for Review"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-08-20 00:00:00.000000",
+  "name": "Submit",
+  "workflow_action_name": "Submit"
+ },
+ {
+  "docstatus": 0,
+  "doctype": "Workflow Action Master",
+  "modified": "2026-08-20 00:00:00.000000",
+  "name": "Complete",
+  "workflow_action_name": "Complete"
  }
 ]

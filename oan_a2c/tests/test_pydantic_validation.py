@@ -26,6 +26,17 @@ def dummy_kwargs_endpoint(**kwargs):
 
 
 class TestPydanticValidation(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls):
+		cls.agent_email = "pydantic_agent@test.com"
+		if not frappe.db.exists("User", cls.agent_email):
+			frappe.get_doc({
+				"doctype": "User",
+				"email": cls.agent_email,
+				"first_name": "Pydantic Agent",
+				"roles": [{"role": "A2C Bank Agent"}]
+			}).insert(ignore_permissions=True, ignore_mandatory=True)
+
 	def setUp(self):
 		# Reset response and message log state
 		frappe.response["http_status_code"] = 200
@@ -224,5 +235,9 @@ class TestPydanticValidation(unittest.TestCase):
 		# Changing min_interest_rate from 10.0 -> 12.0 on an Active product
 		doc.min_interest_rate = 12.0
 
-		with self.assertRaises(frappe.PermissionError):
-			doc.before_save()
+		frappe.set_user(self.agent_email)
+		try:
+			with self.assertRaises(frappe.PermissionError):
+				doc.before_save()
+		finally:
+			frappe.set_user("Administrator")

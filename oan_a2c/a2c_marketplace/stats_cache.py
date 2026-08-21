@@ -1,19 +1,18 @@
 import frappe
 
+from oan_a2c.api.utils import status_has_tag
+
 _COUNTERS = (
 	"total_products",
 	"active_products",
-	"total_applications",
-	"pending_applications",
-	"approved_applications",
-	"total_approved_amount",
 	"pending_products",
+	"rejected_products",
+	"archived_products",
+	"total_applications",
+	"stage_counts",
 )
-_PENDING_STATUSES = {"Processing"}
-# Product statuses that are retired from the marketplace: not offerable to farmers
-# and excluded from total_products. Rejected (declined at approval) and Archived
-# (retired after being Active) are treated identically for counting/visibility.
-_EXCLUDED_PRODUCT_STATUSES = {"Rejected", "Archived"}
+
+_EXCLUDED_PRODUCT_STATUSES = set()
 
 
 def _key(bank: str, counter: str) -> str:
@@ -39,6 +38,18 @@ def _incr(bank: str, counter: str, amount=1) -> None:
 
 def _decr(bank: str, counter: str, amount=1) -> None:
 	_incr(bank, counter, -amount)
+
+
+def _incr_stage(bank: str, stage: str, amount=1) -> None:
+	"""Increment a specific stage count inside the cached `stage_counts` dictionary."""
+	key = _key(bank, "stage_counts")
+	counts = frappe.cache().get_value(key)
+	if counts is None:
+		return
+	counts[stage] = counts.get(stage, 0) + amount
+	if counts[stage] <= 0:
+		counts.pop(stage, None)
+	frappe.cache().set_value(key, counts)
 
 
 def get_stats_for_bank(bank: str) -> dict | None:
@@ -67,28 +78,33 @@ def _compute_from_db(bank: str) -> dict:
 	)
 	active_products = sum(item.count for item in product_counts if item.status == "Active")
 	pending_products = sum(item.count for item in product_counts if item.status == "Pending Approval")
+	rejected_products = sum(item.count for item in product_counts if item.status == "Rejected")
+	archived_products = sum(item.count for item in product_counts if item.status == "Archived")
 
 	app_counts = frappe.get_all(  # bank-scope-exempt: bank scoped explicitly via filters above
 		"A2C Loan Application",
 		filters=filters,
-		fields=["status", {"COUNT": "name", "as": "count"}, {"SUM": "approved_amount", "as": "total_amount"}],
-		group_by="status",
+		fields=["status", "stage_label", {"COUNT": "name", "as": "count"}],
+		group_by="status, stage_label",
 	)
+
 	total_applications = sum(item.count for item in app_counts)
-	pending_applications = sum(item.count for item in app_counts if item.status in _PENDING_STATUSES)
-	approved_applications = sum(item.count for item in app_counts if item.status == "Approved")
-	total_approved_amount = float(
-		sum((item.total_amount or 0) for item in app_counts if item.status == "Approved")
-	)
+	stage_counts = {}
+
+	for item in app_counts:
+		stage = item.stage_label or item.status
+		if stage not in stage_counts:
+			stage_counts[stage] = 0
+		stage_counts[stage] += item.count
 
 	return {
 		"total_products": total_products,
 		"active_products": active_products,
 		"pending_products": pending_products,
+		"rejected_products": rejected_products,
+		"archived_products": archived_products,
 		"total_applications": total_applications,
-		"pending_applications": pending_applications,
-		"approved_applications": approved_applications,
-		"total_approved_amount": total_approved_amount,
+		"stage_counts": stage_counts,
 	}
 
 
@@ -142,6 +158,10 @@ def on_product_change(doc, event: str) -> None:
 			_incr(bank, "active_products")
 		elif doc.status == "Pending Approval":
 			_incr(bank, "pending_products")
+		elif doc.status == "Rejected":
+			_incr(bank, "rejected_products")
+		elif doc.status == "Archived":
+			_incr(bank, "archived_products")
 
 	elif event == "on_update":
 		before = doc.get_doc_before_save()
@@ -159,11 +179,19 @@ def on_product_change(doc, event: str) -> None:
 				_decr(bank, "active_products")
 			elif before.status == "Pending Approval":
 				_decr(bank, "pending_products")
+			elif before.status == "Rejected":
+				_decr(bank, "rejected_products")
+			elif before.status == "Archived":
+				_decr(bank, "archived_products")
 
 			if doc.status == "Active":
 				_incr(bank, "active_products")
 			elif doc.status == "Pending Approval":
 				_incr(bank, "pending_products")
+			elif doc.status == "Rejected":
+				_incr(bank, "rejected_products")
+			elif doc.status == "Archived":
+				_incr(bank, "archived_products")
 
 	elif event == "on_trash":
 		if doc.status not in _EXCLUDED_PRODUCT_STATUSES:
@@ -172,6 +200,10 @@ def on_product_change(doc, event: str) -> None:
 			_decr(bank, "active_products")
 		elif doc.status == "Pending Approval":
 			_decr(bank, "pending_products")
+		elif doc.status == "Rejected":
+			_decr(bank, "rejected_products")
+		elif doc.status == "Archived":
+			_decr(bank, "archived_products")
 
 
 def on_application_change(doc, event: str) -> None:
@@ -179,46 +211,26 @@ def on_application_change(doc, event: str) -> None:
 	if not bank:
 		return
 
+	# Determine the effective stage name for this document
+	current_stage = doc.stage_label or doc.status
+
 	if event == "after_insert":
 		_incr(bank, "total_applications")
-		if doc.status in _PENDING_STATUSES:
-			_incr(bank, "pending_applications")
-		elif doc.status == "Approved":
-			_incr(bank, "approved_applications")
-			_incr(bank, "total_approved_amount", float(doc.approved_amount or 0))
+		_incr_stage(bank, current_stage, 1)
 
 	elif event == "on_update":
 		before = doc.get_doc_before_save()
 		if before is None:
 			return  # after_insert already handled this
 
-		status_changed = before.status != doc.status
-		if status_changed:
-			if before.status in _PENDING_STATUSES:
-				_decr(bank, "pending_applications")
-			elif before.status == "Approved":
-				_decr(bank, "approved_applications")
-				_decr(bank, "total_approved_amount", float(before.approved_amount or 0))
-
-			if doc.status in _PENDING_STATUSES:
-				_incr(bank, "pending_applications")
-			elif doc.status == "Approved":
-				_incr(bank, "approved_applications")
-				_incr(bank, "total_approved_amount", float(doc.approved_amount or 0))
-
-		elif doc.status == "Approved":
-			# Status unchanged but approved_amount may have changed
-			amount_delta = float(doc.approved_amount or 0) - float(before.approved_amount or 0)
-			if amount_delta:
-				_incr(bank, "total_approved_amount", amount_delta)
+		before_stage = before.stage_label or before.status
+		if before_stage != current_stage:
+			_incr_stage(bank, before_stage, -1)
+			_incr_stage(bank, current_stage, 1)
 
 	elif event == "on_trash":
 		_decr(bank, "total_applications")
-		if doc.status in _PENDING_STATUSES:
-			_decr(bank, "pending_applications")
-		elif doc.status == "Approved":
-			_decr(bank, "approved_applications")
-			_decr(bank, "total_approved_amount", float(doc.approved_amount or 0))
+		_incr_stage(bank, current_stage, -1)
 
 
 def reconcile_all_banks() -> None:

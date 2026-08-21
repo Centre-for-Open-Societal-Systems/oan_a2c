@@ -175,11 +175,6 @@
    "role": "A2C Administrator",
    "share": 1,
    "write": 1
-  },
-  {
-   "create": 1,
-   "read": 1,
-   "role": "A2C Farmer"
   }
  ],
  "sort_field": "modified",

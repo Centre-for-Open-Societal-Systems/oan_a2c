@@ -6,7 +6,6 @@ from pydantic import BaseModel, Field
 from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
 from oan_a2c.api.utils import (
 	apply_status_transition,
-	assert_amount_within_product_range,
 	handle_api_errors,
 	require_role,
 	success_response,
@@ -108,7 +107,6 @@ def get_application(**kwargs):
 
 	data = {
 		"application_id": doc.name,
-		"farmer_profile": doc.farmer_profile,
 		"bank": doc.bank,
 		"first_name": doc.first_name,
 		"last_name": doc.last_name,
@@ -159,13 +157,13 @@ def get_application(**kwargs):
 @handle_api_errors
 @require_role([FARMER_ROLE])
 def update_application(**kwargs):
-	"""Allows a farmer to update their Draft application."""
+	"""Allows a farmer to update their Active application."""
 	application_id = kwargs.get("application_id")
 	frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
 
 	doc = _get_app(application_id)
-	if doc.status != "Draft":
-		frappe.throw(_("Only Draft applications can be updated."), frappe.ValidationError)
+	if doc.status != "Active":
+		frappe.throw(_("Only Active applications can be updated."), frappe.ValidationError)
 
 	changed = False
 	if kwargs.get("requested_amount") is not None:
@@ -187,7 +185,7 @@ def update_application(**kwargs):
 @handle_api_errors
 @require_role([FARMER_ROLE])
 def create_application(**kwargs):
-	"""Creates a Draft application for the farmer."""
+	"""Creates an Active application for the farmer."""
 	user = frappe.session.user
 	profile_name = frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
 	if not profile_name:
@@ -196,12 +194,6 @@ def create_application(**kwargs):
 	product = frappe.get_doc("A2C Loan Product", kwargs["loan_product"])
 	if product.status != "Active":
 		frappe.throw(_("This loan product is not active."), frappe.ValidationError)
-
-	# The requested amount has to fit the product being applied for. The schema only
-	# bounds it at >= 1, because the real limit is per-product rather than global --
-	# without this a farmer could ask for more than any bank has offered, and the
-	# application would sit in a bank's queue as something it can never approve.
-	assert_amount_within_product_range(kwargs["requested_amount"], product.min_amount, product.max_amount)
 
 	profile = frappe.get_doc("A2C Farmer Profile", profile_name)
 
@@ -239,7 +231,7 @@ def create_application(**kwargs):
 			"loan_amount": kwargs["requested_amount"],
 			"loan_reason": kwargs.get("loan_reason"),
 			"consent_id": consent_id,
-			"status": "Draft",
+			"status": "Active",
 			"current_step": 1,
 			"first_name": profile.first_name,
 			"last_name": profile.last_name,
@@ -260,16 +252,21 @@ def create_application(**kwargs):
 @handle_api_errors
 @require_role([FARMER_ROLE])
 def submit_application(**kwargs):
-	"""Submits a Draft application to the bank (transitions to Processing)."""
+	"""Submits an Active application to the bank (transitions to In Transition)."""
 	application_id = kwargs.get("application_id")
 	frappe.has_permission("A2C Loan Application", "write", doc=application_id, throw=True)
 
 	doc = _get_app(application_id)
-	if doc.status != "Draft":
-		frappe.throw(_("Only Draft applications can be submitted."), frappe.ValidationError)
+	if doc.status != "Active":
+		frappe.throw(_("Only Active applications can be submitted."), frappe.ValidationError)
 
-	# The workflow patch (update_loan_workflow_for_farmer) adds A2C Farmer to the
-	# Draft -> Processing transition.
-	apply_status_transition(doc, "Processing")
+	from oan_a2c.a2c_marketplace.stages import get_initial_pipeline_stage
+
+	initial_stage = get_initial_pipeline_stage(doc.bank)
+	if initial_stage:
+		doc.stage_id = initial_stage["stage_id"]
+		doc.stage_label = initial_stage["label"]
+
+	apply_status_transition(doc, "In Transition")
 
 	return success_response(message="Application submitted successfully")

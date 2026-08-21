@@ -93,7 +93,7 @@ after_install = "oan_a2c.setup.custom_fields.setup_custom_fields"
 
 # Re-assert those custom fields on every migrate so already-provisioned sites
 # stay self-healing when the definitions change.
-after_migrate = "oan_a2c.setup.custom_fields.setup_custom_fields"
+after_migrate = "oan_a2c.setup.migrate.after_migrate"
 
 # Uninstallation
 # ------------
@@ -140,6 +140,7 @@ BANK_SCOPED = [
 	"A2C Loan Product Attribute Lookup",
 	"A2C Loan Application",
 	"A2C Loan Application Audit Event",
+	"A2C Loan Status Stage",
 ]
 
 permission_query_conditions = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_query" for d in BANK_SCOPED}
@@ -164,6 +165,7 @@ permission_query_conditions["A2C Saved Product"] = (
 	"oan_a2c.a2c_marketplace.permissions.saved_product_own_query"
 )
 has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d in BANK_SCOPED}
+has_permission["A2C Saved Product"] = "oan_a2c.a2c_marketplace.permissions.saved_product_own_doc"
 
 # Document Events
 # ---------------

@@ -43,9 +43,19 @@ def _ensure_bank(code):
 class TestLoanProductLookupSync(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
+		super().setUpClass()
 		frappe.set_user("Administrator")
 		cls.BANK_A_ID = _ensure_bank(BANK_A_CODE)
 		cls.BANK_B_ID = _ensure_bank(BANK_B_CODE)
+
+		cls.agent_email = "lookup_agent@test.com"
+		if not frappe.db.exists("User", cls.agent_email):
+			frappe.get_doc({
+				"doctype": "User",
+				"email": cls.agent_email,
+				"first_name": "Lookup Agent",
+				"roles": [{"role": "A2C Bank Agent"}]
+			}).insert(ignore_permissions=True, ignore_mandatory=True)
 		frappe.db.commit()
 
 	def setUp(self):
@@ -75,7 +85,12 @@ class TestLoanProductLookupSync(unittest.TestCase):
 				"tenure_months": 12,
 				"status": status,
 			}
-		).insert(ignore_permissions=True)
+		)
+		frappe.set_user(self.agent_email)
+		try:
+			doc.insert(ignore_permissions=True)
+		finally:
+			frappe.set_user("Administrator")
 		self._products.append(doc.name)
 		return doc
 

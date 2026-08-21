@@ -5,6 +5,7 @@ from frappe import _
 from frappe.utils import now_datetime
 from pydantic import BaseModel, Field
 
+from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
 from oan_a2c.api.utils import SafeDate, handle_api_errors, success_response, to_tz_aware_iso, validate_request
 from oan_a2c.api.v1.webhook_consent_data import validate_and_enqueue_consent
 
@@ -215,7 +216,13 @@ def search_farmer(**kwargs):
 	if lead_id:
 		frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
 	else:
-		if not (frappe.has_permission("A2C Lead", "read") or "System Manager" in frappe.get_roles()):
+		# No lead means the self-service (B2C) entry point: the farmer is doing the
+		# Fayda lookup that precedes request_otp, before any record exists. Farmers hold
+		# no DocPerm on A2C Lead, so they have to be admitted by role here.
+		roles = frappe.get_roles()
+		if not (
+			frappe.has_permission("A2C Lead", "read") or FARMER_ROLE in roles or "System Manager" in roles
+		):
 			frappe.throw(_("Not permitted to search farmer profile"), frappe.PermissionError)
 
 	client = OpenG2PConsentClient()

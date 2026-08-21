@@ -33,6 +33,15 @@ class TestStatsCache(unittest.TestCase):
 			}
 		).insert(ignore_permissions=True)
 		cls.bank_name = cls.bank.name
+
+		cls.agent_email = "stats_agent@test.com"
+		if not frappe.db.exists("User", cls.agent_email):
+			frappe.get_doc({
+				"doctype": "User",
+				"email": cls.agent_email,
+				"first_name": "Stats Agent",
+				"roles": [{"role": "A2C Bank Agent"}]
+			}).insert(ignore_permissions=True, ignore_mandatory=True)
 		frappe.db.commit()
 
 	@classmethod
@@ -47,8 +56,9 @@ class TestStatsCache(unittest.TestCase):
 		frappe.db.commit()
 		frappe.cache().delete_keys(f"dashboard_stats:{self.bank_name}:*")
 
-	def test_total_products_excludes_archived(self):
-		# Create 1 Pending Approval, 1 Active, 1 Rejected product
+	def test_total_products_includes_rejected(self):
+		frappe.set_user(self.agent_email)
+		# Create 1 Pending Approval, 1 Active, 1 Rejected, 1 Archived product
 		frappe.get_doc(
 			{
 				"doctype": "A2C Loan Product",
@@ -76,7 +86,7 @@ class TestStatsCache(unittest.TestCase):
 		frappe.get_doc(
 			{
 				"doctype": "A2C Loan Product",
-				"product_name": "Test Archived",
+				"product_name": "Test Rejected",
 				"bank": self.bank_name,
 				"min_interest_rate": 5,
 				"max_amount": 1000,
@@ -85,22 +95,38 @@ class TestStatsCache(unittest.TestCase):
 			}
 		).insert(ignore_permissions=True)
 
+		frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": "Test Archived",
+				"bank": self.bank_name,
+				"min_interest_rate": 5,
+				"max_amount": 1000,
+				"tenure_months": 12,
+				"status": "Archived",
+			}
+		).insert(ignore_permissions=True)
+
 		stats = _compute_from_db(self.bank_name)
-		self.assertEqual(stats["total_products"], 2)  # Pending Approval + Active (Rejected excluded)
-		self.assertEqual(stats["active_products"], 1)  # Only Active
+		self.assertEqual(stats["total_products"], 4)  # Pending Approval + Active + Rejected + Archived
+		self.assertEqual(stats["active_products"], 1)
+		self.assertEqual(stats["rejected_products"], 1)
+		self.assertEqual(stats["archived_products"], 1)
 
 		# Test status update from Active -> Rejected
 		p_active.status = "Rejected"
 		p_active.save(ignore_permissions=True)
 
 		stats_after = _compute_from_db(self.bank_name)
-		self.assertEqual(stats_after["total_products"], 1)  # Only Pending Approval remaining
+		self.assertEqual(stats_after["total_products"], 4)  # All 4 still exist
 		self.assertEqual(stats_after["active_products"], 0)
+		self.assertEqual(stats_after["rejected_products"], 2)
 
-		# Test status update from Archived -> Active
+		# Test status update from Rejected -> Active
 		p_active.status = "Active"
 		p_active.save(ignore_permissions=True)
 
 		stats_resumed = _compute_from_db(self.bank_name)
-		self.assertEqual(stats_resumed["total_products"], 2)
+		self.assertEqual(stats_resumed["total_products"], 4)
 		self.assertEqual(stats_resumed["active_products"], 1)
+		self.assertEqual(stats_resumed["rejected_products"], 1)

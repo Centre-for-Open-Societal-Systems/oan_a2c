@@ -1118,7 +1118,6 @@ At least one field should be provided (no error if omitted — returns current v
   "data": {
     "application_id": "LOANAPP-2026-0001",
     "lead_id": "LEAD-2026-0001",
-    "farmer_profile": "FARMPROF-2026-0001",
     "first_name": "Abebe",
     "last_name": "Kebede",
     "region": "Oromia",

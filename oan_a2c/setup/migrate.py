@@ -1,0 +1,5 @@
+from oan_a2c.setup.custom_fields import setup_custom_fields
+
+
+def after_migrate():
+	setup_custom_fields()

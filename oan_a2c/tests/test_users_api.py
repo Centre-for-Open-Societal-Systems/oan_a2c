@@ -309,6 +309,7 @@ class TestInviteTeamMember(unittest.TestCase):
 			f"iu_bankadmin_{cls.suffix}@oan.test", "IU Bank Admin", BANK_ADMIN_ROLE, cls.bank
 		)
 		cls._users = [cls.bank_admin]
+		frappe.db.commit()
 
 	@classmethod
 	def tearDownClass(cls):
@@ -414,6 +415,7 @@ class TestResetMemberPassword(unittest.TestCase):
 
 		cls._users = [cls.bank_admin_a, cls.bank_admin_b, cls.agent_a, cls.agent_b]
 		cls._banks = [cls.bank_a, cls.bank_b]
+		frappe.db.commit()
 
 	@classmethod
 	def tearDownClass(cls):

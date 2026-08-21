@@ -272,9 +272,9 @@ def loan_application_scope_query(user=None):
 		return f"({base}) and {AGENT_SOURCED_ONLY}" if base else AGENT_SOURCED_ONLY
 
 	# Bank users (Bank Admin, Bank Agent) DO see self-service applications, but only
-	# once they are no longer Draft.
-	draft_gate = "`status` != 'Draft'"
-	return f"({base}) and {draft_gate}" if base else draft_gate
+	# once the workflow moves them past the Active stage (which is farmer's private).
+	status_gate = "`status` != 'Active'"
+	return f"({base}) and {status_gate}" if base else status_gate
 
 
 def loan_product_scope_query(user=None):
@@ -354,10 +354,10 @@ def bank_scope_doc(doc, user=None):
 	allowed = bool(bank) and doc.bank == bank
 
 	if allowed and doc.doctype == "A2C Loan Application":
-		# Lifecycle gate: Bank users can't read Drafts
-		if doc.get("status") == "Draft":
+		# Lifecycle gate: Bank users can't read applications until the workflow marks them visible.
+		if doc.get("status") == "Active":
 			frappe.logger("bank_scope").info(
-				f"Denied Draft loan application to bank user: user={user} {doc.doctype}={doc.name}"
+				f"Denied hidden loan application to bank user: user={user} {doc.doctype}={doc.name}"
 			)
 			return False
 
@@ -376,12 +376,34 @@ def bank_scope_doc(doc, user=None):
 def saved_product_own_query(user=None):
 	"""permission_query_conditions for A2C Saved Product.
 
-	Bookmarking is open to every signed-in user (DocPerm role "All"), so row
-	visibility is the only thing standing between one user's saved list and
-	another's. Platform admins keep the unscoped view for support.
+	Bookmarking is open to every role that browses the catalog -- farmers, bank
+	users and development agents alike -- so row visibility is the only thing
+	standing between one user's saved list and another's. Platform admins keep the
+	unscoped view for support.
 	"""
 	if not user:
 		user = frappe.session.user
 	if is_platform_admin(user):
 		return ""
 	return f"`user` = {frappe.db.escape(user)}"
+
+
+def saved_product_own_doc(doc, ptype=None, user=None):
+	"""has_permission for A2C Saved Product -- the doc-level twin of the query above.
+
+	permission_query_conditions only fires on list queries, so on its own it leaves
+	`frappe.client.get("A2C Saved Product", "<name>")` open to anyone holding read
+	DocPerm: the row would be another user's bookmark. Writes are already safe (the
+	controller stamps `user` from the session), but reads and deletes by name need
+	this to make "you only see what you saved" true outside the API layer too.
+	"""
+	# `create` is checked before validate() stamps `user`, so the row is still
+	# blank here -- and the controller forces it to the session user anyway,
+	# which makes creating into someone else's list impossible regardless.
+	if ptype == "create":
+		return True
+	if not user:
+		user = frappe.session.user
+	if is_platform_admin(user):
+		return True
+	return doc.get("user") == user

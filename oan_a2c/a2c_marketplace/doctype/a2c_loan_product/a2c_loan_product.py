@@ -63,27 +63,34 @@ class A2CLoanProduct(Document):
 	)
 
 	def before_save(self):
-		before = self.get_doc_before_save()
-		if not self.is_new() and before:
-			# 1. Editing content fields on an approved (Active) product is forbidden.
-			if before.status == "Active":
-				for f in self.CONTENT_FIELDS:
-					if self.has_value_changed(f):
-						# Ignore empty->empty normalization (None vs "" vs 0)
-						if not before.get(f) and not self.get(f):
-							continue
+		user_roles = frappe.get_roles()
+		is_bank_admin = BANK_ADMIN_ROLE in user_roles or "System Manager" in user_roles
+
+		if self.is_new():
+			if is_bank_admin:
+				self.status = "Active"
+		else:
+			before = self.get_doc_before_save()
+			if before:
+				has_content_changes = any(
+					self.has_value_changed(f) and (before.get(f) or self.get(f)) for f in self.CONTENT_FIELDS
+				)
+				
+				if has_content_changes and is_bank_admin:
+					self.status = "Active"
+
+				# 1. Editing content fields on an approved (Active) product is forbidden for non-admins.
+				if before.status == "Active" and not is_bank_admin:
+					if has_content_changes:
 						frappe.throw(
 							frappe._("Cannot edit a loan product once it is approved (Active)."),
 							frappe.PermissionError,
 						)
 
-			# 2. Editing a Rejected product resubmits it for approval (Pending Approval)
-			if before.status == "Rejected":
-				has_content_changes = any(
-					self.has_value_changed(f) and (before.get(f) or self.get(f)) for f in self.CONTENT_FIELDS
-				)
-				if has_content_changes:
-					self.status = "Pending Approval"
+				# 2. Editing a Rejected product resubmits it for approval (Pending Approval) for non-admins.
+				if before.status == "Rejected" and not is_bank_admin:
+					if has_content_changes:
+						self.status = "Pending Approval"
 
 		if self.product_name:
 			base_slug = frappe.scrub(self.product_name).replace("_", "-")
