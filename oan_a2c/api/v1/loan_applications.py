@@ -286,12 +286,10 @@ def get_full_profile(**kwargs):
 	application_id = kwargs.get("application_id")
 	frappe.has_permission("A2C Loan Application", "read", doc=application_id, throw=True)
 	doc = _get_app(application_id)
-	farmer_profile = frappe.db.get_value("A2C Lead", doc.lead_id, "farmer_profile")
 
 	data = {
 		"application_id": doc.name,
 		"lead_id": doc.lead_id,
-		"farmer_profile": farmer_profile,
 		"first_name": doc.first_name,
 		"last_name": doc.last_name,
 		"region": doc.region,
@@ -869,7 +867,6 @@ def create_loan_application(**kwargs):
 			"application": {
 				"name": loan_app.name,
 				"status": loan_app.status,
-				"farmer_profile": loan_app.farmer_profile,
 				"first_name": loan_app.first_name,
 				"last_name": loan_app.last_name,
 				"loan_type": loan_app.loan_type,

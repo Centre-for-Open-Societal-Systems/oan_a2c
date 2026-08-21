@@ -708,6 +708,9 @@ def apply_status_transition(doc, target_status):
 	if doc.doctype == "A2C Lead" and target_status == "Verified":
 		doc._enforce_verification_prerequisites()
 
+	if doc.doctype == "A2C Loan Application" and target_status == "In Transition":
+		doc._enforce_submission_prerequisites()
+
 	doc = apply_workflow(doc, action)
 
 	# apply_workflow moves `workflow_state` but not the separate `status` Select field that the

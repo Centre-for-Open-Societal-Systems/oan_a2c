@@ -477,10 +477,7 @@ permission_query_conditions["A2C Consent Request"] = (
 | `A2C Loan Product`     | `read` only                                                                                                                                                     |
 | `A2C Consent Request`  | `read`, `create`                                                                                                                                                |
 | `A2C Saved Product`    | `read`, `create`, `delete`, `if_owner: 1`                                                                                                                       |
-| `A2C Lead`             | `read`, `create` — required for the hidden lead (§6.3)                                                                                                          |
-
-The `A2C Lead` grant deserves a second look at review time: it is the one place a farmer touches a
-doctype built for agents. Scope it with an owner-based hook if the review is uncomfortable with it.
+| `A2C Lead`             | None — farmers do not have access to `A2C Lead`                                                                                                                 |
 
 ---
 

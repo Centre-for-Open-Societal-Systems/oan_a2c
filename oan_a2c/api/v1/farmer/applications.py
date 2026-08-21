@@ -108,7 +108,6 @@ def get_application(**kwargs):
 
 	data = {
 		"application_id": doc.name,
-		"farmer_profile": doc.farmer_profile,
 		"bank": doc.bank,
 		"first_name": doc.first_name,
 		"last_name": doc.last_name,
