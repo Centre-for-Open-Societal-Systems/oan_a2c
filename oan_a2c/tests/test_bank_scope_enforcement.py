@@ -186,6 +186,13 @@ class TestBankScopeRuntime(unittest.TestCase):
 
 		from oan_a2c.a2c_marketplace.roles import BANK_AGENT_ROLE, FARMER_ROLE
 
+		# Notification Settings stamps its `user` field from the "__user" default,
+		# so every User inserted below is link-validated against whoever the session
+		# currently points at. A predecessor class that left the session on a user it
+		# then rolled away would fail all of these inserts, so claim the session
+		# before touching data rather than inheriting it.
+		frappe.set_user("Administrator")
+
 		cls.h = frappe.generate_hash(length=8)
 		bank_doc = frappe.get_doc(
 			{"doctype": "A2C Participating Bank", "bank_name": f"Bank-{cls.h}", "bank_code": f"Bank-{cls.h}"}
@@ -309,7 +316,16 @@ class TestBankScopeRuntime(unittest.TestCase):
 	def tearDownClass(cls):
 		import frappe
 
+		# Reset before the rollback, not after: the tests switch the session to the
+		# fixture users, and the rollback deletes those User rows. A session left
+		# pointing at a deleted user breaks the *next* class, not this one.
+		frappe.set_user("Administrator")
 		frappe.db.rollback()
+
+	def tearDown(self):
+		import frappe
+
+		frappe.set_user("Administrator")
 
 	def test_farmer_sees_own_applications(self):
 		import frappe

@@ -1,18 +1,37 @@
 import frappe
 
-from oan_a2c.api.utils import status_has_tag
-
-_COUNTERS = (
+# Counters are split by value shape because the all-banks view aggregates them
+# differently: scalars sum, maps merge key-wise. Adding a counter to the wrong
+# tuple is a TypeError in _all_banks_view rather than a silently wrong number.
+_SCALAR_COUNTERS = (
 	"total_products",
 	"active_products",
 	"pending_products",
 	"rejected_products",
 	"archived_products",
 	"total_applications",
-	"stage_counts",
+	"total_applicants",
+	"pending_applications",
 )
 
+_MAP_COUNTERS = ("stage_counts",)
+
+_COUNTERS = _SCALAR_COUNTERS + _MAP_COUNTERS
+
 _EXCLUDED_PRODUCT_STATUSES = set()
+
+# `Active` is the farmer's own pre-submission stage. loan_application_scope_query
+# hides it from bank users, so counting it would put a number on the dashboard
+# card that the list beneath it can never show -- and would disclose how many
+# hidden rows exist to exactly the users the scope query excludes. Kept out of
+# every application counter so the card and the list reconcile.
+_EXCLUDED_APPLICATION_STATUSES = {"Active"}
+
+# Archetype states are platform constants (docs/loan-status-workflow-plan.md): a bank
+# renames its own stage labels inside `In Transition`, never these four. `In
+# Transition` is the whole of a bank pipeline, so it is what "awaiting the bank"
+# means regardless of how that bank names its internal stages.
+_PENDING_APPLICATION_STATUS = "In Transition"
 
 
 def _key(bank: str, counter: str) -> str:
@@ -81,14 +100,34 @@ def _compute_from_db(bank: str) -> dict:
 	rejected_products = sum(item.count for item in product_counts if item.status == "Rejected")
 	archived_products = sum(item.count for item in product_counts if item.status == "Archived")
 
+	app_filters = dict(filters)
+	if _EXCLUDED_APPLICATION_STATUSES:
+		app_filters["status"] = ["not in", sorted(_EXCLUDED_APPLICATION_STATUSES)]
+
 	app_counts = frappe.get_all(  # bank-scope-exempt: bank scoped explicitly via filters above
 		"A2C Loan Application",
-		filters=filters,
+		filters=app_filters,
 		fields=["status", "stage_label", {"COUNT": "name", "as": "count"}],
 		group_by="status, stage_label",
 	)
 
 	total_applications = sum(item.count for item in app_counts)
+	pending_applications = sum(
+		item.count for item in app_counts if item.status == _PENDING_APPLICATION_STATUS
+	)
+
+	# Distinct farmers, not applications: one farmer with three applications is one
+	# applicant. This needs its own query -- the grouped counts above cannot yield a
+	# distinct-across-groups figure. Rows with no farmer_profile are not a person we
+	# can count, and DISTINCT drops the NULLs for us.
+	applicant_rows = frappe.get_all(  # bank-scope-exempt: bank scoped explicitly via filters above
+		"A2C Loan Application",
+		filters={**app_filters, "farmer_profile": ["is", "set"]},
+		fields=["farmer_profile"],
+		distinct=True,
+	)
+	total_applicants = len(applicant_rows)
+
 	stage_counts = {}
 
 	for item in app_counts:
@@ -104,6 +143,8 @@ def _compute_from_db(bank: str) -> dict:
 		"rejected_products": rejected_products,
 		"archived_products": archived_products,
 		"total_applications": total_applications,
+		"total_applicants": total_applicants,
+		"pending_applications": pending_applications,
 		"stage_counts": stage_counts,
 	}
 
@@ -119,20 +160,27 @@ def compute_and_set(bank: str) -> dict:
 def _all_banks_view() -> dict:
 	"""Admin (all-banks) view: platform totals plus a per-bank breakdown.
 
-	Every counter is additive, so the platform total is just the sum of the
-	per-bank values. This reuses the per-bank caches the incr/decr hooks already
-	keep consistent — no separate 'all banks' key to maintain. A cold bank falls
-	back to its own compute_and_set (a per-bank query), warming it as a side
-	effect. We deliberately never issue one cross-bank aggregate here.
+	Scalar counters sum; `stage_counts` merges key-wise. Either way the platform
+	total is derived from the per-bank values, reusing the caches the incr/decr
+	hooks already keep consistent — no separate 'all banks' key to maintain. A cold
+	bank falls back to its own compute_and_set (a per-bank query), warming it as a
+	side effect. We deliberately never issue one cross-bank aggregate here.
 	"""
-	totals = dict.fromkeys(_COUNTERS, 0)
+	totals = dict.fromkeys(_SCALAR_COUNTERS, 0)
+	stage_totals: dict[str, int] = {}
 	by_bank = []
 	for bank in frappe.get_all("A2C Participating Bank", pluck="name"):
 		stats = get_stats_for_bank(bank) or compute_and_set(bank)
 		by_bank.append({"bank": bank, **stats})
-		for counter in _COUNTERS:
+		for counter in _SCALAR_COUNTERS:
 			totals[counter] += stats[counter]
-	return {"stats": totals, "by_bank": by_bank}
+		# Stage labels are per-bank by design (each bank names its own pipeline
+		# stages), so the platform view is a key-wise merge, not a sum. Two banks
+		# that happen to use the same label are added together; distinct labels
+		# stay as separate buckets.
+		for stage, count in (stats["stage_counts"] or {}).items():
+			stage_totals[stage] = stage_totals.get(stage, 0) + count
+	return {"stats": {**totals, "stage_counts": stage_totals}, "by_bank": by_bank}
 
 
 def get_dashboard_stats(bank: str | None) -> dict:
@@ -206,6 +254,37 @@ def on_product_change(doc, event: str) -> None:
 			_decr(bank, "archived_products")
 
 
+def _farmer_has_other_counted_application(bank: str, farmer_profile: str, exclude: str) -> bool:
+	"""Is this farmer already represented in the bank's applicant count?
+
+	Distinctness cannot be carried in a running total, so instead of guessing, the
+	applicant counter asks the database whether the farmer still has another
+	countable application before it moves. That is one indexed count, paid only on
+	the writes where the farmer's countability actually changes -- not on reads,
+	which is what keeps the dashboard cache worth having.
+	"""
+	return bool(
+		frappe.db.count(  # bank-scope-exempt: bank scoped explicitly via the filters below
+			"A2C Loan Application",
+			{
+				"bank": bank,
+				"farmer_profile": farmer_profile,
+				"name": ["!=", exclude],
+				"status": ["not in", sorted(_EXCLUDED_APPLICATION_STATUSES)],
+			},
+		)
+	)
+
+
+def _apply_applicant_delta(doc, bank: str, amount: int) -> None:
+	"""Move the applicant counter only when this farmer's representation flips."""
+	if not doc.farmer_profile:
+		return
+	if _farmer_has_other_counted_application(bank, doc.farmer_profile, doc.name):
+		return  # another application already represents this farmer either way
+	_incr(bank, "total_applicants", amount)
+
+
 def on_application_change(doc, event: str) -> None:
 	bank = doc.bank
 	if not bank:
@@ -213,10 +292,15 @@ def on_application_change(doc, event: str) -> None:
 
 	# Determine the effective stage name for this document
 	current_stage = doc.stage_label or doc.status
+	current_counted = doc.status not in _EXCLUDED_APPLICATION_STATUSES
 
 	if event == "after_insert":
-		_incr(bank, "total_applications")
-		_incr_stage(bank, current_stage, 1)
+		if current_counted:
+			_incr(bank, "total_applications")
+			_incr_stage(bank, current_stage, 1)
+			_apply_applicant_delta(doc, bank, 1)
+			if doc.status == _PENDING_APPLICATION_STATUS:
+				_incr(bank, "pending_applications")
 
 	elif event == "on_update":
 		before = doc.get_doc_before_save()
@@ -224,13 +308,41 @@ def on_application_change(doc, event: str) -> None:
 			return  # after_insert already handled this
 
 		before_stage = before.stage_label or before.status
-		if before_stage != current_stage:
-			_incr_stage(bank, before_stage, -1)
-			_incr_stage(bank, current_stage, 1)
+		before_counted = before.status not in _EXCLUDED_APPLICATION_STATUSES
+
+		# Leaving `Active` (the farmer submits) is the moment an application first
+		# becomes countable; returning to it takes it back out. Without this the
+		# total would stay stuck at whatever it was when the row was inserted.
+		if before_counted and not current_counted:
+			_decr(bank, "total_applications")
+			_apply_applicant_delta(doc, bank, -1)
+		elif current_counted and not before_counted:
+			_incr(bank, "total_applications")
+			_apply_applicant_delta(doc, bank, 1)
+
+		# Pending tracks the `In Transition` archetype, which a loan enters on submit
+		# and leaves on completion -- both are plain status changes, so it moves here
+		# rather than alongside the countability flip above.
+		before_pending = before.status == _PENDING_APPLICATION_STATUS
+		current_pending = doc.status == _PENDING_APPLICATION_STATUS
+		if before_pending and not current_pending:
+			_decr(bank, "pending_applications")
+		elif current_pending and not before_pending:
+			_incr(bank, "pending_applications")
+
+		if before_counted != current_counted or before_stage != current_stage:
+			if before_counted:
+				_incr_stage(bank, before_stage, -1)
+			if current_counted:
+				_incr_stage(bank, current_stage, 1)
 
 	elif event == "on_trash":
-		_decr(bank, "total_applications")
-		_incr_stage(bank, current_stage, -1)
+		if current_counted:
+			_decr(bank, "total_applications")
+			_incr_stage(bank, current_stage, -1)
+			_apply_applicant_delta(doc, bank, -1)
+			if doc.status == _PENDING_APPLICATION_STATUS:
+				_decr(bank, "pending_applications")
 
 
 def reconcile_all_banks() -> None:
