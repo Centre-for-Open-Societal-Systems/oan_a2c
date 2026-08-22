@@ -43,6 +43,7 @@ def is_farmer(user=None):
 	return FARMER_ROLE in frappe.get_roles(user)
 
 
+@frappe.request_cache
 def get_user_farmer_profile(user=None):
 	"""The A2C Farmer Profile bound to `user`, or None before consent binds one.
 
@@ -54,6 +55,7 @@ def get_user_farmer_profile(user=None):
 	return frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
 
 
+@frappe.request_cache
 def get_user_bank(user=None):
 	"""
 	Returns the bank_code (A2C Participating Bank) bound to the user.
@@ -407,3 +409,24 @@ def saved_product_own_doc(doc, ptype=None, user=None):
 	if is_platform_admin(user):
 		return True
 	return doc.get("user") == user
+
+
+def farmer_own_profile_doc(doc, ptype=None, user=None):
+	if not user:
+		user = frappe.session.user
+	if is_platform_admin(user):
+		return True
+	if not is_farmer(user) or is_bank_unbound(user):
+		return True  # Non-farmers (like bank agents) rely on base Role Permissions Manager
+	profile = get_user_farmer_profile(user)
+	return bool(profile) and doc.name == profile
+
+
+def farmer_own_consent_doc(doc, ptype=None, user=None):
+	if not user:
+		user = frappe.session.user
+	if is_platform_admin(user):
+		return True
+	if not is_farmer(user) or is_bank_unbound(user):
+		return True
+	return doc.owner == user

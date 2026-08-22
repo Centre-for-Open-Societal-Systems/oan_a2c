@@ -45,52 +45,6 @@ def get_dashboard_summary(**kwargs):
 			farmer_profile = {k: row.get(k) for k in _PROFILE_FIELDS}
 			farmer_profile["farmer_id"] = farmer_profile.get("farmer_id") or profile_name
 
-	# get_list applies loan_product_scope_query: Active only, across all banks.
-	offers = frappe.get_list(
-		"A2C Loan Product",
-		filters={"status": "Active"},
-		fields=[
-			"name",
-			"bank",
-			"product_name",
-			"max_amount",
-			"min_interest_rate",
-			"tenure_months",
-		],
-		limit_page_length=3,
-		order_by="creation desc",
-	)
-	top_loan_offers = [
-		{
-			"id": p.name,
-			"bank": p.bank,
-			"loan_product_name": p.product_name,
-			"max_loan_amount": p.max_amount,
-			"interest_rate": p.min_interest_rate,
-			"max_tenure_months": p.tenure_months,
-		}
-		for p in offers
-	]
-
-	# Loan *types* are the product taxonomy, not product names. Read from the
-	# categories actually attached to products the farmer can see, so the list is
-	# empty when the catalog has no taxonomy rather than falling back to invented
-	# examples.
-	visible = frappe.get_list(
-		"A2C Loan Product", filters={"status": "Active"}, pluck="name", limit_page_length=0
-	)
-	available_loan_types = []
-	if visible:
-		# bank-scope-exempt: A2C Term Relationship is bank-scoped and a farmer is
-		# bank-bound. Restricted to `visible`, which came from the permission-filtered
-		# query above, so nothing the farmer may not see can enter the result.
-		rows = frappe.get_all(  # bank-scope-exempt: see comment above
-			"A2C Term Relationship",
-			filters={"loan_product": ["in", visible], "term_type": "Category"},
-			pluck="term_category",
-		)
-		available_loan_types = sorted({r for r in rows if r})
-
 	# No owner filter: loan_application_scope_query matches on farmer_profile, so
 	# this returns the farmer's own applications including any a Development Agent
 	# filed against their profile. Filtering on `owner` here would hide exactly
@@ -116,8 +70,6 @@ def get_dashboard_summary(**kwargs):
 	return success_response(
 		data={
 			"farmer_profile": farmer_profile,
-			"top_loan_offers": top_loan_offers,
-			"available_loan_types": available_loan_types,
 			"recent_applications": recent_applications,
 		},
 		message="Dashboard summary retrieved successfully",

@@ -166,6 +166,8 @@ permission_query_conditions["A2C Saved Product"] = (
 )
 has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d in BANK_SCOPED}
 has_permission["A2C Saved Product"] = "oan_a2c.a2c_marketplace.permissions.saved_product_own_doc"
+has_permission["A2C Farmer Profile"] = "oan_a2c.a2c_marketplace.permissions.farmer_own_profile_doc"
+has_permission["A2C Consent Request"] = "oan_a2c.a2c_marketplace.permissions.farmer_own_consent_doc"
 
 # Document Events
 # ---------------

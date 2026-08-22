@@ -338,7 +338,9 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		# applications, so it is only done on an exact match against a user who
 		# already holds the farmer role -- never as a side effect of a loose lookup.
 		if not farmer_profile.user:
-			if owner and frappe.db.exists("Has Role", {"parent": owner, "role": "A2C Farmer"}):
+			from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
+
+			if owner and frappe.db.exists("Has Role", {"parent": owner, "role": FARMER_ROLE}):
 				farmer_profile.user = owner
 			elif phone_number:
 				import re
@@ -353,9 +355,7 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 							break
 					if farmer_user:
 						break
-				if farmer_user and frappe.db.exists(
-					"Has Role", {"parent": farmer_user, "role": "A2C Farmer"}
-				):
+				if farmer_user and frappe.db.exists("Has Role", {"parent": farmer_user, "role": FARMER_ROLE}):
 					farmer_profile.user = farmer_user
 
 		# ignore_permissions=True is required because this background job processes webhooks
