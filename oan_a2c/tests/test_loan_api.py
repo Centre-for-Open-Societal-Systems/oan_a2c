@@ -2,6 +2,7 @@ import unittest
 
 import frappe
 
+from oan_a2c.api.utils import get_workflow_initial_state, status_has_tag
 from oan_a2c.api.v1.loan_applications import (
 	create_loan_application,
 	delete_supporting_document,
@@ -24,9 +25,7 @@ class TestLoansV1API(unittest.TestCase):
 		frappe.db.sql(
 			"DELETE FROM `tabA2C Loan Application` WHERE lead_id='TEST_LEAD_999' OR first_name='API_TEST_FARMER'"
 		)
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Farmer Profile` WHERE lead_id='TEST_LEAD_999' OR phone_number='+251999888777'"
-		)
+		frappe.db.sql("DELETE FROM `tabA2C Farmer Profile` WHERE phone_number='+251999888777'")
 		frappe.db.sql("DELETE FROM `tabA2C Lead` WHERE name='TEST_LEAD_999'")
 		frappe.db.sql(
 			"DELETE FROM `tabA2C Consent Request` "
@@ -59,7 +58,13 @@ class TestLoansV1API(unittest.TestCase):
 			frappe.db.sql(
 				"UPDATE `tabA2C Participating Bank` SET name='Test Bank' WHERE name=%s", bank_doc.name
 			)
+			frappe.db.sql(
+				"UPDATE `tabA2C Loan Status Stage` SET bank='Test Bank' WHERE bank=%s", bank_doc.name
+			)
 
+		from oan_a2c.patches.create_lead_loan_workflows import _seed_default_stages
+
+		_seed_default_stages()
 		frappe.db.commit()
 
 	def setUp(self):
@@ -140,7 +145,7 @@ class TestLoansV1API(unittest.TestCase):
 				"requested_amount": 5000,
 				"bank": "Test Bank",
 				"loan_type": "Input Loan",
-				"status": "Draft",
+				"status": "Active",
 				"location": "Addis Ababa",
 				"lead_id": "TEST_LEAD_999",
 				"farmer_profile": farmer_profile_name,
@@ -180,8 +185,35 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertIn("my", res["data"]["tab_counts"])
 		self.assertIn("unassigned", res["data"]["tab_counts"])
 
+	def test_1a_loan_summary_exposes_every_archetype_bucket(self):
+		"""`by_status` is the contract the bank and agent KPI cards read.
+
+		They key on archetype names directly, so a bucket that goes missing renders
+		as a dash or -- worse, behind a `?? 0` -- as a confident zero. Seeding every
+		state server-side is what makes a quiet status readable as a real 0.
+		"""
+		from oan_a2c.a2c_marketplace.stages import ARCHETYPE_STATES
+
+		data = get_loan_summary()["data"]
+
+		self.assertIn("by_status", data)
+		self.assertEqual(set(data["by_status"]), set(ARCHETYPE_STATES))
+		for state, count in data["by_status"].items():
+			self.assertIsInstance(count, int, f"{state} is not a count")
+
+		# Buckets may not exceed the total. They can fall short of it only because a
+		# row carries a status from before the archetype refactor, which is counted
+		# in `total` but deliberately not invented as a new bucket.
+		self.assertLessEqual(sum(data["by_status"].values()), data["total"])
+
+		# `stages` is the bank-defined view of the same rows, so it must agree.
+		self.assertEqual(sum(data["stages"].values()), data["total"])
+
+	def test_1b_workflow_helpers(self):
+		self.assertEqual(get_workflow_initial_state("A2C Loan Application"), "Active")
+
 	def test_2_get_all_loans(self):
-		res = get_all_loans(status="Draft", page_size=10)
+		res = get_all_loans(status="Active", page_size=10)
 		self.assertEqual(res["status"], "success")
 		self.assertTrue(len(res["data"]) > 0)
 		self.assertIn("pagination", res)
@@ -362,7 +394,7 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertEqual(res["status"], "success")
 		self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER")
 		self.assertEqual(res["data"]["loan_amount"], 5000.0)
-		self.assertEqual(res["data"]["status"], "Draft")
+		self.assertEqual(res["data"]["status"], "Active")
 
 	def test_5_supporting_documents(self):
 		# Create a File document programmatically
@@ -480,7 +512,7 @@ class TestLoansV1API(unittest.TestCase):
 		)
 		frappe.db.commit()
 
-		res = update_loan_status(application_id=self.app_id, status="Processing")
+		res = update_loan_status(application_id=self.app_id, status="In Transition")
 		self.assertEqual(res["status"], "success")
 		res = update_loan_status(
 			application_id=self.app_id,
@@ -491,6 +523,7 @@ class TestLoansV1API(unittest.TestCase):
 
 		doc = frappe.get_doc("A2C Loan Application", self.app_id)
 		self.assertEqual(doc.status, "Rejected")
+		self.assertEqual(doc.stage_label, "Rejected")
 		self.assertEqual(doc.docstatus, 1)
 
 		# Verify audit events were created for both transitions
@@ -502,19 +535,19 @@ class TestLoansV1API(unittest.TestCase):
 		)
 		self.assertEqual(len(audit_events), 2)
 
-		# First event: Draft -> Processing
+		# First event: Active -> In Transition
 		self.assertEqual(audit_events[0]["event_type"], "Status Changed")
 		self.assertEqual(audit_events[0]["event_title"], "Status Updated")
-		self.assertIn("Changed to Processing", audit_events[0]["event_description"])
+		self.assertIn("In Transition", audit_events[0]["event_description"])
 		self.assertIn("Administrator", audit_events[0]["event_description"])
 
-		# Second event: Processing -> Rejected (with reason)
-		self.assertIn("Changed to Rejected", audit_events[1]["event_description"])
+		# Second event: In Transition -> Completed/Rejected (with reason)
+		self.assertIn("Rejected", audit_events[1]["event_description"])
 		self.assertIn("Insufficient collateral provided.", audit_events[1]["event_description"])
 		self.assertIn("Administrator", audit_events[1]["event_description"])
 
-		# A further transition (e.g. to Approved) is illegal from a terminal state and rejected.
-		res = update_loan_status(application_id=self.app_id, status="Approved")
+		# A further transition is illegal from a terminal state and rejected.
+		res = update_loan_status(application_id=self.app_id, status="Active")
 		self.assertEqual(res["status"], "error")
 
 		# No additional audit event should be created for the failed transition
@@ -522,8 +555,15 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertEqual(audit_count, 2)
 
 		# The submitted record is frozen: a direct edit + save is blocked by docstatus.
-		doc.status = "Approved"
+		doc.status = "In Transition"
 		self.assertRaises(frappe.ValidationError, doc.save)
+
+	def test_7b_invalid_status_rejected_by_validator(self):
+		res = update_loan_status(application_id=self.app_id, status="NotARealState")
+		self.assertEqual(res["status"], "error")
+		self.assertEqual(res["code"], "VALIDATION_ERROR")
+		self.assertEqual(frappe.local.response.get("http_status_code"), 400)
+		frappe.local.response["http_status_code"] = 200
 
 	def test_8_create_loan_application_copies_profile_details(self):
 		# 1. Clean up any existing loan application for TEST_LEAD_999 first (since setUp creates one)
@@ -604,9 +644,9 @@ class TestLoansV1API(unittest.TestCase):
 		app_id = res["data"]["application_id"]
 
 		# Loan creation does NOT change the lead status (that is driven via the Lead Workflow
-		# by the frontend through update_lead_status). The new loan starts in Draft.
+		# by the frontend through update_lead_status). The new loan starts in Active.
 		loan_status = frappe.db.get_value("A2C Loan Application", app_id, "status")
-		self.assertEqual(loan_status, "Draft")
+		self.assertEqual(loan_status, "Active")
 
 		# 5. Fetch the newly created loan application and assert fields were copied
 		loan_app = frappe.get_doc("A2C Loan Application", app_id)

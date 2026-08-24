@@ -9,6 +9,13 @@ class TestBankScopeRuntime(unittest.TestCase):
 
 		from oan_a2c.a2c_marketplace.roles import BANK_AGENT_ROLE, FARMER_ROLE
 
+		# Notification Settings stamps its `user` field from the "__user" default,
+		# so every User inserted below is link-validated against whoever the session
+		# currently points at. A predecessor class that left the session on a user it
+		# then rolled away would fail all of these inserts, so claim the session
+		# before touching data rather than inheriting it.
+		frappe.set_user("Administrator")
+
 		cls.h = frappe.generate_hash(length=8)
 		bank_doc = frappe.get_doc(
 			{
@@ -86,7 +93,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 
-		# Application for Farmer A (Draft)
+		# Application for Farmer A (Active)
 		cls.app_a_draft = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Application",
@@ -94,14 +101,14 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"loan_product": cls.prod.name,
 				"requested_amount": 100,
 				"loan_amount": 100,
-				"status": "Draft",
+				"status": "Active",
 				"first_name": "A",
 				"last_name": "B",
 				"phone_number": "111",
 				"farmer_profile": cls.profile_a.name,
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
-		# Application for Farmer A (Processing)
+		# Application for Farmer A (In Transition)
 		cls.app_a_proc = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Application",
@@ -109,14 +116,14 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"loan_product": cls.prod.name,
 				"requested_amount": 100,
 				"loan_amount": 100,
-				"status": "Processing",
+				"status": "In Transition",
 				"first_name": "A",
 				"last_name": "B",
 				"phone_number": "222",
 				"farmer_profile": cls.profile_a.name,
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
-		# Application for Farmer B (Draft)
+		# Application for Farmer B (Active)
 		cls.app_b = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Application",
@@ -124,7 +131,7 @@ class TestBankScopeRuntime(unittest.TestCase):
 				"loan_product": cls.prod.name,
 				"requested_amount": 100,
 				"loan_amount": 100,
-				"status": "Draft",
+				"status": "Active",
 				"first_name": "C",
 				"last_name": "D",
 				"phone_number": "333",
@@ -136,7 +143,16 @@ class TestBankScopeRuntime(unittest.TestCase):
 	def tearDownClass(cls):
 		import frappe
 
+		# Reset before the rollback, not after: the tests switch the session to the
+		# fixture users, and the rollback deletes those User rows. A session left
+		# pointing at a deleted user breaks the *next* class, not this one.
+		frappe.set_user("Administrator")
 		frappe.db.rollback()
+
+	def tearDown(self):
+		import frappe
+
+		frappe.set_user("Administrator")
 
 	def test_farmer_sees_own_applications(self):
 		import frappe

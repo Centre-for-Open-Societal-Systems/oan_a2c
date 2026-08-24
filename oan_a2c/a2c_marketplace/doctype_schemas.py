@@ -17,6 +17,12 @@ MAX_INTEREST_RATE = 20.0
 # impossible to search for even though it exists in the data.
 MAX_QUERY_AMOUNT = 999999999999.0
 
+# Bank onboarding & profile validation rules
+POSTAL_CODE_MIN_LENGTH = 4
+POSTAL_CODE_MAX_LENGTH = 6
+POSTAL_CODE_REGEX = r"^\d{4,6}$"
+WEBSITE_REGEX = r"^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$"
+
 
 class ProductMetaSchema(BaseModel):
 	meta_key: str = Field(..., min_length=1, max_length=140)

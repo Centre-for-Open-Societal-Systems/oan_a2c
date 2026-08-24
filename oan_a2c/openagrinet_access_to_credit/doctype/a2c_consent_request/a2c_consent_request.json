@@ -8,7 +8,9 @@
   "farmer_fayda_id",
   "partner",
   "consent_type",
+  "purpose_id",
   "purpose",
+  "purpose_description",
   "validity_from",
   "validity_to",
   "consent_form_attachment",
@@ -45,9 +47,19 @@
    "label": "Consent Type"
   },
   {
+   "fieldname": "purpose_id",
+   "fieldtype": "Data",
+   "label": "Purpose ID"
+  },
+  {
    "fieldname": "purpose",
    "fieldtype": "Data",
    "label": "Purpose"
+  },
+  {
+   "fieldname": "purpose_description",
+   "fieldtype": "Small Text",
+   "label": "Purpose Description"
   },
   {
    "fieldname": "validity_from",
@@ -153,7 +165,8 @@
   {
    "create": 1,
    "read": 1,
-   "role": "A2C Farmer"
+   "role": "A2C Farmer",
+   "write": 1
   }
  ],
  "row_format": "Dynamic",

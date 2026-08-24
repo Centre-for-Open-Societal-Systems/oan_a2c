@@ -8,7 +8,6 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "lead_id",
   "farmer_id",
   "user",
   "id_type",
@@ -55,12 +54,6 @@
    "label": "Personal Information"
   },
   {
-   "fieldname": "lead_id",
-   "fieldtype": "Link",
-   "label": "Lead ID",
-   "options": "A2C Lead"
-  },
-  {
    "fieldname": "consent_id",
    "fieldtype": "Link",
    "label": "Consent ID",
@@ -87,7 +80,7 @@
    "label": "Phone Number",
    "options": "Phone",
    "reqd": 0,
-   "unique": 1
+   "search_index": 1
   },
   {
    "fieldname": "email",

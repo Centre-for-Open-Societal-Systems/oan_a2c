@@ -45,6 +45,9 @@ def validate_jwt_request(request=None):
 		"/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
 		"/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
 		"/api/method/oan_a2c.api.v1.auth.register_user",
+		"/api/method/oan_a2c.api.openapi.get_openapi_spec",
+		"/api/method/oan_a2c.api.openapi.docs",
+		"/api/method/oan_a2c.api.openapi.redoc",
 	]:
 		return
 

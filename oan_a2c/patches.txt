@@ -24,3 +24,4 @@ oan_a2c.patches.backfill_consent_request_reference
 oan_a2c.patches.backfill_application_source
 oan_a2c.patches.rekey_saved_product_on_user
 oan_a2c.patches.backfill_lead_consent_id
+oan_a2c.patches.seed_default_stages_for_existing_banks

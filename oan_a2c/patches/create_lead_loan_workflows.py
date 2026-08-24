@@ -34,7 +34,15 @@ WORKFLOW_STATES = {
 	"Draft": "Primary",
 	"Processing": "Warning",
 	"Approved": "Success",
+	"In Transition": "Warning",
+	"Completed": "Success",
+	"Cancelled": "Inverse",
 }
+
+# The A2C Loan Application archetype statuses, i.e. the new vocabulary. Used by the
+# backfill to recognise a row that has already been migrated, so re-running the patch
+# does not remap an archetype status through the legacy map a second time.
+ARCHETYPE_STATUSES = ("Active", "In Transition", "Completed", "Rejected", "Cancelled")
 
 # Workflow Action master records (the "buttons")
 WORKFLOW_ACTIONS = [
@@ -46,6 +54,8 @@ WORKFLOW_ACTIONS = [
 	"Reactivate",
 	"Send for Review",
 	"Approve",
+	"Submit",
+	"Complete",
 ]
 
 
@@ -55,8 +65,42 @@ def execute():
 	_ensure_workflow_actions()
 	_create_lead_workflow()
 	_create_loan_workflow()
+	_seed_default_stages()
+	_cleanup_legacy_property_setters()
 	_backfill_workflow_state()
 	frappe.db.commit()
+
+
+def _cleanup_legacy_property_setters():
+	"""Remove any legacy Property Setter overriding `status` options so the DocType JSON rules."""
+	frappe.db.delete(
+		"Property Setter",
+		{"doc_type": "A2C Loan Application", "field_name": "status", "property": "options"},
+	)
+
+
+def _seed_default_stages():
+	default_stages = [
+		{"label": "Submitted", "archetype_state": "In Transition", "sequence": 1},
+		{"label": "Processed", "archetype_state": "In Transition", "sequence": 2},
+		{"label": "Verified", "archetype_state": "In Transition", "sequence": 3},
+		{"label": "Approved", "archetype_state": "In Transition", "sequence": 4},
+		{"label": "Disbursed", "archetype_state": "Completed", "sequence": 5},
+		{"label": "Rejected", "archetype_state": "Rejected", "sequence": 6},
+	]
+	# For each bank in the system, ensure default stages exist
+	for bank in frappe.get_all("A2C Participating Bank", pluck="name"):
+		if not frappe.db.exists("A2C Loan Status Stage", {"bank": bank}):
+			for stage in default_stages:
+				frappe.get_doc(
+					{
+						"doctype": "A2C Loan Status Stage",
+						"bank": bank,
+						"label": stage["label"],
+						"archetype_state": stage["archetype_state"],
+						"sequence": stage["sequence"],
+					}
+				).insert(ignore_permissions=True)
 
 
 def _ensure_roles():
@@ -164,22 +208,57 @@ def _create_lead_workflow():
 
 
 def _create_loan_workflow():
-	# A2C Loan Application is submittable: Approved/Rejected submit the doc (docstatus 1).
+	# A2C Loan Application is submittable: Completed submits the doc (docstatus 1).
 	states = [
-		{"state": "Draft", "doc_status": "0", "allow_edit": "A2C Development Agent"},
-		{"state": "Processing", "doc_status": "0", "allow_edit": "A2C Bank Agent"},
-		{"state": "Approved", "doc_status": "1", "allow_edit": "System Manager"},
+		{"state": "Active", "doc_status": "0", "allow_edit": "A2C Development Agent"},
+		{"state": "In Transition", "doc_status": "0", "allow_edit": "A2C Bank Agent"},
+		{"state": "Completed", "doc_status": "1", "allow_edit": "System Manager"},
 		{"state": "Rejected", "doc_status": "1", "allow_edit": "System Manager"},
+		{"state": "Cancelled", "doc_status": "2", "allow_edit": "System Manager"},
 	]
 	transitions = [
 		{
-			"state": "Draft",
-			"action": "Send for Review",
-			"next_state": "Processing",
+			"state": "Active",
+			"action": "Submit",
+			"next_state": "In Transition",
 			"allowed": "A2C Development Agent",
+			"allow_self_approval": 1,
 		},
-		{"state": "Processing", "action": "Approve", "next_state": "Approved", "allowed": "A2C Bank Agent"},
-		{"state": "Processing", "action": "Reject", "next_state": "Rejected", "allowed": "A2C Bank Agent"},
+		{
+			"state": "Active",
+			"action": "Submit",
+			"next_state": "In Transition",
+			"allowed": "A2C Farmer",
+			"allow_self_approval": 1,
+		},
+		{
+			"state": "In Transition",
+			"action": "Complete",
+			"next_state": "Completed",
+			"allowed": "A2C Bank Agent",
+			"allow_self_approval": 1,
+		},
+		{
+			"state": "In Transition",
+			"action": "Complete",
+			"next_state": "Completed",
+			"allowed": "A2C Bank Admin",
+			"allow_self_approval": 1,
+		},
+		{
+			"state": "In Transition",
+			"action": "Reject",
+			"next_state": "Rejected",
+			"allowed": "A2C Bank Agent",
+			"allow_self_approval": 1,
+		},
+		{
+			"state": "In Transition",
+			"action": "Reject",
+			"next_state": "Rejected",
+			"allowed": "A2C Bank Admin",
+			"allow_self_approval": 1,
+		},
 	]
 	_upsert_workflow("A2C Loan Application Workflow", "A2C Loan Application", states, transitions)
 
@@ -190,13 +269,43 @@ def _backfill_workflow_state():
 	for name, status in frappe.get_all("A2C Lead", fields=["name", "status"], as_list=True):
 		frappe.db.set_value("A2C Lead", name, "workflow_state", status, update_modified=False)
 
-	# Loans: blank/legacy statuses default to Draft; Approved/Rejected become docstatus 1.
+	# Loans: legacy statuses mapped to archetype statuses.
+	#
+	#   Draft      -> Active         (the applicant's own pre-submission stage)
+	#   Processing -> In Transition  (somewhere inside the bank's pipeline)
+	#   Approved   -> Completed
+	#   Rejected   -> Rejected       (NOT Completed -- see below)
+	#
+	# `Rejected` is a first-class archetype in the new workflow, with its own
+	# transitions from In Transition for both Bank Agent and Bank Admin. Folding a
+	# declined loan into `Completed` would make it indistinguishable from a disbursed
+	# one, and the mapping is one-way: once collapsed there is nothing left to
+	# recover the distinction from. Every "approved vs rejected" metric depends on
+	# these staying apart.
 	# Migration runs as Administrator over every bank's records by design. bank-scope-exempt
+	_LEGACY_STATUS_MAP = {
+		"Draft": "Active",
+		"Processing": "In Transition",
+		"Approved": "Completed",
+		"Rejected": "Rejected",
+	}
+
+	# States that carry docstatus 1 in the new workflow definition above.
+	_SUBMITTED_STATES = ("Completed", "Rejected")
+
 	for name, status, docstatus in frappe.get_all(
 		"A2C Loan Application", fields=["name", "status", "docstatus"], as_list=True
 	):  # bank-scope-exempt
-		state = status if status in ("Draft", "Processing", "Approved", "Rejected") else "Draft"
+		# Rows already on a new-vocabulary status are left alone, so a re-run is a
+		# no-op rather than a remap of a remap.
+		if status in ARCHETYPE_STATUSES:
+			state = status
+		else:
+			state = _LEGACY_STATUS_MAP.get(status, "Active")
+
 		frappe.db.set_value("A2C Loan Application", name, "workflow_state", state, update_modified=False)
+		frappe.db.set_value("A2C Loan Application", name, "status", state, update_modified=False)
+
 		# Submit existing terminal records so their docstatus matches the new workflow.
-		if state in ("Approved", "Rejected") and docstatus == 0:
+		if state in _SUBMITTED_STATES and docstatus == 0:
 			frappe.db.set_value("A2C Loan Application", name, "docstatus", 1, update_modified=False)

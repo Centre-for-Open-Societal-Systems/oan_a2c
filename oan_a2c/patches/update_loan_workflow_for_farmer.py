@@ -1,46 +1,39 @@
 import frappe
 
-from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
-
-WORKFLOW = "A2C Loan Application Workflow"
-
-# Must match the action apply_status_transition resolves for this hop. The map in
-# api/utils.py sends ("Draft", "Processing") to "Send for Review", and
-# apply_workflow looks a transition up by (state, action, allowed-role) -- so a
-# farmer row carrying any other action name is never found, and submission fails
-# with "not a valid transition" even though the row exists.
-ACTION = "Send for Review"
+LEGACY_PATCH = "oan_a2c.patches.create_lead_loan_workflows"
 
 
 def execute():
-	"""Let a farmer move their own Draft application to Processing.
+	"""Re-apply create_lead_loan_workflows so its rewritten definition actually lands.
 
-	Frappe authorises a transition per row: get_transitions() matches
-	`transition.state == current_state and transition.allowed in roles`, so each
-	role needs its own row. This mirrors how Approve/Reject already carry one row
-	for Bank Agent and one for Bank Admin.
+	Why this exists
+	---------------
+	`create_lead_loan_workflows` is listed near the top of patches.txt and was
+	recorded in Patch Log on every site that migrated before this branch. Frappe
+	skips a patch whose name is already in Patch Log, so the *rewrite* of that
+	patch -- the new archetype states (Active / In Transition / Completed /
+	Rejected / Cancelled), the Submit + Complete actions, the farmer transition and
+	the legacy-status backfill -- would never execute on an existing site. The
+	DocType JSON and every call site would move to the new vocabulary while the
+	installed Workflow stayed on Draft / Processing / Approved, and
+	apply_status_transition would fail to resolve any transition at all.
 
-	The durable definition lives in fixtures/workflow.json -- fixtures sync *after*
-	patches on every migrate and overwrite the whole child table, so a row added
-	only here is wiped by the next migrate. This patch exists to repair sites that
-	already migrated; keep the two in step.
+	Editing an already-executed patch is normally forbidden for exactly this
+	reason. It is tolerable here only because the rewrite has not shipped to any
+	environment yet, so no site has run either version of the new definition.
+
+	What it does
+	------------
+	1. Drops the Patch Log row for the legacy patch, so the name is no longer
+	   "already applied" and a future edit-and-migrate cycle behaves normally.
+	2. Calls its execute() directly, so the new workflow lands in *this* migrate
+	   rather than the next one.
+
+	Both steps are idempotent: _upsert_workflow overwrites the definition in place
+	and the status backfill only touches rows that still carry a legacy status.
 	"""
-	if not frappe.db.exists("Workflow", WORKFLOW):
-		return
+	frappe.db.delete("Patch Log", {"patch": LEGACY_PATCH})
 
-	wf = frappe.get_doc("Workflow", WORKFLOW)
+	from oan_a2c.patches import create_lead_loan_workflows
 
-	if any(t.state == "Draft" and t.action == ACTION and t.allowed == FARMER_ROLE for t in wf.transitions):
-		return
-
-	wf.append(
-		"transitions",
-		{
-			"state": "Draft",
-			"action": ACTION,
-			"next_state": "Processing",
-			"allowed": FARMER_ROLE,
-			"allow_self_approval": 1,
-		},
-	)
-	wf.save(ignore_permissions=True)
+	create_lead_loan_workflows.execute()

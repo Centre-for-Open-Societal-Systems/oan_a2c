@@ -49,6 +49,7 @@ class FarmerCatalogSchema(BrowseProductsSchema):
 	"""
 
 	category: str | None = Field(None, max_length=140)
+	tag: str | None = Field(None, max_length=140)
 	region: str | None = Field(None, max_length=140)
 	is_saved: bool | None = Field(None)
 	min_tenure_months: int | None = Field(None, ge=0, le=MAX_TENURE_MONTHS)
@@ -83,6 +84,18 @@ def _products_in_category(category: str) -> list[str]:
 	return frappe.get_all(  # bank-scope-exempt: see docstring
 		"A2C Term Relationship",
 		filters={"term_type": "Category", "term_category": category},
+		pluck="loan_product",
+	)
+
+
+def _products_with_tag(tag: str) -> list[str]:
+	"""Loan product ids carrying `tag`.
+
+	bank-scope-exempt: A2C Term Relationship is bank-scoped, see _products_in_category docstring.
+	"""
+	return frappe.get_all(  # bank-scope-exempt: see docstring
+		"A2C Term Relationship",
+		filters={"term_type": "Tag", "term_tag": tag},
 		pluck="loan_product",
 	)
 
@@ -131,6 +144,25 @@ def _narrow_by_names(filters: dict, candidates: list[str]) -> bool:
 	return True
 
 
+def _enrich_products_with_bank_info(products: list[dict]) -> None:
+	"""Batch resolve bank display names and logos for product rows."""
+	bank_ids = list({p["bank"] for p in products if p.get("bank")})
+	if not bank_ids:
+		return
+
+	bank_rows = frappe.get_all(
+		"A2C Participating Bank",
+		filters={"name": ["in", bank_ids]},
+		fields=["name", "bank_name", "logo"],
+	)
+	bank_map = {row.name: row for row in bank_rows}
+
+	for p in products:
+		bank_info = bank_map.get(p.get("bank"))
+		p["bank_name"] = bank_info.bank_name if bank_info else None
+		p["bank_logo"] = bank_info.logo if bank_info else None
+
+
 @frappe.whitelist(allow_guest=False)
 @validate_request(FarmerCatalogSchema)
 @handle_api_errors
@@ -165,10 +197,23 @@ def list_catalog(**kwargs):
 		filters["name"] = kwargs["loan_product"]
 	if kwargs.get("search"):
 		filters["product_name"] = ["like", f"%{kwargs['search']}%"]
+	# Amount filtering is an OVERLAP test, not a containment test.
+	#
+	# The caller is saying "I want to borrow somewhere in this range"; a product
+	# matches when the range it offers overlaps the range they asked for. The
+	# comparison is therefore crossed -- their floor against the product's ceiling,
+	# their ceiling against the product's floor:
+	#
+	#     product.max_amount >= requested_min  AND  product.min_amount <= requested_max
+	#
+	# Filtering the same-named columns instead (product.min_amount >= requested_min)
+	# asks for products whose whole range sits *inside* the requested one, which
+	# excludes exactly the products that can fund the request: a farmer looking for
+	# 5,000-10,000 would see nothing from a product offering 1,000-200,000.
 	if kwargs.get("min_amount") is not None:
-		filters["min_amount"] = [">=", float(kwargs["min_amount"])]
+		filters["max_amount"] = [">=", float(kwargs["min_amount"])]
 	if kwargs.get("max_amount") is not None:
-		filters["max_amount"] = ["<=", float(kwargs["max_amount"])]
+		filters["min_amount"] = ["<=", float(kwargs["max_amount"])]
 	if kwargs.get("max_interest_rate") is not None:
 		filters["min_interest_rate"] = ["<=", float(kwargs["max_interest_rate"])]
 	if kwargs.get("min_tenure_months") is not None:
@@ -186,6 +231,10 @@ def list_catalog(**kwargs):
 
 	if kwargs.get("category"):
 		if not _narrow_by_names(filters, _products_in_category(kwargs["category"])):
+			return _empty_catalog_page(kwargs)
+
+	if kwargs.get("tag"):
+		if not _narrow_by_names(filters, _products_with_tag(kwargs["tag"])):
 			return _empty_catalog_page(kwargs)
 
 	if kwargs.get("is_saved"):
@@ -219,6 +268,8 @@ def list_catalog(**kwargs):
 		limit_page_length=limit,
 		limit_start=start,
 	)
+
+	_enrich_products_with_bank_info(products)
 
 	count_res = frappe.get_list(
 		"A2C Loan Product",
@@ -335,6 +386,7 @@ def get_saved_products(**kwargs):
 		# Sort them to match the recent creation order from A2C Saved Product
 		order_map = {name: i for i, name in enumerate(saved_docs)}
 		products.sort(key=lambda p: order_map.get(p.name, 999))
+		_enrich_products_with_bank_info(products)
 
 	pagination = {
 		"page": (start // limit) + 1,
@@ -357,20 +409,49 @@ def get_catalog_facets(**kwargs):
 	"""Static filter options for the discovery sidebar, using global definitions."""
 	frappe.has_permission("A2C Loan Product", "read", throw=True)
 
-	categories = frappe.get_all("A2C Term Category", pluck="name")
-	tags = frappe.get_all("A2C Term Tag", pluck="name")
+	category_rows = frappe.get_all("A2C Term Category", fields=["name", "term"])
+	tag_rows = frappe.get_all("A2C Term Tag", fields=["name", "term"])
 
-	# Fetch unique regions from active banks
-	bank_regions = frappe.get_all(
-		"A2C Participating Bank", filters={"status": "Active"}, pluck="registered_region", distinct=True
+	term_ids = list({row.term or row.name for row in category_rows + tag_rows})
+	term_name_map = {}
+	if term_ids:
+		terms = frappe.get_all(
+			"A2C Term",
+			filters={"name": ["in", term_ids]},
+			fields=["name", "term_name"],
+		)
+		term_name_map = {t.name: t.term_name for t in terms}
+
+	categories = [
+		{
+			"id": c.name,
+			"name": term_name_map.get(c.term or c.name) or c.name,
+		}
+		for c in category_rows
+	]
+
+	tags = [
+		{
+			"id": t.name,
+			"name": term_name_map.get(t.term or t.name) or t.name,
+		}
+		for t in tag_rows
+	]
+
+	# Fetch active banks and unique regions
+	active_banks = frappe.get_all(
+		"A2C Participating Bank",
+		filters={"status": "Active"},
+		fields=["name", "bank_name", "logo", "registered_region"],
 	)
-	regions = sorted(list(set(r for r in bank_regions if r)))
+	regions = sorted(list({b.registered_region for b in active_banks if b.registered_region}))
 
 	return success_response(
 		data={
-			"categories": [{"name": c, "count": None} for c in categories],
+			"categories": categories,
 			"tags": tags,
 			"regions": regions,
+			"banks": active_banks,
 			"tenures": [],  # Kept for backward compatibility if frontend maps it
 			"tenure_range": {"min": 1, "max": MAX_TENURE_MONTHS},
 			"amount_range": {

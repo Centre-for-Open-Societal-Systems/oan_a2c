@@ -84,6 +84,34 @@ def validate_request(schema: type[BaseModel]):
 			validated_dict = validated.model_dump()
 			return func(**validated_dict)
 
+		wrapper._request_schema = schema
+		wrapper.__pydantic_schema__ = schema
+		return wrapper
+
+	return decorator
+
+
+def api_doc(
+	summary: str | None = None,
+	description: str | None = None,
+	tags: list[str] | None = None,
+	response_model: type[BaseModel] | None = None,
+	deprecated: bool = False,
+):
+	"""Decorator to attach OpenAPI documentation metadata to an endpoint."""
+
+	def decorator(func):
+		@wraps(func)
+		def wrapper(*args, **kwargs):
+			return func(*args, **kwargs)
+
+		wrapper._api_doc = {
+			"summary": summary,
+			"description": description,
+			"tags": tags,
+			"response_model": response_model,
+			"deprecated": deprecated,
+		}
 		return wrapper
 
 	return decorator
@@ -104,6 +132,125 @@ def require_role(roles: list[str]):
 		return wrapper
 
 	return decorator
+
+
+def _workflow_cache_key(doctype: str, modified: str | None = None) -> str:
+	suffix = modified or "current"
+	return f"oan_a2c:workflow:{doctype}:{suffix}"
+
+
+def get_workflow_definition(doctype: str) -> dict | None:
+	"""Return the active Workflow definition for `doctype`, cached by modified timestamp."""
+	workflow_meta = frappe.db.get_value(
+		"Workflow", {"document_type": doctype, "is_active": 1}, ["name", "modified"], as_dict=True
+	)
+	if not workflow_meta:
+		return None
+
+	cache_key = _workflow_cache_key(doctype, workflow_meta.modified)
+	cached = frappe.cache().get_value(cache_key)
+	if cached:
+		return cached
+
+	workflow = frappe.get_doc("Workflow", workflow_meta.name)
+	data = {
+		"name": workflow.name,
+		"modified": workflow.modified,
+		"states": [row.as_dict() for row in workflow.states],
+		"transitions": [row.as_dict() for row in workflow.transitions],
+	}
+	frappe.cache().set_value(cache_key, data)
+	return data
+
+
+def get_workflow_state_names(doctype: str) -> tuple[str, ...]:
+	workflow = get_workflow_definition(doctype)
+	if not workflow:
+		return ()
+	return tuple(row["state"] for row in workflow["states"] if row.get("state"))
+
+
+def get_workflow_initial_state(doctype: str) -> str | None:
+	workflow = get_workflow_definition(doctype)
+	if not workflow or not workflow["states"]:
+		return None
+	return workflow["states"][0].get("state")
+
+
+def workflow_state_is_initial(doctype: str, state: str | None) -> bool:
+	return bool(state) and state == get_workflow_initial_state(doctype)
+
+
+def workflow_state_has_tag(doctype: str, state: str | None, tag: str) -> bool:
+	if not state:
+		return False
+	workflow = get_workflow_definition(doctype)
+	if not workflow:
+		return False
+	for row in workflow["states"]:
+		if row.get("state") == state:
+			return bool(row.get(tag))
+	return False
+
+
+def status_has_tag(doctype: str, status: str | None, tag: str) -> bool:
+	"""Alias for workflow_state_has_tag, used by call sites that talk about status."""
+	return workflow_state_has_tag(doctype, status, tag)
+
+
+def get_workflow_states_with_tag(doctype: str, tag: str) -> tuple[str, ...]:
+	workflow = get_workflow_definition(doctype)
+	if not workflow:
+		return ()
+	return tuple(row["state"] for row in workflow["states"] if row.get(tag))
+
+
+def resolve_workflow_transition(doc, target_status: str, roles: list[str] | None = None) -> dict:
+	"""Resolve a workflow transition for `doc` toward `target_status`.
+
+	Returns a dict with:
+	  - exists: any transition rows match current state + target state
+	  - allowed: a matching row exists for one of `roles`
+	  - action: the workflow action to apply when allowed
+	  - transitions: all matching rows
+	  - allowed_transitions: matching rows allowed for the caller
+	"""
+	current = doc.get("workflow_state") or doc.get("status")
+	workflow = get_workflow_definition(doc.doctype)
+	if not workflow:
+		return {
+			"exists": False,
+			"allowed": False,
+			"action": None,
+			"transitions": [],
+			"allowed_transitions": [],
+		}
+
+	matching = [
+		row
+		for row in workflow["transitions"]
+		if row.get("state") == current and row.get("next_state") == target_status
+	]
+	if not matching:
+		return {
+			"exists": False,
+			"allowed": False,
+			"action": None,
+			"transitions": [],
+			"allowed_transitions": [],
+		}
+
+	if roles is None:
+		roles = frappe.get_roles()
+	role_set = set(roles)
+	allowed = [row for row in matching if row.get("allowed") in role_set]
+	return {
+		"exists": True,
+		"allowed": bool(allowed),
+		"action": allowed[0].get("action") if allowed else None,
+		"transitions": matching,
+		"allowed_transitions": allowed,
+	}
 
 
 def parse_multi_value(value, allowed=None):
@@ -306,10 +453,38 @@ def success_response(data=None, message="Success", meta=None, pagination=None):
 	}
 
 
+def extract_message_from_str(val):
+	if not val:
+		return val
+	if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
+		try:
+			import ast
+			import json
+
+			try:
+				parsed = json.loads(val)
+			except Exception:
+				parsed = ast.literal_eval(val)
+			if isinstance(parsed, dict) and "message" in parsed:
+				val = str(parsed["message"])
+		except Exception:
+			# Best-effort extraction only; unparseable input falls through to the
+			# raw value. Debug level so it's available when troubleshooting but
+			# doesn't add noise (this fires on any non-dict-shaped string).
+			frappe.logger().debug("Could not parse message payload; returning raw value")
+
+	if isinstance(val, str) and "<" in val and ">" in val:
+		import re
+
+		val = re.sub(r"<[^>]+>", "", val).strip()
+	return val
+
+
 def _envelope_success(data=None, message="Success", meta=None, pagination=None):
+	clean_message = extract_message_from_str(message) if isinstance(message, str) else str(message)
 	res = {
 		"status": "success",
-		"message": message,
+		"message": clean_message,
 		"data": data,
 		"meta": meta or {},
 	}
@@ -322,9 +497,10 @@ def _envelope_success(data=None, message="Success", meta=None, pagination=None):
 
 
 def error_response(message, code="GENERIC_ERROR", details=None):  # pyright: ignore[reportUnknownParameterType, reportMissingParameterType]
+	clean_message = extract_message_from_str(message) if isinstance(message, str) else str(message)
 	res = {
 		"status": "error",
-		"message": message,
+		"message": clean_message,
 		"code": code,
 		"details": details or {},
 	}
@@ -352,31 +528,6 @@ def check_rate_limit(key: str, limit: int, window: int):
 	pipeline.incr(key)
 	pipeline.expire(key, window)
 	pipeline.execute()
-
-
-def extract_message_from_str(val):
-	if isinstance(val, str) and val.startswith("{") and val.endswith("}"):
-		try:
-			import ast
-			import json
-
-			try:
-				parsed = json.loads(val)
-			except Exception:
-				parsed = ast.literal_eval(val)
-			if isinstance(parsed, dict) and "message" in parsed:
-				val = str(parsed["message"])
-		except Exception:
-			# Best-effort extraction only; unparseable input falls through to the
-			# raw value. Debug level so it's available when troubleshooting but
-			# doesn't add noise (this fires on any non-dict-shaped string).
-			frappe.logger().debug("Could not parse message payload; returning raw value")
-
-	if isinstance(val, str) and "<" in val and ">" in val:
-		import re
-
-		val = re.sub(r"<[^>]+>", "", val).strip()
-	return val
 
 
 def get_error_message(e, default_msg="Validation Error"):
@@ -548,39 +699,6 @@ def handle_api_errors(func):
 	return wrapper
 
 
-# --- Workflow helpers ------------------------------------------------------
-#
-# The A2C Lead / A2C Loan Application status fields are governed by Frappe
-# Workflows (see development/workflow_design_lead_loan.md). Status can only
-# change via apply_workflow(doc, action), which validates the transition is
-# legal from the current state and allowed for the user's role.
-#
-# To keep the existing API contract unchanged, the status-update endpoints still
-# accept a *target status*; we map (current_state -> target_status) to the
-# workflow *action* and apply it. The map below is derived directly from the
-# transition tables in the design doc.
-
-# (current_workflow_state, target_status) -> action name
-_WORKFLOW_TRANSITION_ACTIONS = {
-	"A2C Lead": {
-		("Active", "Verified"): "Verify",
-		("Verified", "Processed"): "Mark Processed",
-		("Processed", "Granted"): "Grant",
-		("Processed", "Rejected"): "Reject",
-		("Active", "Rejected"): "Reject",
-		("Verified", "Rejected"): "Reject",
-		("Active", "Dormant"): "Mark Dormant",
-		("Verified", "Dormant"): "Mark Dormant",
-		("Dormant", "Active"): "Reactivate",
-	},
-	"A2C Loan Application": {
-		("Draft", "Processing"): "Send for Review",
-		("Processing", "Approved"): "Approve",
-		("Processing", "Rejected"): "Reject",
-	},
-}
-
-
 def apply_status_transition(doc, target_status):
 	"""
 	Move `doc` to `target_status` through its workflow.
@@ -597,12 +715,18 @@ def apply_status_transition(doc, target_status):
 	if current == target_status:
 		return doc
 
-	action = _WORKFLOW_TRANSITION_ACTIONS.get(doc.doctype, {}).get((current, target_status))
-	if not action:
+	transition = resolve_workflow_transition(doc, target_status, roles=frappe.get_roles())
+	if not transition["exists"]:
 		frappe.throw(
 			_("Cannot change status from '{0}' to '{1}'.").format(current, target_status),
 			frappe.ValidationError,
 		)
+	if not transition["allowed"]:
+		frappe.throw(
+			_("You are not allowed to change status from '{0}' to '{1}'.").format(current, target_status),
+			frappe.PermissionError,
+		)
+	action = transition["action"]
 
 	# The workflow engine (apply_workflow) and the db_set mirror below both
 	# BYPASS Document.before_save, so the doctype's own verification gate never
@@ -611,6 +735,9 @@ def apply_status_transition(doc, target_status):
 	# approved consent regardless of workflow/role permissions.
 	if doc.doctype == "A2C Lead" and target_status == "Verified":
 		doc._enforce_verification_prerequisites()
+
+	if doc.doctype == "A2C Loan Application" and target_status == "In Transition":
+		doc._enforce_submission_prerequisites()
 
 	doc = apply_workflow(doc, action)
 

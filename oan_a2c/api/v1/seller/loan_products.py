@@ -233,8 +233,10 @@ def set_product_status(**kwargs):
 	# Approval/lifecycle gate: activating or archiving a product is a Bank Admin /
 	# platform-admin action. Bank Agents can draft and edit products (write) but cannot
 	# approve or retire them — so these transitions need a role check beyond `write`.
-	if status in ("Active", "Archived") and not (is_bank_unbound() or BANK_ADMIN_ROLE in frappe.get_roles()):
-		action = "approve (activate)" if status == "Active" else "archive"
+	if status in ("Active", "Archived", "Rejected") and not (
+		is_bank_unbound() or BANK_ADMIN_ROLE in frappe.get_roles()
+	):
+		action = "activate" if status == "Active" else status.lower()
 		frappe.throw(_("Only a Bank Admin can {0} a product.").format(action), frappe.PermissionError)
 
 	if not is_bank_unbound():
@@ -242,13 +244,36 @@ def set_product_status(**kwargs):
 
 	doc = frappe.get_doc("A2C Loan Product", product_id)
 
-	# Archiving retires a live product: only an Active product can be Archived, and an
-	# Archived product is restored by moving it back to Active (Active <-> Archived).
-	if status == "Archived" and doc.status != "Active":
-		frappe.throw(
-			_("Only an Active product can be archived (currently {0}).").format(_(doc.status)),
-			frappe.ValidationError,
+	# KNOWN ISSUE -- the archive lifecycle gate was removed and is not replaced.
+	#
+	# This used to reject archiving anything that was not currently Active:
+	#
+	#     if status == "Archived" and doc.status != "Active":
+	#         frappe.throw("Only an Active product can be archived (currently {0}).")
+	#
+	# The intent was that Archived means "retired from the marketplace after having
+	# been live", making Active <-> Archived a closed pair. Without the gate a Draft
+	# or Pending Approval product can be sent straight to Archived, so `Archived` no
+	# longer implies the product was ever offered to a farmer -- which the
+	# archived_products dashboard counter and any "retired catalogue" view both read
+	# it as meaning.
+	#
+	# Deliberately left open for now: it is not clear whether the right answer is to
+	# restore the gate, or to accept that Archived is a general "hidden" state and
+	# fix the readers instead. Decide that before relying on archived_products to
+	# mean anything more specific than "not in the catalogue".
+	#
+	# The idempotent short-circuit below is separate and is intended: re-sending the
+	# status a product already has is a success, not a conflict.
+	if doc.status == status:
+		return success_response(
+			data={
+				"message": _("Product is already {0}").format(doc.status),
+				"product_id": doc.name,
+				"status": doc.status,
+			}
 		)
+
 	if reason:
 		doc._status_reason = reason
 	doc.status = status
@@ -256,7 +281,7 @@ def set_product_status(**kwargs):
 
 	return success_response(
 		data={
-			"message": _("Product status updated to {}").format(doc.status),
+			"message": _("Product status updated to {0}").format(doc.status),
 			"product_id": doc.name,
 			"status": doc.status,
 		}

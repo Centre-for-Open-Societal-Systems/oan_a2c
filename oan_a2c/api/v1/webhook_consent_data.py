@@ -177,6 +177,8 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 				if isinstance(val, dict):
 					farmer_info_dict = val
 					break
+			if not farmer_info_dict:
+				farmer_info_dict = raw_selected_data
 
 		# Spelling-tolerant accessor over the farmer info dict.
 		g = build_field_getter(farmer_info_dict)
@@ -287,7 +289,6 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 			"consent_id": consent_doc_name,
 			"phone_number": phone_number,
 			"email": email,
-			"lead_id": lead_id,
 			"date_of_birth": g("Date of Birth"),
 			"gender": (g("Gender") or "").capitalize(),
 			"marital_status": (g("Marital Status") or "").capitalize(),
@@ -306,22 +307,30 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 			"certification_photo_url": certification_photo_url,
 		}
 
-		# Identity for the upsert. `farmer_id` (the OpenG2P farmer id) is the key; the
-		# schema guarantees it is present, so a redelivery of the same webhook always
-		# resolves to the same profile instead of inserting another one.
+		# Identity for the upsert is the *account*, not the Fayda identity: one profile
+		# per registered farmer, so a redelivery of the same webhook resolves to the
+		# same profile while two accounts presenting the same Fayda identity get one
+		# profile each.
 		#
-		# Phone number is only a secondary match, for profiles created before
-		# farmer_id was populated. It must never be the primary key: it is unique on
-		# this doctype, so two farmers who share or inherit a number would collapse
-		# onto one profile -- and since farmer_profile is what scopes loan-application
-		# visibility, that hands one farmer's applications to the other.
-		existing_profile_name = frappe.db.get_value(
-			"A2C Farmer Profile", {"farmer_id": farmer_data.id}, "name"
-		)
-		if not existing_profile_name and phone_number:
+		# Neither `farmer_id` nor `phone_number` may key this. farmer_profile is what
+		# scopes loan-application visibility, so resolving on a shared identity would
+		# rebind an existing profile and hand one account's applications to another.
+		# Two profiles for one human is a data-quality problem to reconcile later --
+		# a strictly better failure than a silent cross-account transfer.
+		#
+		# An agent-driven consent has no farmer account at all (the owner is the
+		# Development Agent), so there the lead is the identity.
+		from oan_a2c.a2c_marketplace.permissions import is_farmer
+
+		consenting_farmer = owner if owner and is_farmer(owner) else None
+
+		existing_profile_name = None
+		if consenting_farmer:
 			existing_profile_name = frappe.db.get_value(
-				"A2C Farmer Profile", {"phone_number": phone_number}, "name"
+				"A2C Farmer Profile", {"user": consenting_farmer}, "name"
 			)
+		elif lead_id:
+			existing_profile_name = frappe.db.get_value("A2C Lead", lead_id, "farmer_profile")
 
 		if existing_profile_name:
 			farmer_profile = frappe.get_doc("A2C Farmer Profile", existing_profile_name)
@@ -335,8 +344,23 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		# Binding a profile to a User grants that account visibility of this farmer's
 		# applications, so it is only done on an exact match against a user who
 		# already holds the farmer role -- never as a side effect of a loose lookup.
-		if phone_number and not farmer_profile.user:
-			# Find matching user by phone and role
+		#
+		# A profile already bound to a *different* account is never rebound: that is
+		# the cross-account transfer this upsert exists to prevent. It can only be
+		# reached down the lead path, where the profile was created for an agent.
+		if consenting_farmer:
+			if not farmer_profile.user:
+				farmer_profile.user = consenting_farmer
+			elif farmer_profile.user != consenting_farmer:
+				frappe.log_error(
+					title="A2C: farmer profile already bound to another account",
+					message=(
+						f"Profile {existing_profile_name} is bound to {farmer_profile.user}; "
+						f"consent {consent_doc_name} was raised by {consenting_farmer}. "
+						"Binding left unchanged."
+					),
+				)
+		elif not farmer_profile.user and phone_number:
 			import re
 
 			candidates = [c for c in (phone_number, re.sub(r"\D", "", phone_number)) if c]
@@ -349,8 +373,15 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 						break
 				if farmer_user:
 					break
-
-			if farmer_user and frappe.db.exists("Has Role", {"parent": farmer_user, "role": "A2C Farmer"}):
+			# `user` is 1:1 with the profile, so a user who already has one of their own
+			# cannot claim this one -- the insert would fail the unique constraint, and
+			# the intent (let a farmer claim the profile an agent built for them) does
+			# not apply once they have their own.
+			if (
+				farmer_user
+				and is_farmer(farmer_user)
+				and not frappe.db.exists("A2C Farmer Profile", {"user": farmer_user})
+			):
 				farmer_profile.user = farmer_user
 
 		# ignore_permissions=True is required because this background job processes webhooks

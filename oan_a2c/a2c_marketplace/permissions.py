@@ -48,12 +48,49 @@ def get_user_farmer_profile(user=None):
 
 	A registered farmer who has never completed a consent has no profile. That is
 	a normal state, not an error: it means they have nothing to see yet.
+
+	Deliberately NOT @frappe.request_cache, unlike get_user_bank below. Two reasons:
+
+	  1. A farmer's profile can come into existence *during* a request -- the consent
+	     flow creates it, and the claim branch below binds it. A cached `None` from an
+	     earlier call in the same request would then make every later scope check
+	     resolve to `1=0`, and the farmer would see nothing until their next request.
+	  2. This function writes (the claim below). Caching a function with a side
+	     effect hides whether the write happened, and this one runs from permission
+	     hooks that fire many times per request.
+
+	The reads it performs are single indexed lookups, which is the right price for
+	always being correct about what the caller can see.
 	"""
 	if not user:
 		user = frappe.session.user
-	return frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
+	profile = frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
+	if not profile and user and is_farmer(user) and user != "Administrator":
+		latest_consent = frappe.db.get_value(
+			"A2C Consent Request",
+			{"owner": user, "status": "Approved"},
+			"name",
+			order_by="creation desc",
+		)
+		if latest_consent:
+			profile = frappe.db.get_value("A2C Farmer Profile", {"consent_id": latest_consent}, "name")
+			if profile:
+				# Never claim a profile already bound to another account: `user` scopes
+				# loan-application visibility, so overwriting it would transfer that
+				# account's applications to this one.
+				bound_to = frappe.db.get_value("A2C Farmer Profile", profile, "user")
+				if bound_to and bound_to != user:
+					profile = None
+				elif not frappe.flags.read_only:
+					# The binding is a repair, not a precondition: `profile` is already
+					# resolved and returned either way. Skipping the write on a read-only
+					# connection (replica reads) therefore costs nothing but a repeat of
+					# this lookup next request, whereas attempting it would raise.
+					frappe.db.set_value("A2C Farmer Profile", profile, "user", user, update_modified=False)
+	return profile
 
 
+@frappe.request_cache
 def get_user_bank(user=None):
 	"""
 	Returns the bank_code (A2C Participating Bank) bound to the user.
@@ -272,9 +309,9 @@ def loan_application_scope_query(user=None):
 		return f"({base}) and {AGENT_SOURCED_ONLY}" if base else AGENT_SOURCED_ONLY
 
 	# Bank users (Bank Admin, Bank Agent) DO see self-service applications, but only
-	# once they are no longer Draft.
-	draft_gate = "`status` != 'Draft'"
-	return f"({base}) and {draft_gate}" if base else draft_gate
+	# once the workflow moves them past the Active stage (which is farmer's private).
+	status_gate = "`status` != 'Active'"
+	return f"({base}) and {status_gate}" if base else status_gate
 
 
 def loan_product_scope_query(user=None):
@@ -354,10 +391,10 @@ def bank_scope_doc(doc, user=None):
 	allowed = bool(bank) and doc.bank == bank
 
 	if allowed and doc.doctype == "A2C Loan Application":
-		# Lifecycle gate: Bank users can't read Drafts
-		if doc.get("status") == "Draft":
+		# Lifecycle gate: Bank users can't read applications until the workflow marks them visible.
+		if doc.get("status") == "Active":
 			frappe.logger("bank_scope").info(
-				f"Denied Draft loan application to bank user: user={user} {doc.doctype}={doc.name}"
+				f"Denied hidden loan application to bank user: user={user} {doc.doctype}={doc.name}"
 			)
 			return False
 
@@ -376,12 +413,55 @@ def bank_scope_doc(doc, user=None):
 def saved_product_own_query(user=None):
 	"""permission_query_conditions for A2C Saved Product.
 
-	Bookmarking is open to every signed-in user (DocPerm role "All"), so row
-	visibility is the only thing standing between one user's saved list and
-	another's. Platform admins keep the unscoped view for support.
+	Bookmarking is open to every role that browses the catalog -- farmers, bank
+	users and development agents alike -- so row visibility is the only thing
+	standing between one user's saved list and another's. Platform admins keep the
+	unscoped view for support.
 	"""
 	if not user:
 		user = frappe.session.user
 	if is_platform_admin(user):
 		return ""
 	return f"`user` = {frappe.db.escape(user)}"
+
+
+def saved_product_own_doc(doc, ptype=None, user=None):
+	"""has_permission for A2C Saved Product -- the doc-level twin of the query above.
+
+	permission_query_conditions only fires on list queries, so on its own it leaves
+	`frappe.client.get("A2C Saved Product", "<name>")` open to anyone holding read
+	DocPerm: the row would be another user's bookmark. Writes are already safe (the
+	controller stamps `user` from the session), but reads and deletes by name need
+	this to make "you only see what you saved" true outside the API layer too.
+	"""
+	# `create` is checked before validate() stamps `user`, so the row is still
+	# blank here -- and the controller forces it to the session user anyway,
+	# which makes creating into someone else's list impossible regardless.
+	if ptype == "create":
+		return True
+	if not user:
+		user = frappe.session.user
+	if is_platform_admin(user):
+		return True
+	return doc.get("user") == user
+
+
+def farmer_own_profile_doc(doc, ptype=None, user=None):
+	if not user:
+		user = frappe.session.user
+	if is_platform_admin(user):
+		return True
+	if not is_farmer(user) or is_bank_unbound(user):
+		return True  # Non-farmers (like bank agents) rely on base Role Permissions Manager
+	profile = get_user_farmer_profile(user)
+	return bool(profile) and doc.name == profile
+
+
+def farmer_own_consent_doc(doc, ptype=None, user=None):
+	if not user:
+		user = frappe.session.user
+	if is_platform_admin(user):
+		return True
+	if not is_farmer(user) or is_bank_unbound(user):
+		return True
+	return doc.owner == user

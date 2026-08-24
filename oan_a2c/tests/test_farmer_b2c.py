@@ -38,14 +38,19 @@ class FarmerB2CFixtures(unittest.TestCase):
 
 		def _user(prefix, role):
 			email = f"{prefix}-{cls.h}@example.com"
-			frappe.get_doc(
-				{
-					"doctype": "User",
-					"email": email,
-					"first_name": prefix,
-					"roles": [{"role": role}],
-				}
-			).insert(ignore_permissions=True, ignore_mandatory=True)
+			if not frappe.db.exists("User", email):
+				frappe.flags.in_import = True
+				try:
+					frappe.get_doc(
+						{
+							"doctype": "User",
+							"email": email,
+							"first_name": prefix,
+							"roles": [{"role": role}],
+						}
+					).insert(ignore_permissions=True, ignore_mandatory=True)
+				finally:
+					frappe.flags.in_import = False
 			return email
 
 		cls.farmer_a = _user("b2c-farmer-a", FARMER_ROLE)
@@ -67,7 +72,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"user": cls.farmer_a,
 				"first_name": "A",
 				"last_name": "Farmer",
-				"phone_number": "1111111111",
+				"phone_number": f"+25191{int(cls.h[:6], 16):06d}",
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 		cls.profile_b = frappe.get_doc(
@@ -76,7 +81,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 				"user": cls.farmer_b,
 				"first_name": "B",
 				"last_name": "Farmer",
-				"phone_number": "2222222222",
+				"phone_number": f"+25192{int(cls.h[:6], 16):06d}",
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 
@@ -95,6 +100,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 
 		cls.prod_1 = _product(f"B2CProd1-{cls.h}")
 		cls.prod_2 = _product(f"B2CProd2-{cls.h}")
+		frappe.db.commit()
 
 	@classmethod
 	def tearDownClass(cls):
@@ -267,6 +273,29 @@ class TestCatalogFilterComposition(FarmerB2CFixtures):
 		self.assertEqual(sorted(empty["pagination"]), sorted(populated["pagination"]))
 		self.assertEqual(empty["pagination"]["total"], 0)
 
+	def test_catalog_and_saved_products_enrich_bank_info(self):
+		"""Products must include bank_name and bank_logo alongside bank id."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import get_saved_products, list_catalog, save_product
+
+		frappe.set_user(self.farmer_a)
+		catalog_res = list_catalog(limit=5, start=0, sort_by="product_name")
+		products = catalog_res["data"]["products"]
+		self.assertTrue(len(products) > 0)
+		for p in products:
+			self.assertIn("bank", p)
+			self.assertIn("bank_name", p)
+			self.assertIn("bank_logo", p)
+			if p["bank"] == self.bank:
+				self.assertEqual(p["bank_name"], self.bank_label)
+
+		save_product(loan_product=self.prod_1.name)
+		saved_res = get_saved_products(limit=5, start=0)
+		saved_products = saved_res["data"]["products"]
+		self.assertTrue(len(saved_products) > 0)
+		self.assertEqual(saved_products[0]["bank_name"], self.bank_label)
+
 
 class TestApplicationSourceScoping(FarmerB2CFixtures):
 	"""Self-service applications belong to the farmer, not to the CRM pipeline."""
@@ -293,8 +322,8 @@ class TestApplicationSourceScoping(FarmerB2CFixtures):
 				}
 			).insert(ignore_permissions=True, ignore_mandatory=True)
 
-		cls.self_service_app = _app(cls.profile_a.name, "Self Service", "Processing", "10000001")
-		cls.agent_app = _app(cls.profile_a.name, "Agent", "Processing", "20000001")
+		cls.self_service_app = _app(cls.profile_a.name, "Self Service", "In Transition", "10000001")
+		cls.agent_app = _app(cls.profile_a.name, "Agent", "In Transition", "20000001")
 
 	def test_development_agent_does_not_see_self_service_applications(self):
 		import frappe
@@ -362,7 +391,7 @@ class TestFarmerApplicationCreation(FarmerB2CFixtures):
 		self.assertEqual(doc.application_source, "Self Service")
 		self.assertFalse(doc.lead_id, "the B2C flow deliberately creates no A2C Lead")
 		self.assertEqual(doc.farmer_profile, self.profile_a.name)
-		self.assertEqual(doc.status, "Draft")
+		self.assertEqual(doc.status, "Active")
 
 	def test_requested_amount_must_fit_the_product(self):
 		"""The cap is per-product, so the schema's global bound cannot enforce it."""
@@ -527,6 +556,14 @@ class TestCatalogLimits(unittest.TestCase):
 		self.assertEqual(data["amount_range"]["max"], float(MAX_LOAN_AMOUNT))
 		self.assertEqual(data["max_interest_rate"], float(MAX_INTEREST_RATE))
 		self.assertEqual(data["tenure_range"]["max"], MAX_TENURE_MONTHS)
+		self.assertIn("categories", data)
+		self.assertIn("tags", data)
+		for c in data["categories"]:
+			self.assertIn("id", c)
+			self.assertIn("name", c)
+		for t in data["tags"]:
+			self.assertIn("id", t)
+			self.assertIn("name", t)
 
 	def test_product_schema_rejects_values_beyond_the_published_bounds(self):
 		from pydantic import ValidationError
@@ -540,3 +577,121 @@ class TestCatalogLimits(unittest.TestCase):
 				max_amount=1000,
 				tenure_months=12,
 			)
+
+
+class TestFarmerProfileAndConsent(FarmerB2CFixtures):
+	def test_farmer_get_basic_profile(self):
+		import frappe
+
+		from oan_a2c.api.v1.loan_applications import get_basic_profile
+
+		cr = frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"farmer": "openg2p-id-test",
+				"farmer_fayda_id": f"fayda-prof-{self.h}",
+				"status": "Approved",
+				"owner": self.farmer_a,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Farmer Profile", self.profile_a.name, "consent_id", cr.name)
+
+		frappe.set_user(self.farmer_a)
+		res = get_basic_profile()
+		self.assertEqual(res["status"], "success")
+		self.assertTrue(res["data"]["farmer_profile_created"])
+		self.assertEqual(res["data"]["first_name"], "A")
+		self.assertEqual(res["data"]["consent_request"]["name"], cr.name)
+		self.assertEqual(res["data"]["consent_request"]["status"], "Approved")
+
+	def test_farmer_get_basic_profile_no_consent_does_not_throw(self):
+		import frappe
+
+		from oan_a2c.api.v1.loan_applications import get_basic_profile
+
+		# Farmer without profile or consent gets 200 OK with farmer_profile_created=False
+		new_farmer_user = frappe.get_doc(
+			{
+				"doctype": "User",
+				"email": f"newfarmer_{self.h}@example.com",
+				"first_name": "New",
+				"roles": [{"role": "A2C Farmer"}],
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		frappe.set_user(new_farmer_user.name)
+		res = get_basic_profile()
+		self.assertEqual(res["status"], "success")
+		self.assertFalse(res["data"]["farmer_profile_created"])
+		self.assertIsNone(res["data"]["consent_request"])
+
+	def test_failed_or_pending_consent_blocks_submission(self):
+		from unittest.mock import MagicMock, patch
+
+		import frappe
+
+		from oan_a2c.api.v1.consent.consent import request_otp
+		from oan_a2c.api.v1.farmer.applications import create_application, submit_application
+
+		# Initial state: farmer_b has no active consent
+		frappe.set_user("Administrator")
+		cr_approved = frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"farmer": "openg2p-id-b",
+				"farmer_fayda_id": f"fayda-b-{self.h}",
+				"status": "Approved",
+				"owner": self.farmer_b,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Farmer Profile", self.profile_b.name, "consent_id", cr_approved.name)
+
+		# Farmer B creates a draft application using the approved consent
+		frappe.set_user(self.farmer_b)
+		create_application(loan_product=self.prod_1.name, requested_amount=200)
+
+		# Now Farmer B starts a new consent request which gets stuck in Pending OTP
+		with patch("oan_a2c.api.v1.consent.consent.OpenG2PConsentClient") as MockClient:
+			mock_inst = MockClient.return_value
+			mock_inst.get_farmer_by_fayda_id.return_value = {"id": "openg2p-id-b"}
+			mock_inst.request_otp.return_value = {
+				"transaction_id": f"TXN-NEW-{self.h}",
+				"masked_mobile": "091****2222",
+			}
+			mock_inst.session = MagicMock()
+			mock_inst.session.cookies = MagicMock()
+			mock_inst.session.cookies.get.return_value = "COOKIE"
+
+			otp_res = request_otp(fayda_id=f"fayda-b-{self.h}")
+			new_cr_name = otp_res["data"]["consent_request"]
+
+		# Profile consent_id should now point to the new consent request (Pending OTP)
+		profile_consent = frappe.db.get_value("A2C Farmer Profile", self.profile_b.name, "consent_id")
+		self.assertEqual(profile_consent, new_cr_name)
+
+		# Mark the new consent as Rejected
+		frappe.db.set_value("A2C Consent Request", new_cr_name, "status", "Rejected")
+
+		# Create a new application - it should fail or use the rejected consent and fail on submission
+		# When creating application with default profile consent (which is now Rejected):
+		app_res2 = create_application(loan_product=self.prod_1.name, requested_amount=200)
+		app_id2 = app_res2["data"]["application_id"]
+		doc2 = frappe.get_doc("A2C Loan Application", app_id2)
+		self.assertEqual(doc2.consent_id, new_cr_name)
+
+		# Attempting to submit application with rejected consent must fail
+		submit_res = submit_application(application_id=app_id2)
+		self.assertEqual(submit_res["status"], "error")
+		self.assertIn("not approved", submit_res["message"].lower())
+
+	def test_dev_agent_leadless_request_otp_raises_validation_error(self):
+		"""Development Agent calling request_otp without lead_id must be rejected."""
+		import frappe
+
+		from oan_a2c.api.v1.consent.consent import request_otp
+
+		frappe.set_user(self.dev_agent)
+		res = request_otp(fayda_id=f"fayda-dev-{self.h}")
+		self.assertEqual(res["status"], "error")
+		self.assertEqual(res.get("code"), "VALIDATION_ERROR")
+		self.assertIn("lead_id is required", res.get("message", "").lower())
