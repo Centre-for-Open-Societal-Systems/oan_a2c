@@ -16,6 +16,15 @@ _LEGACY_STATUS_MAP = {
 # States that carry docstatus 1 in the current workflow definition.
 _SUBMITTED_STATES = ("Completed", "Rejected")
 
+# Archetype status -> the default bank stage a row lands on when nothing more
+# specific is known. "Active" has no entry: an applicant hasn't reached a bank
+# pipeline stage yet at that point, so it's correct for it to stay unset.
+_DEFAULT_STAGE_LABEL = {
+	"In Transition": "Processed",
+	"Completed": "Disbursed",
+	"Rejected": "Rejected",
+}
+
 
 def execute():
 	"""Fix two things left over from the workflow-vocabulary migration:
@@ -47,19 +56,20 @@ def execute():
 		if target in _SUBMITTED_STATES and docstatus == 0:
 			frappe.db.set_value("A2C Loan Application", name, "docstatus", 1, update_modified=False)
 
-	# 2. Assign the default "Processed" stage to applications now sitting at
-	#    "In Transition" with no stage of their own.
+	# 2. Assign each archetype's default bank stage to applications that reached
+	#    it without ever passing through update_loan_status (e.g. via the legacy
+	#    remap above), so they still have no stage of their own.
 	for application in frappe.get_all(
 		"A2C Loan Application",
-		filters={"status": "In Transition"},
-		fields=["name", "bank", "stage_id"],
+		filters={"status": ["in", list(_DEFAULT_STAGE_LABEL)]},
+		fields=["name", "bank", "status", "stage_id"],
 	):  # bank-scope-exempt: migration runs as Administrator over every bank by design
 		if application.stage_id or not application.bank:
 			continue
 
 		stage = frappe.db.get_value(
 			"A2C Loan Status Stage",
-			{"bank": application.bank, "label": "Processed"},
+			{"bank": application.bank, "label": _DEFAULT_STAGE_LABEL[application.status]},
 			["stage_id", "label"],
 			as_dict=True,
 		)
