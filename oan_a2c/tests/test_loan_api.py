@@ -524,7 +524,7 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertEqual(res["status"], "success")
 
 		doc = frappe.get_doc("A2C Loan Application", self.app_id)
-		self.assertEqual(doc.status, "Completed")
+		self.assertEqual(doc.status, "Rejected")
 		self.assertEqual(doc.stage_label, "Rejected")
 		self.assertEqual(doc.docstatus, 1)
 

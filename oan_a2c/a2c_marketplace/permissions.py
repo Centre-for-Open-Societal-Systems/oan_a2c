@@ -43,16 +43,51 @@ def is_farmer(user=None):
 	return FARMER_ROLE in frappe.get_roles(user)
 
 
-@frappe.request_cache
 def get_user_farmer_profile(user=None):
 	"""The A2C Farmer Profile bound to `user`, or None before consent binds one.
 
 	A registered farmer who has never completed a consent has no profile. That is
 	a normal state, not an error: it means they have nothing to see yet.
+
+	Deliberately NOT @frappe.request_cache, unlike get_user_bank below. Two reasons:
+
+	  1. A farmer's profile can come into existence *during* a request -- the consent
+	     flow creates it, and the claim branch below binds it. A cached `None` from an
+	     earlier call in the same request would then make every later scope check
+	     resolve to `1=0`, and the farmer would see nothing until their next request.
+	  2. This function writes (the claim below). Caching a function with a side
+	     effect hides whether the write happened, and this one runs from permission
+	     hooks that fire many times per request.
+
+	The reads it performs are single indexed lookups, which is the right price for
+	always being correct about what the caller can see.
 	"""
 	if not user:
 		user = frappe.session.user
-	return frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
+	profile = frappe.db.get_value("A2C Farmer Profile", {"user": user}, "name")
+	if not profile and user and is_farmer(user) and user != "Administrator":
+		latest_consent = frappe.db.get_value(
+			"A2C Consent Request",
+			{"owner": user, "status": "Approved"},
+			"name",
+			order_by="creation desc",
+		)
+		if latest_consent:
+			profile = frappe.db.get_value("A2C Farmer Profile", {"consent_id": latest_consent}, "name")
+			if profile:
+				# Never claim a profile already bound to another account: `user` scopes
+				# loan-application visibility, so overwriting it would transfer that
+				# account's applications to this one.
+				bound_to = frappe.db.get_value("A2C Farmer Profile", profile, "user")
+				if bound_to and bound_to != user:
+					profile = None
+				elif not frappe.flags.read_only:
+					# The binding is a repair, not a precondition: `profile` is already
+					# resolved and returned either way. Skipping the write on a read-only
+					# connection (replica reads) therefore costs nothing but a repeat of
+					# this lookup next request, whereas attempting it would raise.
+					frappe.db.set_value("A2C Farmer Profile", profile, "user", user, update_modified=False)
+	return profile
 
 
 @frappe.request_cache

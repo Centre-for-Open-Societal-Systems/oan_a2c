@@ -296,6 +296,21 @@ def request_otp(**kwargs):
 				frappe.ValidationError,
 			)
 		frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
+	elif FARMER_ROLE not in frappe.get_roles():
+		# Every consent request must be anchored to an identity: the farmer's own
+		# account for self-service, or a lead when raised on their behalf. Without
+		# either, nothing links the request to a lead or a profile afterwards -- the
+		# webhook cannot resolve which profile to write, and the record is
+		# unreachable by every consent lookup on A2C Loan Application.
+		#
+		# This is also the role gate for the lead-less path (mirroring search_farmer):
+		# a farmer may raise consent for themselves, and anyone acting for a farmer
+		# must name a lead, which the write check above then holds them to. Callers
+		# who are neither -- a Bank Agent, say -- fail both branches.
+		frappe.throw(
+			_("lead_id is required when requesting consent on a farmer's behalf."),
+			frappe.ValidationError,
+		)
 
 	# Idempotency lock & check using Redis cache
 	if idempotency_key:
@@ -358,6 +373,16 @@ def request_otp(**kwargs):
 			# db.set_value deliberately: a consent write must not run (or trip) unrelated
 			# Lead validation such as the phone-uniqueness and verification gates.
 			frappe.db.set_value("A2C Lead", lead_id, "consent_id", doc.name, update_modified=False)
+		else:
+			from oan_a2c.a2c_marketplace.permissions import get_user_farmer_profile, is_farmer
+
+			user = frappe.session.user
+			if is_farmer(user):
+				profile_name = get_user_farmer_profile(user)
+				if profile_name:
+					frappe.db.set_value(
+						"A2C Farmer Profile", profile_name, "consent_id", doc.name, update_modified=False
+					)
 
 		# client call — request the OTP from Fayda via Odoo.
 		otp_data = client.request_otp(farmer_id=farmer_db_id)
@@ -475,6 +500,23 @@ def _save_direct_consent_response_to_lead(consent_request, response_data, openg2
 	if not response_data:
 		return False
 
+	# The OpenG2P farmer id, which process_consent_data writes straight onto
+	# A2C Farmer Profile.farmer_id. It is a real upstream identifier, so it is read
+	# from the payload and, failing that, from the id this consent request was opened
+	# against in request_otp -- never defaulted to a placeholder. A literal fallback
+	# such as `1` would stamp every profile created down this path with the same
+	# fabricated identity, which is worse than not creating the profile at all: the
+	# rows look valid and nothing downstream can tell them apart.
+	farmer_id = response_data.get("id") or frappe.db.get_value(
+		"A2C Consent Request", consent_request, "farmer"
+	)
+	if not farmer_id:
+		frappe.logger().warning(
+			f"Direct consent response for {consent_request} carries no farmer id; "
+			"leaving the profile to the async WebSub delivery."
+		)
+		return False
+
 	# validate_and_enqueue_consent looks up the A2C Consent Request by
 	# consent.id == openg2p_consent_id, then enqueues process_consent_data,
 	# which reads the farmer dict from selected_data.
@@ -489,7 +531,7 @@ def _save_direct_consent_response_to_lead(consent_request, response_data, openg2
 				"status": "approved",
 				"approved_at": to_tz_aware_iso(now_datetime()),
 			},
-			"farmer": {"id": response_data.get("id", 1)},
+			"farmer": {"id": farmer_id},
 			"selected_data": response_data,
 		}
 		# enforce_permission=False: called in-process, not via authenticated HTTP.
@@ -622,9 +664,24 @@ def submit_consent(**kwargs):
 		fields_data = fields_res.get("data") if isinstance(fields_res, dict) else []
 		field_map = {f["id"]: f["name"] for f in fields_data if isinstance(f, dict) and "id" in f}
 
+		# Map the consent reason id to its human-readable name and description.
+		reasons_res = client.get_consent_reasons()
+		reasons_data = reasons_res.get("data") if isinstance(reasons_res, dict) else []
+		reason_map = {r["id"]: r for r in reasons_data if isinstance(r, dict) and "id" in r}
+		try:
+			parsed_reason_id = int(consent_reason_id)
+		except (ValueError, TypeError):
+			parsed_reason_id = consent_reason_id
+
+		reason_obj = reason_map.get(parsed_reason_id)
+		purpose_name = reason_obj.get("name") if reason_obj else str(consent_reason_id)
+		purpose_description = reason_obj.get("description") if reason_obj else None
+
 		# Persist the consent details onto the request now that they're known.
 		cr_doc.consent_type = consent_type
-		cr_doc.purpose = consent_reason_id
+		cr_doc.purpose_id = str(consent_reason_id)
+		cr_doc.purpose = purpose_name
+		cr_doc.purpose_description = purpose_description
 		cr_doc.consent_form_attachment = saved_file.file_url
 		if validity_months:
 			from frappe.utils import add_days, today

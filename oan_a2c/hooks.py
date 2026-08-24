@@ -87,11 +87,11 @@ app_license = "mit"
 # ------------
 
 # before_install = "oan_a2c.install.before_install"
-# Install app-owned custom fields on standard doctypes. Runs on fresh install
+# Install app-owned custom fields and roles. Runs on fresh install
 # (patches are skipped there via set_all_patches_as_completed) and is idempotent.
-after_install = "oan_a2c.setup.custom_fields.setup_custom_fields"
+after_install = "oan_a2c.setup.migrate.after_install"
 
-# Re-assert those custom fields on every migrate so already-provisioned sites
+# Re-assert those custom fields and roles on every migrate so already-provisioned sites
 # stay self-healing when the definitions change.
 after_migrate = "oan_a2c.setup.migrate.after_migrate"
 
@@ -292,22 +292,3 @@ auth_hooks = ["oan_a2c.api.middleware.validate_jwt_request"]
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-
-fixtures = [
-	{
-		"dt": "Role",
-		"filters": [
-			[
-				"name",
-				"in",
-				[
-					"A2C Administrator",
-					"A2C Bank Admin",
-					"A2C Bank Agent",
-					"A2C Development Agent",
-					"A2C Farmer",
-				],
-			]
-		],
-	}
-]

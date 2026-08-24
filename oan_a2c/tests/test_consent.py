@@ -96,6 +96,14 @@ class TestConsentAPI(unittest.TestCase):
 
 		return consent_name
 
+	@patch("oan_a2c.api.v1.consent.consent.frappe.get_roles")
+	def test_request_otp_without_lead_fails_for_dev_agent(self, mock_get_roles):
+		mock_get_roles.return_value = ["A2C Development Agent"]
+		response = request_otp(fayda_id="FAYDA-123")
+		self.assertEqual(response.get("status"), "error")
+		self.assertEqual(response.get("code"), "VALIDATION_ERROR")
+		self.assertIn("lead_id is required", response.get("message", "").lower())
+
 	@patch("oan_a2c.api.v1.consent.consent._save_direct_consent_response_to_lead")
 	@patch("oan_a2c.api.v1.consent.consent.OpenG2PConsentClient")
 	def test_verify_and_submit_consent(self, MockClient, MockSaveDirect):
@@ -129,6 +137,10 @@ class TestConsentAPI(unittest.TestCase):
 			"success": True,
 			"data": [{"id": 1, "name": "First Name"}, {"id": 2, "name": "Last Name"}],
 		}
+		mock_instance.get_consent_reasons.return_value = {
+			"success": True,
+			"data": [{"id": 1, "name": "Agri Loan Processing"}],
+		}
 		mock_instance.submit_consent.return_value = {
 			"success": True,
 			"data": {"consent_id": "MOCK-G2P-CONS-001", "consent_creation_request_id": "MOCK-G2P-CONS-001"},
@@ -161,9 +173,12 @@ class TestConsentAPI(unittest.TestCase):
 		self.assertEqual(submit_response.get("data", {}).get("openg2p_consent_id"), "MOCK-G2P-CONS-001")
 		self.assertIsNotNone(submit_response.get("data", {}).get("consent_receipt"))
 
-		# Verify status and validity updated in DB
-		vals_after_submit = self._get_consent_values(consent_name, "status", "validity_from", "validity_to")
+		# Verify status, purpose and validity updated in DB
+		vals_after_submit = self._get_consent_values(
+			consent_name, "status", "purpose", "validity_from", "validity_to"
+		)
 		self.assertEqual(vals_after_submit.get("status"), "Approved")
+		self.assertEqual(vals_after_submit.get("purpose"), "Agri Loan Processing")
 		self.assertIsNotNone(vals_after_submit.get("validity_from"))
 		self.assertIsNotNone(vals_after_submit.get("validity_to"))
 

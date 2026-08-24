@@ -6,6 +6,7 @@ from frappe.utils import cint, flt, sanitize_html
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from oan_a2c.a2c_marketplace.doctype_schemas import MAX_LOAN_AMOUNT, MAX_QUERY_AMOUNT
+from oan_a2c.a2c_marketplace.permissions import get_user_farmer_profile, is_farmer
 from oan_a2c.a2c_marketplace.roles import ADMIN_ROLE, BANK_ADMIN_ROLE, BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
 from oan_a2c.api.utils import (
 	SafeDate,
@@ -23,12 +24,12 @@ from oan_a2c.api.utils import (
 
 
 class GetBasicProfileSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1, max_length=140)
+	lead_id: str | None = Field(None, max_length=140)
 	include_consent_data: int | None = None
 
 
 class UpdateBasicProfileSchema(BaseModel):
-	lead_id: str = Field(..., min_length=1, max_length=140)
+	lead_id: str | None = Field(None, max_length=140)
 	email: SafeEmail = None
 	region: str | None = Field(None, max_length=140)
 	woreda: str | None = Field(None, max_length=140)
@@ -171,25 +172,43 @@ def _get_consent_details(consent_id: str) -> dict:
 @handle_api_errors
 def get_basic_profile(lead_id: str | None = None, include_consent_data: bool | None = None):
 	"""
-	Retrieves the basic profile information of a farmer associated with a lead.
+	Retrieves the basic profile information of a farmer associated with a lead (for staff)
+	or for the currently authenticated farmer.
 	"""
-	frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
-	lead_doc = _get_lead(lead_id)
+	user = frappe.session.user
+	if lead_id:
+		frappe.has_permission("A2C Lead", "read", doc=lead_id, throw=True)
+		lead_doc = _get_lead(lead_id)
 
-	profile_name = lead_doc.farmer_profile
+		profile_name = lead_doc.farmer_profile
 
-	# The lead caches its latest consent attempt, so this is a field read rather than
-	# a sort over every consent request raised for the lead. Falls back to that scan
-	# for leads whose cache predates backfill_lead_consent_id.
-	consent_id = lead_doc.consent_id or frappe.db.get_value(
-		"A2C Consent Request",
-		{"reference_doctype": "A2C Lead", "reference_name": lead_id},
-		"name",
-		order_by="creation desc",
-	)
+		# The lead caches its latest consent attempt, so this is a field read rather than
+		# a sort over every consent request raised for the lead. Falls back to that scan
+		# for leads whose cache predates backfill_lead_consent_id.
+		consent_id = lead_doc.consent_id or frappe.db.get_value(
+			"A2C Consent Request",
+			{"reference_doctype": "A2C Lead", "reference_name": lead_id},
+			"name",
+			order_by="creation desc",
+		)
 
-	if not profile_name and not consent_id:
-		frappe.throw(_("Farmer Profile not found for this lead"), frappe.ValidationError)
+		if not profile_name and not consent_id:
+			frappe.throw(_("Farmer Profile not found for this lead"), frappe.ValidationError)
+	else:
+		if not is_farmer(user) or user == "Administrator":
+			frappe.throw(_("lead_id is required"), frappe.ValidationError)
+
+		profile_name = get_user_farmer_profile(user)
+		consent_id = None
+		if profile_name:
+			consent_id = frappe.db.get_value("A2C Farmer Profile", profile_name, "consent_id")
+		if not consent_id:
+			consent_id = frappe.db.get_value(
+				"A2C Consent Request",
+				{"owner": user},
+				"name",
+				order_by="creation desc",
+			)
 
 	data = {"farmer_profile_created": bool(profile_name)}
 
@@ -223,6 +242,8 @@ def get_basic_profile(lead_id: str | None = None, include_consent_data: bool | N
 		}
 		if include_consent_data:
 			data.update(_get_consent_details(consent_id))
+	else:
+		data["consent_request"] = None
 
 	return success_response(data=data, message="Basic profile retrieved successfully")
 
@@ -238,15 +259,25 @@ def update_basic_profile(
 	kebele: str | None = None,
 ):
 	"""
-	Updates the email and location details for a lead's farmer profile.
+	Updates the email and location details for a lead's farmer profile or the authenticated farmer.
 	"""
-	frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
-	lead_doc = _get_lead(lead_id)
-	if not lead_doc.farmer_profile:
-		frappe.throw(_("Farmer Profile not found for this lead"), frappe.ValidationError)
+	user = frappe.session.user
+	lead_doc = None
+	if lead_id:
+		frappe.has_permission("A2C Lead", "write", doc=lead_id, throw=True)
+		lead_doc = _get_lead(lead_id)
+		if not lead_doc.farmer_profile:
+			frappe.throw(_("Farmer Profile not found for this lead"), frappe.ValidationError)
+		profile_name = lead_doc.farmer_profile
+	else:
+		if not is_farmer(user) or user == "Administrator":
+			frappe.throw(_("lead_id is required"), frappe.ValidationError)
+		profile_name = get_user_farmer_profile(user)
+		if not profile_name:
+			frappe.throw(_("Farmer Profile not found"), frappe.ValidationError)
 
-	frappe.has_permission("A2C Farmer Profile", "write", doc=lead_doc.farmer_profile, throw=True)
-	farmer_doc = frappe.get_doc("A2C Farmer Profile", lead_doc.farmer_profile)
+	frappe.has_permission("A2C Farmer Profile", "write", doc=profile_name, throw=True)
+	farmer_doc = frappe.get_doc("A2C Farmer Profile", profile_name)
 
 	changed = False
 	updates = {"email": email, "region": region, "woreda": woreda, "kebele": kebele}
@@ -256,13 +287,14 @@ def update_basic_profile(
 			if farmer_doc.meta.has_field(field) and farmer_doc.get(field) != value:
 				farmer_doc.set(field, value)
 				changed = True
-			if lead_doc.meta.has_field(field) and lead_doc.get(field) != value:
+			if lead_doc and lead_doc.meta.has_field(field) and lead_doc.get(field) != value:
 				lead_doc.set(field, value)
 				changed = True
 
 	if changed:
 		farmer_doc.save(ignore_permissions=False)
-		lead_doc.save(ignore_permissions=False)
+		if lead_doc:
+			lead_doc.save(ignore_permissions=False)
 
 	return success_response(
 		data={
@@ -919,18 +951,48 @@ def update_loan_status(**kwargs):
 
 	target_archetype = resolved["archetype_state"]
 
+	# The stage is written onto the document BEFORE the transition, never with db_set
+	# afterwards.
+	#
+	# apply_status_transition saves the document, and that save fires on_update ->
+	# stats_cache.on_application_change, which buckets the dashboard's `stage_counts`
+	# on `stage_label`. db_set bypasses doc_events entirely, so writing the stage
+	# after the save left the counter pointing at the stage the application was in
+	# *before* this call. Worse, a move between two stages of the same archetype (the
+	# common case: every default pipeline stage is `In Transition`) never moved the
+	# counter at all, because apply_status_transition short-circuits when the target
+	# archetype equals the current one. The farmer submit path already ordered these
+	# correctly; this brings the bank path in line with it.
+	before_stage = doc.stage_label or doc.status
+	stage_changed = doc.stage_id != resolved["stage_id"] or doc.stage_label != resolved["stage_label"]
+
+	current_state = doc.get("workflow_state") or doc.get("status")
+	status_changed = current_state != target_archetype
+
+	# apply_workflow reloads the document from the db, so in-memory changes are lost.
+	# We must db_set the stage fields before calling apply_status_transition.
+	doc.db_set("stage_id", resolved["stage_id"])
+	doc.db_set("stage_label", resolved["stage_label"])
+
 	# Apply the status change through the A2C Loan Application Workflow. The workflow enforces
 	# legal transitions and per-role gating, and submits the doc (docstatus 1) on
 	# Approve/Reject (Completed). Illegal/unauthorised targets raise ValidationError.
 	apply_status_transition(doc, target_archetype)
 
-	# Update the stage on the document
-	if resolved["stage_id"]:
-		doc.db_set("stage_id", resolved["stage_id"])
-		doc.db_set("stage_label", resolved["stage_label"])
-	else:
-		doc.db_set("stage_id", None)
-		doc.db_set("stage_label", resolved["stage_label"])
+	if stage_changed and not status_changed:
+		# Pure stage move inside one archetype: apply_status_transition did nothing, so
+		# the stage fields set above are still unsaved.
+		if doc.docstatus == 0:
+			# Normal path -- the save persists the stage and fires the stats hook.
+			doc.save()
+		else:
+			# A submitted document (Completed / Rejected) cannot be saved again, so the
+			# stage is written directly and the cached counter is corrected by hand.
+			doc.db_set("stage_id", resolved["stage_id"])
+			doc.db_set("stage_label", resolved["stage_label"])
+			from oan_a2c.a2c_marketplace.stats_cache import on_stage_moved
+
+			on_stage_moved(doc.bank, before_stage, doc.stage_label or doc.status)
 
 	# Insert Loan Application Audit Event
 	description = _("Changed to {0} ({1})").format(resolved["stage_label"], target_archetype)

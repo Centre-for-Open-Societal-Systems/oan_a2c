@@ -244,6 +244,27 @@ def set_product_status(**kwargs):
 
 	doc = frappe.get_doc("A2C Loan Product", product_id)
 
+	# KNOWN ISSUE -- the archive lifecycle gate was removed and is not replaced.
+	#
+	# This used to reject archiving anything that was not currently Active:
+	#
+	#     if status == "Archived" and doc.status != "Active":
+	#         frappe.throw("Only an Active product can be archived (currently {0}).")
+	#
+	# The intent was that Archived means "retired from the marketplace after having
+	# been live", making Active <-> Archived a closed pair. Without the gate a Draft
+	# or Pending Approval product can be sent straight to Archived, so `Archived` no
+	# longer implies the product was ever offered to a farmer -- which the
+	# archived_products dashboard counter and any "retired catalogue" view both read
+	# it as meaning.
+	#
+	# Deliberately left open for now: it is not clear whether the right answer is to
+	# restore the gate, or to accept that Archived is a general "hidden" state and
+	# fix the readers instead. Decide that before relying on archived_products to
+	# mean anything more specific than "not in the catalogue".
+	#
+	# The idempotent short-circuit below is separate and is intended: re-sending the
+	# status a product already has is a success, not a conflict.
 	if doc.status == status:
 		return success_response(
 			data={

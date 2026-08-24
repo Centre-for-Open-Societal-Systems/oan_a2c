@@ -12,7 +12,11 @@ from oan_a2c.api.utils import (
 	to_tz_aware_iso,
 	validate_request,
 )
-from oan_a2c.api.v1.loan_applications import GetAllLoansSchema, LoanApplicationIDSchema, _get_app
+from oan_a2c.api.v1.loan_applications import (
+	GetAllLoansSchema,
+	LoanApplicationIDSchema,
+	_get_app,
+)
 
 
 class CreateFarmerApplicationSchema(BaseModel):

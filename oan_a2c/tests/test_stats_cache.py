@@ -7,6 +7,7 @@ from oan_a2c.a2c_marketplace.stats_cache import (
 	_EXCLUDED_APPLICATION_STATUSES,
 	_EXCLUDED_PRODUCT_STATUSES,
 	_MAP_COUNTERS,
+	_NON_ADDITIVE_COUNTERS,
 	_PENDING_APPLICATION_STATUS,
 	_SCALAR_COUNTERS,
 	_compute_from_db,
@@ -593,3 +594,130 @@ class TestApplicantAndPendingCounters(unittest.TestCase):
 			if opt.strip()
 		}
 		self.assertIn(_PENDING_APPLICATION_STATUS, options)
+
+
+class TestCrossBankApplicantCount(unittest.TestCase):
+	"""`total_applicants` on the all-banks view counts people, not (person, bank) pairs.
+
+	Every other scalar counter counts rows, and a row belongs to exactly one bank,
+	so the platform total is the sum of the per-bank values. `total_applicants`
+	counts DISTINCT farmers within a bank, and distinctness does not survive a sum:
+	summing would report one farmer who applied to two banks as two applicants.
+
+	The per-bank figure is unaffected -- that farmer is genuinely one applicant at
+	each bank -- so this pins both halves at once: 1 on the platform view, 1 in each
+	`by_bank` row.
+	"""
+
+	@classmethod
+	def _make_bank(cls, label: str, phone: str):
+		suffix = frappe.generate_hash(length=6)
+		return frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"registered_city": "Test City",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO",
+				"ops_name": "Test Ops",
+				"bank_name": f"{label} {suffix}",
+				"bank_code": f"TEST_XBANK_{suffix}",
+				"status": "Active",
+				"entity_type": "Commercial Bank",
+				"registered_email": f"xbank_{suffix}@test.com",
+				"registered_phone": phone,
+				"registered_region": "Addis Ababa",
+				"registered_country": "Ethiopia",
+			}
+		).insert(ignore_permissions=True)
+
+	@classmethod
+	def setUpClass(cls):
+		frappe.set_user("Administrator")
+		cls.bank_a = cls._make_bank("XBank A", "+251911000021")
+		cls.bank_b = cls._make_bank("XBank B", "+251911000022")
+
+		cls.consent = frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"consent_type": "Credit Assessment",
+				"purpose": "Cross-bank applicant fixture",
+				"status": "Approved",
+			}
+		).insert(ignore_permissions=True)
+
+		# One human, one profile, one application at each of two banks.
+		cls.profile = frappe.get_doc(
+			{
+				"doctype": "A2C Farmer Profile",
+				"first_name": "Cross",
+				"last_name": "Bank",
+				"phone_number": "+251911000023",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		cls.apps = [
+			frappe.get_doc(
+				{
+					"doctype": "A2C Loan Application",
+					"bank": bank.name,
+					"first_name": "Cross",
+					"last_name": "Bank",
+					"phone_number": "+251911000023",
+					"loan_amount": 1000,
+					"requested_amount": 1000,
+					"status": "In Transition",
+					"consent_id": cls.consent.name,
+					"farmer_profile": cls.profile.name,
+				}
+			).insert(ignore_permissions=True)
+			for bank in (cls.bank_a, cls.bank_b)
+		]
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		for app in cls.apps:
+			if frappe.db.exists("A2C Loan Application", app.name):
+				frappe.delete_doc("A2C Loan Application", app.name, force=True)
+		frappe.delete_doc("A2C Farmer Profile", cls.profile.name, force=True)
+		for bank in (cls.bank_a, cls.bank_b):
+			frappe.db.delete("A2C Loan Product", {"bank": bank.name})
+			frappe.delete_doc("A2C Participating Bank", bank.name, force=True)
+		frappe.delete_doc("A2C Consent Request", cls.consent.name, force=True)
+		frappe.db.commit()
+
+	def setUp(self):
+		frappe.set_user("Administrator")
+		for bank in (self.bank_a, self.bank_b):
+			frappe.cache().delete_keys(f"dashboard_stats:{bank.name}:*")
+
+	def test_each_bank_counts_the_shared_farmer_once(self):
+		"""Per-bank figures are unchanged: one applicant at each bank."""
+		for bank in (self.bank_a, self.bank_b):
+			stats = _compute_from_db(bank.name)
+			self.assertEqual(stats["total_applications"], 1)
+			self.assertEqual(stats["total_applicants"], 1)
+
+	def test_platform_total_does_not_double_count_the_shared_farmer(self):
+		"""The two per-bank 1s must not become a platform 2."""
+		payload = get_dashboard_stats(None)
+		by_bank = {row["bank"]: row for row in payload["by_bank"]}
+
+		# Our two rows each contribute one applicant and one application...
+		self.assertEqual(by_bank[self.bank_a.name]["total_applicants"], 1)
+		self.assertEqual(by_bank[self.bank_b.name]["total_applicants"], 1)
+
+		# ...but the same person, so the platform view gains one applicant while
+		# gaining two applications. Other banks on the site contribute to both
+		# figures, so compare the gap rather than absolute values.
+		summed = sum(row["total_applicants"] for row in payload["by_bank"])
+		self.assertLess(
+			payload["stats"]["total_applicants"],
+			summed,
+			"platform applicants must be a distinct count, not the sum of per-bank counts",
+		)
+
+	def test_non_additive_counters_are_scalar_counters(self):
+		"""A name in _NON_ADDITIVE_COUNTERS that is not a scalar counter is skipped silently."""
+		self.assertTrue(_NON_ADDITIVE_COUNTERS.issubset(set(_SCALAR_COUNTERS)))

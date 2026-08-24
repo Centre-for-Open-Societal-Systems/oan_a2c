@@ -31,20 +31,26 @@ class A2CLoanApplication(Document):
 			status = frappe.db.get_value("A2C Consent Request", consent_name, "status")
 			if status == "Approved":
 				return
+			frappe.throw(
+				_("Loan Application cannot be submitted because the linked consent request is not approved."),
+				frappe.ValidationError,
+			)
 
 		if self.farmer_profile:
 			profile_consent = frappe.db.get_value("A2C Farmer Profile", self.farmer_profile, "consent_id")
-			if (
-				profile_consent
-				and frappe.db.get_value("A2C Consent Request", profile_consent, "status") == "Approved"
-			):
-				self.consent_id = profile_consent
-				return
-			# Self-service consents carry no reference_doctype/reference_name: request_otp
-			# only stamps those for the lead-anchored (agent) flow, and nothing stamps
-			# A2C Farmer Profile.consent_id outside the consent webhook. The one link that
-			# always exists is ownership -- the farmer opened the consent request as
-			# themselves -- so fall back to their most recent approved consent.
+			if profile_consent:
+				status = frappe.db.get_value("A2C Consent Request", profile_consent, "status")
+				if status == "Approved":
+					self.consent_id = profile_consent
+					return
+				frappe.throw(
+					_(
+						"Loan Application cannot be submitted because the linked consent request is not approved."
+					),
+					frappe.ValidationError,
+				)
+
+			# If no consent is explicitly linked on the profile, check for an approved consent owned by the profile's user
 			profile_user = frappe.db.get_value("A2C Farmer Profile", self.farmer_profile, "user")
 			if profile_user:
 				owned = frappe.db.get_value(

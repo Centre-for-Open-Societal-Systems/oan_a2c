@@ -84,6 +84,34 @@ def validate_request(schema: type[BaseModel]):
 			validated_dict = validated.model_dump()
 			return func(**validated_dict)
 
+		wrapper._request_schema = schema
+		wrapper.__pydantic_schema__ = schema
+		return wrapper
+
+	return decorator
+
+
+def api_doc(
+	summary: str | None = None,
+	description: str | None = None,
+	tags: list[str] | None = None,
+	response_model: type[BaseModel] | None = None,
+	deprecated: bool = False,
+):
+	"""Decorator to attach OpenAPI documentation metadata to an endpoint."""
+
+	def decorator(func):
+		@wraps(func)
+		def wrapper(*args, **kwargs):
+			return func(*args, **kwargs)
+
+		wrapper._api_doc = {
+			"summary": summary,
+			"description": description,
+			"tags": tags,
+			"response_model": response_model,
+			"deprecated": deprecated,
+		}
 		return wrapper
 
 	return decorator

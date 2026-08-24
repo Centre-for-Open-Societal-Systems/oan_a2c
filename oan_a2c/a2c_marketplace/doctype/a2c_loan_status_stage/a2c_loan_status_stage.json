@@ -44,7 +44,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Archetype State",
-   "options": "In Transition\nCompleted",
+   "options": "In Transition\nCompleted\nRejected",
    "reqd": 1
   },
   {

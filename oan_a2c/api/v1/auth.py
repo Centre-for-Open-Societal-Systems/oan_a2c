@@ -91,6 +91,20 @@ def create_user_account(
 def register_user(
 	full_name: str, password: str, phone_number: str, email: str | None = None, role: str = BANK_ADMIN_ROLE
 ):
+	# KNOWN ISSUE -- registration is loose in two related ways, both left as-is for now.
+	#
+	# 1. The per-IP budget went from 5/min to 50/min for development convenience and
+	#    has not been lowered again.
+	# 2. A phone number that is already registered now returns a success envelope
+	#    carrying `already_exists: true`, rather than an error. That is good UX ("you
+	#    already have an account, please log in") but it is also an oracle.
+	#
+	# Together they let one IP test 50 phone numbers a minute and learn, for each,
+	# whether it belongs to a registered user. The same is true of the email branch
+	# just below. Before production, decide whether the enumeration is acceptable for
+	# this product (it may well be, for a phone-first flow in a known user base) and
+	# if not, lower the per-IP cap and make both "already registered" responses
+	# indistinguishable from a successful registration.
 	check_rate_limit(f"rl:register_user:{getattr(frappe.local, 'request_ip', 'guest')}", limit=50, window=60)
 	check_rate_limit(f"rl:register_phone:{phone_number}", limit=5, window=60)
 

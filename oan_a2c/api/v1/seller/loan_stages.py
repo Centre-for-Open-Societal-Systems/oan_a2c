@@ -11,9 +11,12 @@ from oan_a2c.a2c_marketplace.roles import (
 	ADMIN_ROLE,
 	BANK_ADMIN_ROLE,
 	BANK_AGENT_ROLE,
-	require_role,
 )
-from oan_a2c.api.utils import handle_api_errors, success_response, validate_request
+
+# require_role lives in api/utils.py, NOT in a2c_marketplace/roles.py -- roles.py holds
+# only the role-name constants. Importing it from there raised ImportError at module
+# load, which took down every endpoint in this file.
+from oan_a2c.api.utils import handle_api_errors, require_role, success_response, validate_request
 
 
 class AddStageSchema(BaseModel):
@@ -26,7 +29,7 @@ class AddStageSchema(BaseModel):
 	@field_validator("archetype_state")
 	@classmethod
 	def validate_archetype(cls, v):
-		allowed = {"In Transition", "Completed"}
+		allowed = {"In Transition", "Completed", "Rejected"}
 		if v not in allowed:
 			raise ValueError(_("Archetype state must be one of: {0}").format(", ".join(allowed)))
 		return v
@@ -44,7 +47,7 @@ class StageConfigItem(BaseModel):
 	@classmethod
 	def validate_archetype(cls, v):
 		if v is not None:
-			allowed = {"In Transition", "Completed"}
+			allowed = {"In Transition", "Completed", "Rejected"}
 			if v not in allowed:
 				raise ValueError(_("Archetype state must be one of: {0}").format(", ".join(allowed)))
 		return v
@@ -55,7 +58,16 @@ class SyncStagesSchema(BaseModel):
 
 
 def _resolve_bank(bank_arg: str | None = None) -> str:
-	"""Helper to resolve the effective bank for the calling user."""
+	"""Helper to resolve the effective bank for the calling user.
+
+	NOTE on `bank_arg`: it is only ever populated for get_stages. add_stage and
+	sync_stages sit behind @bank_scoped, which strips any client-supplied `bank` and
+	rejects bank-unbound callers outright, and behind @validate_request, whose
+	schemas do not declare a `bank` field -- so those two always resolve the bank
+	from the session. That is intended: configuring a bank's pipeline is the Bank
+	Admin's job, and a platform administrator has no business doing it on their
+	behalf.
+	"""
 	user = frappe.session.user
 	if is_bank_unbound(user):
 		if bank_arg:

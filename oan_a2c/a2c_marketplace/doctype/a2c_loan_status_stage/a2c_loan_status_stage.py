@@ -13,10 +13,20 @@ class A2CLoanStatusStage(Document):
 
 			self.bank = get_user_bank(frappe.session.user)
 
+		# before_insert runs ahead of validate() and ahead of Frappe's mandatory-field
+		# check, so `label` cannot be assumed present here: frappe.scrub(None) raises
+		# AttributeError and the caller sees a stack trace instead of "Label is
+		# required". Check it explicitly and let the same message serve both paths.
+		if not self.label:
+			frappe.throw(_("Label is required for a Loan Status Stage"))
+
 		if not self.stage_id:
 			self.stage_id = f"{frappe.scrub(self.label).replace('_', '-')}-{frappe.generate_hash(length=6)}"
 
 	def validate(self):
+		if not self.label:
+			frappe.throw(_("Label is required for a Loan Status Stage"))
+
 		if not self.bank:
 			frappe.throw(_("Bank is required for a Loan Status Stage"))
 

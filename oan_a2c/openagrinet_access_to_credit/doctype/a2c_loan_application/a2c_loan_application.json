@@ -87,7 +87,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "Active\nIn Transition\nCompleted\nCancelled",
+   "options": "Active\nIn Transition\nCompleted\nRejected\nCancelled",
    "search_index": 1
   },
   {

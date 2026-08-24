@@ -8,7 +8,7 @@ def execute():
 		{"label": "Verified", "archetype_state": "In Transition", "sequence": 3},
 		{"label": "Approved", "archetype_state": "In Transition", "sequence": 4},
 		{"label": "Disbursed", "archetype_state": "Completed", "sequence": 5},
-		{"label": "Rejected", "archetype_state": "Completed", "sequence": 6},
+		{"label": "Rejected", "archetype_state": "Rejected", "sequence": 6},
 	]
 
 	for bank in frappe.get_all("A2C Participating Bank", pluck="name"):

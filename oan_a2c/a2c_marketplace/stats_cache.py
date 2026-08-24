@@ -71,6 +71,23 @@ def _incr_stage(bank: str, stage: str, amount=1) -> None:
 	frappe.cache().set_value(key, counts)
 
 
+def on_stage_moved(bank: str, before_stage: str | None, after_stage: str | None) -> None:
+	"""Move `stage_counts` for a stage change that no document save can announce.
+
+	The stage normally rides along on the save inside apply_status_transition, which
+	fires on_application_change and updates the counter there. A submitted document
+	(docstatus 1) cannot be saved again, so update_loan_status writes its stage with
+	db_set -- which fires no doc_events -- and calls this to keep the cached
+	breakdown honest. Nothing else should need it.
+	"""
+	if not bank or before_stage == after_stage:
+		return
+	if before_stage:
+		_incr_stage(bank, before_stage, -1)
+	if after_stage:
+		_incr_stage(bank, after_stage, 1)
+
+
 def get_stats_for_bank(bank: str) -> dict | None:
 	"""Return cached stats dict, or None if cache is cold (any counter missing)."""
 	result = {}
@@ -157,14 +174,61 @@ def compute_and_set(bank: str) -> dict:
 	return stats
 
 
+# Counters whose platform total is NOT the sum of the per-bank values.
+#
+# Everything else in _SCALAR_COUNTERS counts rows, and rows belong to exactly one
+# bank, so summing is correct. `total_applicants` counts DISTINCT farmers within a
+# bank, and distinctness does not survive a sum: a farmer who applied to three
+# banks is counted once in each, so the naive platform figure reports three
+# applicants where there is one person -- and it drifts further from the truth the
+# more the marketplace works as intended (farmers shopping across banks).
+_NON_ADDITIVE_COUNTERS = frozenset({"total_applicants"})
+
+
+def _platform_distinct_applicants() -> int:
+	"""COUNT(DISTINCT farmer_profile) across every bank.
+
+	The one figure in the all-banks view that cannot be derived from the per-bank
+	caches, for the reason given on _NON_ADDITIVE_COUNTERS. Distinctness is not
+	something a running total can carry, so the incr/decr hooks cannot maintain a
+	platform-wide applicant counter without keeping the whole id set in cache.
+
+	This is the single cross-bank aggregate in this module, and it is deliberate:
+	it runs only on the admin all-banks path (bank=None), which is already looping
+	over every bank, and it is one indexed COUNT against a search_index'd column.
+	The per-bank `total_applicants` in `by_bank` stays cache-first and untouched.
+
+	Applications with no farmer_profile are not a person we can count; DISTINCT
+	drops the NULLs, and the ifnull guard drops empty strings too.
+	"""
+	conditions = ["ifnull(`farmer_profile`, '') != ''"]
+	values: list = []
+	if _EXCLUDED_APPLICATION_STATUSES:
+		excluded = sorted(_EXCLUDED_APPLICATION_STATUSES)
+		conditions.append("ifnull(`status`, '') not in ({})".format(", ".join(["%s"] * len(excluded))))
+		values.extend(excluded)
+
+	# bank-scope-exempt: this is the platform-wide aggregate for the all-banks admin
+	# view, so spanning tenants is the entire point. Only reachable from
+	# get_dashboard_stats(bank=None), which is gated on an unbound admin.
+	row = frappe.db.sql(
+		"SELECT COUNT(DISTINCT `farmer_profile`) FROM `tabA2C Loan Application` WHERE "
+		+ " and ".join(conditions),
+		values,
+	)
+	return int(row[0][0]) if row and row[0] and row[0][0] is not None else 0
+
+
 def _all_banks_view() -> dict:
 	"""Admin (all-banks) view: platform totals plus a per-bank breakdown.
 
-	Scalar counters sum; `stage_counts` merges key-wise. Either way the platform
-	total is derived from the per-bank values, reusing the caches the incr/decr
-	hooks already keep consistent — no separate 'all banks' key to maintain. A cold
-	bank falls back to its own compute_and_set (a per-bank query), warming it as a
-	side effect. We deliberately never issue one cross-bank aggregate here.
+	Additive scalar counters sum; `stage_counts` merges key-wise. Both are derived
+	from the per-bank values, reusing the caches the incr/decr hooks already keep
+	consistent — no separate 'all banks' key to maintain. A cold bank falls back to
+	its own compute_and_set (a per-bank query), warming it as a side effect.
+
+	The sole exception is `total_applicants`, which is non-additive and is computed
+	with one cross-bank query; see _platform_distinct_applicants.
 	"""
 	totals = dict.fromkeys(_SCALAR_COUNTERS, 0)
 	stage_totals: dict[str, int] = {}
@@ -173,6 +237,8 @@ def _all_banks_view() -> dict:
 		stats = get_stats_for_bank(bank) or compute_and_set(bank)
 		by_bank.append({"bank": bank, **stats})
 		for counter in _SCALAR_COUNTERS:
+			if counter in _NON_ADDITIVE_COUNTERS:
+				continue
 			totals[counter] += stats[counter]
 		# Stage labels are per-bank by design (each bank names its own pipeline
 		# stages), so the platform view is a key-wise merge, not a sum. Two banks
@@ -180,6 +246,12 @@ def _all_banks_view() -> dict:
 		# stay as separate buckets.
 		for stage, count in (stats["stage_counts"] or {}).items():
 			stage_totals[stage] = stage_totals.get(stage, 0) + count
+
+	# Counted across banks, not summed from them: one human with applications at
+	# three banks is one applicant on the platform view, while remaining one
+	# applicant in each of the three `by_bank` rows.
+	totals["total_applicants"] = _platform_distinct_applicants()
+
 	return {"stats": {**totals, "stage_counts": stage_totals}, "by_bank": by_bank}
 
 

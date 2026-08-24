@@ -6,12 +6,16 @@ from frappe import _
 # loan state should bucket by these rather than by a stage label, which is
 # tenant-defined free text and differs between banks.
 #
-# NOTE: docs/loan-status-workflow-plan.md also specifies a `Rejected` archetype,
-# which was never implemented -- the live workflow has no Reject transition, so a
-# declined loan lands on `Completed` alongside a disbursed one and the two cannot
-# be told apart except by the bank's own stage label. Any "approved vs rejected"
-# metric is blocked on that gap.
-ARCHETYPE_STATES = ("Active", "In Transition", "Completed", "Cancelled")
+# `Rejected` is a first-class archetype, deliberately separate from `Completed`:
+# the workflow carries In Transition -> Rejected transitions for both Bank Agent
+# and Bank Admin, and the legacy-status backfill maps a declined loan to
+# `Rejected` rather than folding it into `Completed`. Keep them apart -- a
+# disbursed loan and a declined one are not the same outcome, and collapsing them
+# is one-way: nothing downstream can recover the distinction afterwards.
+#
+# `Cancelled` has no transition into it yet; the state exists so the vocabulary is
+# complete, but nothing can currently reach it.
+ARCHETYPE_STATES = ("Active", "In Transition", "Completed", "Rejected", "Cancelled")
 
 
 def resolve_bank_stage(bank, status_or_stage):

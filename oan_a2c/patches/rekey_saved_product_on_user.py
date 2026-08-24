@@ -35,13 +35,19 @@ def execute():
 		# Unmigratable rows: no bound user, or a duplicate now that two profiles
 		# belonging to one user collapse onto the same (user, loan_product).
 		frappe.db.sql("DELETE FROM `tabA2C Saved Product` WHERE ifnull(`user`, '') = ''")
+		# `name` tiebreaks the creation comparison. Two bookmarks of the same product
+		# can share a creation timestamp (same second, or copied by an earlier
+		# migration), and a strict `keep.creation < sp.creation` matches neither
+		# direction for such a pair -- so both rows survive and the unique index added
+		# below fails, aborting the migration. Comparing (creation, name) is a total
+		# order, so exactly one row of every duplicate group is kept.
 		frappe.db.sql(
 			"""
 			DELETE sp FROM `tabA2C Saved Product` sp
 			INNER JOIN `tabA2C Saved Product` keep
 				ON keep.`user` = sp.`user`
 				AND keep.`loan_product` = sp.`loan_product`
-				AND keep.creation < sp.creation
+				AND (keep.creation, keep.name) < (sp.creation, sp.name)
 			"""
 		)
 
