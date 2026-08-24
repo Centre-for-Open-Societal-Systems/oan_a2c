@@ -559,6 +559,8 @@ def get_all_loans(**kwargs):
 		fields=[
 			"name as application_id",
 			"status",
+			"stage_id",
+			"stage_label",
 			"current_step as step",
 			"lead_id",
 			"loan_amount",
