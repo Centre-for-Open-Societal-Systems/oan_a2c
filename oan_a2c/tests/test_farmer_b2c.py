@@ -565,6 +565,37 @@ class TestCatalogLimits(unittest.TestCase):
 			self.assertIn("id", t)
 			self.assertIn("name", t)
 
+	def test_facets_always_carry_a_tenures_list(self):
+		"""The sidebar reads `tenures` unconditionally; dropping it crashed the page.
+
+		It is also the data the tenure chips are built from -- `tenure_range` is the
+		schema's 1..1200 validation span, which is not something to render chips
+		inside. The values must be real tenures, sorted, with no blanks.
+		"""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import get_catalog_facets, list_catalog
+
+		frappe.set_user("Administrator")
+		data = get_catalog_facets()["data"]
+
+		self.assertIn("tenures", data)
+		tenures = data["tenures"]
+		self.assertIsInstance(tenures, list)
+		self.assertTrue(all(isinstance(t, int) and t > 0 for t in tenures))
+		self.assertEqual(tenures, sorted(tenures))
+		self.assertEqual(len(tenures), len(set(tenures)))
+
+		# Every offered tenure has to return something -- that is the whole contract
+		# of a facet, and ListCatalogSchema takes it as a min/max span.
+		for months in tenures:
+			page = list_catalog(min_tenure_months=months, max_tenure_months=months)
+			self.assertEqual(page["status"], "success")
+			self.assertTrue(
+				page["data"]["products"],
+				f"tenure facet {months} is offered but matches no product",
+			)
+
 	def test_product_schema_rejects_values_beyond_the_published_bounds(self):
 		from pydantic import ValidationError
 

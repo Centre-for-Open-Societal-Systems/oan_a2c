@@ -34,6 +34,13 @@ class GetLeadsSchema(BaseModel):
 	lead_source: str | None = Field(None, max_length=140)
 	loan_type: str | None = Field(None, max_length=140)
 	assigned_to: str | None = Field(None, max_length=140)
+	# Location lives on the linked A2C Farmer Profile, not on A2C Lead -- the response
+	# has always carried it (see the enrichment in get_leads) but there was no way to
+	# filter by it, so the leads drawer folded the value into `search_query`, which only
+	# ORs over name/phone/external_id and therefore guaranteed an empty page.
+	region: str | None = Field(None, max_length=140)
+	woreda: str | None = Field(None, max_length=140)
+	kebele: str | None = Field(None, max_length=140)
 	start_date: SafeDate = None
 	end_date: SafeDate = None
 	min_loan_amount: float | None = Field(None, ge=0, le=999999999999.0)
@@ -144,6 +151,9 @@ def get_leads(**kwargs):
 	end_date = kwargs.get("end_date")
 	min_loan_amount = kwargs.get("min_loan_amount")
 	max_loan_amount = kwargs.get("max_loan_amount")
+	region = kwargs.get("region")
+	woreda = kwargs.get("woreda")
+	kebele = kwargs.get("kebele")
 
 	# Sorting: sort_by is Literal-constrained to safe columns (both native to
 	# A2C Lead -- loan_amount is denormalized from Credit Information), so it can't
@@ -198,7 +208,10 @@ def get_leads(**kwargs):
 	elif start_date:
 		filters.append(["creation", ">=", start_date])
 	elif end_date:
-		filters.append(["creation", "<=", end_date])
+		# `between` expands a date-only bound to end-of-day itself; a bare `<=` does
+		# not, so it resolved to midnight and dropped everything created on the last
+		# day of the range.
+		filters.append(["creation", "<=", f"{end_date} 23:59:59"])
 
 	# Apply Loan Amount / Loan Type Filter via the linked A2C Credit Information.
 	# Amount range and loan_type (single or comma-separated multi-value) are intersected
@@ -230,6 +243,28 @@ def get_leads(**kwargs):
 			# Ensure no leads match if the credit criteria yielded no matching credit infos
 			filters.append(["name", "in", ["__NONE__"]])
 
+	# Apply Location Filter via the linked A2C Farmer Profile, which is where the
+	# hierarchy actually lives -- A2C Lead has only a `farmer_profile` link. Resolved
+	# to a set of profile names first, the same idiom as the credit-information filter
+	# above, because Frappe's filters cannot join to a linked doctype: a
+	# ["A2C Farmer Profile", "region", ...] tuple adds the table with no join
+	# condition and cross-products the result instead of narrowing it.
+	#
+	# Levels are ANDed and prefix-matched, matching get_all_loans. A lead that has not
+	# been profiled yet has no location, so it cannot satisfy a location filter.
+	if region or woreda or kebele:
+		profile_filters = {}
+		for location_field, location_value in (("region", region), ("woreda", woreda), ("kebele", kebele)):
+			if location_value:
+				profile_filters[location_field] = ("like", f"{location_value}%")
+
+		matching_profiles = frappe.get_all("A2C Farmer Profile", filters=profile_filters, pluck="name")
+
+		if matching_profiles:
+			filters.append(["farmer_profile", "in", matching_profiles])
+		else:
+			filters.append(["name", "in", ["__NONE__"]])
+
 	# 4. Construct Search Or-Filters
 	or_filters = []
 	if search_query:
@@ -258,6 +293,7 @@ def get_leads(**kwargs):
 			"status",
 			"assigned_to",
 			"assigned_date",
+			"farmer_profile",
 			"creation",
 		],
 		filters=filters,
@@ -310,6 +346,27 @@ def get_leads(**kwargs):
 			visit = latest_visit_map.get(lead["name"])
 			lead["visit_date"] = visit.get("visit_date") if visit else None
 			lead["schedule_status"] = visit.get("status") if visit else None
+
+		# A2C Lead itself stores no location -- it lives on the linked farmer profile,
+		# which only exists once the lead has been through basic profiling. One batched
+		# query for the page (same idiom as credit info and visits above); leads with no
+		# profile yet legitimately report no location rather than an empty string that
+		# reads as "unknown region".
+		profile_ids = list({lead["farmer_profile"] for lead in leads if lead.get("farmer_profile")})
+		profile_map = {}
+		if profile_ids:
+			for profile in frappe.get_all(
+				"A2C Farmer Profile",
+				filters={"name": ["in", profile_ids]},
+				fields=["name", "region", "woreda", "kebele"],
+			):
+				profile_map[profile["name"]] = profile
+
+		for lead in leads:
+			profile = profile_map.get(lead.get("farmer_profile"))
+			lead["region"] = profile.get("region") if profile else None
+			lead["woreda"] = profile.get("woreda") if profile else None
+			lead["kebele"] = profile.get("kebele") if profile else None
 
 	total_pages = -(-total_count // page_length)
 	has_next = start + page_length < total_count

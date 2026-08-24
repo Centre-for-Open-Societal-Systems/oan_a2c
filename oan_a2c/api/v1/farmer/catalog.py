@@ -446,13 +446,45 @@ def get_catalog_facets(**kwargs):
 	)
 	regions = sorted(list({b.registered_region for b in active_banks if b.registered_region}))
 
+	# The tenures actually on offer, not a span the sidebar would have to invent
+	# chips inside. `tenure_months` is one value per product, so the distinct set is
+	# exactly the set of choices that can return something -- which is the rule this
+	# module's ListCatalogSchema docstring states: a control that silently does
+	# nothing is worse than no control.
+	#
+	# get_list, not get_all: A2C Loan Product is bank-scoped, and get_all bypasses
+	# both loan_product_scope_query and DocPerm. Going through get_list means a
+	# farmer's chips come from Active products across every bank, and a bank user's
+	# from their own -- the same rows the list underneath them will contain.
+	#
+	# `status: Active` mirrors list_catalog's own base filter, so the sidebar cannot
+	# offer a tenure that only Draft or Archived products carry.
+	tenures = sorted(
+		{
+			t
+			for t in frappe.get_list(
+				"A2C Loan Product",
+				filters={"status": "Active"},
+				pluck="tenure_months",
+				distinct=True,
+			)
+			if t
+		}
+	)
+
 	return success_response(
 		data={
 			"categories": categories,
 			"tags": tags,
 			"regions": regions,
 			"banks": active_banks,
-			"tenures": [],  # Kept for backward compatibility if frontend maps it
+			# The tenures on offer. This was hardcoded to [] and the sidebar renders its
+			# tenure section only when the list is non-empty, so the control never
+			# appeared; dropping the key outright then crashed the sidebar outright.
+			"tenures": tenures,
+			# The schema's bounds, not the catalog's -- MAX_TENURE_MONTHS is 1200, so
+			# this is a validation range for min_tenure_months / max_tenure_months, not
+			# something to build chips out of. `tenures` above is the data.
 			"tenure_range": {"min": 1, "max": MAX_TENURE_MONTHS},
 			"amount_range": {
 				"min": 0.0,

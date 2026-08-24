@@ -62,7 +62,12 @@ class GetAllLoansSchema(BaseModel):
 	min_loan_amount: float | None = Field(None, ge=0, le=MAX_QUERY_AMOUNT)
 	max_loan_amount: float | None = Field(None, ge=0, le=MAX_QUERY_AMOUNT)
 	loan_type: str | None = Field(None, max_length=140)
-	location: str | None = Field(None, max_length=140)
+	# Location is three Data fields on the application, not one `location` column.
+	# A `location` filter used to be accepted here and put a nonexistent column into
+	# the WHERE clause, which failed the entire query rather than being ignored.
+	region: str | None = Field(None, max_length=140)
+	woreda: str | None = Field(None, max_length=140)
+	kebele: str | None = Field(None, max_length=140)
 	phone_number: str | None = Field(None, max_length=50)
 	loan_officer: str | None = Field(None, max_length=140)
 	from_date: SafeDate = None
@@ -467,7 +472,9 @@ def get_all_loans(**kwargs):
 	min_loan_amount = kwargs.get("min_loan_amount")
 	max_loan_amount = kwargs.get("max_loan_amount")
 	loan_type = kwargs.get("loan_type")
-	location = kwargs.get("location")
+	region = kwargs.get("region")
+	woreda = kwargs.get("woreda")
+	kebele = kwargs.get("kebele")
 	phone_number = kwargs.get("phone_number")
 	from_date = kwargs.get("from_date")
 	to_date = kwargs.get("to_date")
@@ -523,8 +530,11 @@ def get_all_loans(**kwargs):
 		if valid_loan_types:
 			filters["loan_type"] = ["in", valid_loan_types]
 
-	if location:
-		filters["location"] = ("like", f"{location}%")
+	# One field per level of the hierarchy, each ANDed. A prefix match keeps this
+	# usable from a plain text box while still hitting an index.
+	for location_field, location_value in (("region", region), ("woreda", woreda), ("kebele", kebele)):
+		if location_value:
+			filters[location_field] = ("like", f"{location_value}%")
 
 	if phone_number:
 		filters["phone_number"] = ("like", f"{phone_number}%")
@@ -577,14 +587,22 @@ def get_all_loans(**kwargs):
 			"name as application_id",
 			"status",
 			"stage_id",
+			# What the owning bank calls the current step. Every list renders this as
+			# the badge; `status` is the four-state archetype behind it.
 			"stage_label",
 			"current_step as step",
 			"lead_id",
+			# Already searchable via or_filters below -- absent from this list the
+			# applicant column had nothing to render and every row showed a dash.
+			"first_name",
+			"last_name",
 			"loan_amount",
 			"loan_type",
 			"loan_product",
 			"loan_product_name",
-			"location",
+			"region",
+			"woreda",
+			"kebele",
 			"phone_number",
 			"creation",
 		],

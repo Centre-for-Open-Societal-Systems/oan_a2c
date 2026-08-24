@@ -95,7 +95,8 @@ class TestLoansV1API(unittest.TestCase):
 					"first_name": "API_TEST_FARMER",
 					"last_name": "Test",
 					"phone_number": "+251999888777",
-					"location": "Addis Ababa",
+					"region": "Addis Ababa",
+					"woreda": "Gulele",
 					"lead_id": "TEST_LEAD_999",
 				}
 			)
@@ -146,7 +147,8 @@ class TestLoansV1API(unittest.TestCase):
 				"bank": "Test Bank",
 				"loan_type": "Input Loan",
 				"status": "Active",
-				"location": "Addis Ababa",
+				"region": "Addis Ababa",
+				"woreda": "Gulele",
 				"lead_id": "TEST_LEAD_999",
 				"farmer_profile": farmer_profile_name,
 			}
@@ -255,6 +257,90 @@ class TestLoansV1API(unittest.TestCase):
 		res_unassigned = get_all_loans(loan_officer="unassigned")
 		self.assertEqual(res_unassigned["status"], "success")
 		self.assertFalse(any(r["application_id"] == self.app_id for r in res_unassigned["data"]))
+
+	def test_2a_get_all_loans_returns_applicant_and_location(self):
+		"""The list has to carry the columns every dashboard renders.
+
+		first_name/last_name were searchable but not selected, and `location` was
+		selected but is not a field on the doctype -- Frappe drops an unknown field
+		from the SELECT silently, so both the applicant and the location column had
+		nothing behind them and rendered a dash on every row.
+		"""
+		res = get_all_loans(lead_id="TEST_LEAD_999")
+		self.assertEqual(res["status"], "success")
+
+		row = next(r for r in res["data"] if r["application_id"] == self.app_id)
+		self.assertEqual(row["first_name"], "API_TEST_FARMER")
+		self.assertEqual(row["last_name"], "Test")
+		self.assertEqual(row["region"], "Addis Ababa")
+		self.assertEqual(row["woreda"], "Gulele")
+		self.assertIn("stage_label", row)
+		self.assertNotIn("location", row)
+
+	def test_2b_get_all_loans_location_filter(self):
+		"""Location filters on the real hierarchy fields, prefix-matched and ANDed."""
+		res = get_all_loans(region="Addis")
+		self.assertEqual(res["status"], "success")
+		self.assertTrue(any(r["application_id"] == self.app_id for r in res["data"]))
+
+		res_woreda = get_all_loans(region="Addis", woreda="Gulele")
+		self.assertEqual(res_woreda["status"], "success")
+		self.assertTrue(any(r["application_id"] == self.app_id for r in res_woreda["data"]))
+
+		# Both levels are ANDed, so a mismatched woreda excludes the row rather than
+		# widening the result.
+		res_miss = get_all_loans(region="Addis", woreda="Nowhere")
+		self.assertEqual(res_miss["status"], "success")
+		self.assertFalse(any(r["application_id"] == self.app_id for r in res_miss["data"]))
+
+	def test_2c_get_all_loans_rejects_unknown_archetype(self):
+		"""An archetype outside the workflow is a 400, not a silent empty page.
+
+		`archetype` is the validated param; `status` is the per-bank stage id and is
+		deliberately free text. The pre-archetype vocabulary (Processing / Approved /
+		Pending Review / ...) lands here, so the error has to name what is allowed.
+		"""
+		frappe.local.response = frappe._dict({"http_status_code": 200})
+		res = get_all_loans(archetype="Processing")
+		self.assertEqual(res["status"], "error")
+		self.assertEqual(res["code"], "VALIDATION_ERROR")
+		self.assertEqual(frappe.local.response.get("http_status_code"), 400)
+		self.assertIn("archetype", res["details"])
+		self.assertIn("Active", res["details"]["archetype"])
+
+		# Reset response code
+		frappe.local.response["http_status_code"] = 200
+
+	def test_2d_get_all_loans_archetype_filter(self):
+		"""`archetype` narrows on the workflow state the row actually holds."""
+		archetype = frappe.db.get_value("A2C Loan Application", self.app_id, "status")
+
+		res = get_all_loans(archetype=archetype)
+		self.assertEqual(res["status"], "success")
+		self.assertTrue(any(r["application_id"] == self.app_id for r in res["data"]))
+
+		other = next(s for s in ("Active", "In Transition", "Completed", "Cancelled") if s != archetype)
+		res_other = get_all_loans(archetype=other)
+		self.assertEqual(res_other["status"], "success")
+		self.assertFalse(any(r["application_id"] == self.app_id for r in res_other["data"]))
+
+	def test_2e_get_all_loans_status_filters_the_bank_stage(self):
+		"""`status` is the per-bank stage id -- free text, so an unknown one is empty.
+
+		Not a 400: stages are defined per bank, so there is no global allowlist to
+		validate against, and a stage belonging to another bank simply matches nothing.
+		"""
+		stage_id = frappe.db.get_value("A2C Loan Application", self.app_id, "stage_id")
+		if not stage_id:
+			self.skipTest("fixture application has no bank stage applied")
+
+		res = get_all_loans(status=stage_id)
+		self.assertEqual(res["status"], "success")
+		self.assertTrue(any(r["application_id"] == self.app_id for r in res["data"]))
+
+		res_unknown = get_all_loans(status="NO-SUCH-STAGE")
+		self.assertEqual(res_unknown["status"], "success")
+		self.assertFalse(any(r["application_id"] == self.app_id for r in res_unknown["data"]))
 
 	def test_3_get_basic_profile(self):
 		res = get_basic_profile(lead_id="TEST_LEAD_999")
