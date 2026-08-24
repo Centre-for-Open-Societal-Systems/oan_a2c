@@ -2,7 +2,7 @@ from typing import Literal
 
 import frappe
 from frappe import _
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from oan_a2c.a2c_marketplace.doctype_schemas import (
 	MAX_INTEREST_RATE,
@@ -64,6 +64,13 @@ class FarmerCatalogSchema(BrowseProductsSchema):
 		"tenure_low_high",
 		"newest",
 	] = "product_name"
+
+	@model_validator(mode="after")
+	def validate_tenure_range(self):
+		if self.min_tenure_months is not None and self.max_tenure_months is not None:
+			if self.min_tenure_months > self.max_tenure_months:
+				raise ValueError("min_tenure_months cannot be greater than max_tenure_months.")
+		return self
 
 
 class PaginationSchema(BaseModel):
@@ -215,6 +222,10 @@ def list_catalog(**kwargs):
 	if kwargs.get("max_amount") is not None:
 		filters["min_amount"] = ["<=", float(kwargs["max_amount"])]
 	if kwargs.get("max_interest_rate") is not None:
+		# Maps onto min_interest_rate, not max_interest_rate, deliberately: a
+		# product qualifies if its best-case (lowest) rate could still meet the
+		# caller's budget ceiling. The worst-case rate is a matter for the actual
+		# credit offer later, not for whether the product surfaces in discovery.
 		filters["min_interest_rate"] = ["<=", float(kwargs["max_interest_rate"])]
 	if kwargs.get("min_tenure_months") is not None:
 		filters["tenure_months"] = [">=", int(kwargs["min_tenure_months"])]
@@ -306,8 +317,15 @@ def save_product(**kwargs):
 	"""
 	user = frappe.session.user
 	loan_product = kwargs["loan_product"]
-	if not frappe.db.exists("A2C Loan Product", loan_product):
-		frappe.throw(_("Loan Product not found."), frappe.NotFoundError)
+
+	# get_list, not db.exists: db.exists is a raw, permission-agnostic lookup and
+	# would let a product outside the caller's normal visibility (wrong bank, or
+	# Draft/Archived for a Farmer) be bookmarked anyway -- and its 200-vs-404
+	# response would double as an existence oracle for docnames the caller has no
+	# business knowing about. get_list re-applies loan_product_scope_query, so a
+	# product the caller couldn't otherwise see is treated as not found here too.
+	if not frappe.get_list("A2C Loan Product", filters={"name": loan_product}, limit_page_length=1):
+		frappe.throw(_("Loan Product not found."), frappe.DoesNotExistError)
 
 	if frappe.db.exists("A2C Saved Product", {"user": user, "loan_product": loan_product}):
 		# Saving twice is the same outcome as saving once, so a double-tap is a
@@ -349,27 +367,37 @@ def get_saved_products(**kwargs):
 	limit = kwargs["limit"]
 	start = kwargs["start"]
 
-	# We fetch the links from A2C Saved Product and join with A2C Loan Product details.
-	# `name asc` tiebreaks: bookmarks saved in the same second would otherwise have no
-	# defined order, and this query is paginated.
-	saved_docs = frappe.get_all(
+	# Full saved order first, unpaginated on purpose. A product saved months ago
+	# may since have gone Archived (or otherwise dropped out of the caller's
+	# visibility), and loan_product_scope_query is what filters that out below --
+	# paginating on A2C Saved Product before applying that filter let an invisible
+	# row consume a page slot, desyncing `total`/`has_next` from what the client
+	# actually receives (BUG-02). Filtering first keeps both sides honest.
+	saved_order = frappe.get_all(
 		"A2C Saved Product",
 		filters={"user": user},
 		pluck="loan_product",
 		order_by="creation desc, name asc",
-		limit_page_length=limit,
-		limit_start=start,
 	)
 
-	total = frappe.db.count("A2C Saved Product", filters={"user": user})
+	visible_names = set()
+	if saved_order:
+		# get_list, not get_all: re-applies loan_product_scope_query, so a
+		# saved product that is Archived, or otherwise no longer visible to this
+		# caller, is excluded here rather than merely from the page's fields.
+		visible_names = set(
+			frappe.get_list("A2C Loan Product", filters={"name": ["in", saved_order]}, pluck="name")
+		)
+	visible_order = [name for name in saved_order if name in visible_names]
+
+	total = len(visible_order)
+	page_names = visible_order[start : start + limit]
 
 	products = []
-	if saved_docs:
-		# get_list, not get_all: a product saved months ago may since have been
-		# Archived, and loan_product_scope_query is what keeps it out of the result.
+	if page_names:
 		products = frappe.get_list(
 			"A2C Loan Product",
-			filters={"name": ["in", saved_docs]},
+			filters={"name": ["in", page_names]},
 			fields=[
 				"name",
 				"product_name",
@@ -384,7 +412,7 @@ def get_saved_products(**kwargs):
 			],
 		)
 		# Sort them to match the recent creation order from A2C Saved Product
-		order_map = {name: i for i, name in enumerate(saved_docs)}
+		order_map = {name: i for i, name in enumerate(page_names)}
 		products.sort(key=lambda p: order_map.get(p.name, 999))
 		_enrich_products_with_bank_info(products)
 
