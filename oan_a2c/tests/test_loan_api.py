@@ -25,9 +25,7 @@ class TestLoansV1API(unittest.TestCase):
 		frappe.db.sql(
 			"DELETE FROM `tabA2C Loan Application` WHERE lead_id='TEST_LEAD_999' OR first_name='API_TEST_FARMER'"
 		)
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Farmer Profile` WHERE lead_id='TEST_LEAD_999' OR phone_number='+251999888777'"
-		)
+		frappe.db.sql("DELETE FROM `tabA2C Farmer Profile` WHERE phone_number='+251999888777'")
 		frappe.db.sql("DELETE FROM `tabA2C Lead` WHERE name='TEST_LEAD_999'")
 		frappe.db.sql(
 			"DELETE FROM `tabA2C Consent Request` "
