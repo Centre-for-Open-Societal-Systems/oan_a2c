@@ -213,7 +213,7 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertEqual(get_workflow_initial_state("A2C Loan Application"), "Active")
 
 	def test_2_get_all_loans(self):
-		res = get_all_loans(status="Active", page_size=10)
+		res = get_all_loans(archetype="Active", page_size=10)
 		self.assertEqual(res["status"], "success")
 		self.assertTrue(len(res["data"]) > 0)
 		self.assertIn("pagination", res)

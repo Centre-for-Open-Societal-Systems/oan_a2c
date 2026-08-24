@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
 from oan_a2c.api.utils import (
 	apply_status_transition,
+	get_workflow_state_names,
 	handle_api_errors,
+	parse_multi_value,
 	require_role,
 	success_response,
 	to_tz_aware_iso,
@@ -50,8 +52,19 @@ def list_applications(**kwargs):
 	order_by = "creation desc"
 
 	filters = {}
+	# `status` filters by bank pipeline stage (stage_id); `archetype` filters by the
+	# coarse workflow status. Same split as get_all_loans in loan_applications.py --
+	# see that module for why the two aren't merged into one param.
 	if kwargs.get("status"):
-		filters["status"] = kwargs["status"]
+		valid_stages = parse_multi_value(kwargs["status"])
+		if valid_stages:
+			filters["stage_id"] = ["in", valid_stages]
+
+	if kwargs.get("archetype"):
+		allowed_archetypes = get_workflow_state_names("A2C Loan Application")
+		valid_archetypes = parse_multi_value(kwargs["archetype"], allowed_archetypes)
+		if valid_archetypes:
+			filters["status"] = ["in", valid_archetypes]
 
 	count_res = frappe.get_list(
 		"A2C Loan Application",
@@ -67,6 +80,8 @@ def list_applications(**kwargs):
 		fields=[
 			"name as application_id",
 			"status",
+			"stage_id",
+			"stage_label",
 			"loan_amount",
 			"requested_amount",
 			"loan_product",

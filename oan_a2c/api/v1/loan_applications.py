@@ -45,7 +45,16 @@ class LeadIDSchema(BaseModel):
 
 
 class GetAllLoansSchema(BaseModel):
+	# Filters on the bank pipeline stage (A2C Loan Status Stage.stage_id), not the
+	# archetype workflow status. Stages are defined per-bank, so unlike `archetype`
+	# below there is no single global allowed-list to validate against here -- a
+	# stage_id that doesn't exist (or belongs to another bank) just matches zero
+	# rows, same as any other free-text filter (e.g. loan_type).
 	status: str | None = Field(None, max_length=140)
+	# Filters on the coarse workflow archetype (Active / In Transition / Completed /
+	# Rejected / Cancelled). Separate from `status` above -- use this when the caller
+	# wants the bucket, not the bank-specific pipeline stage.
+	archetype: str | None = Field(None, max_length=140)
 	# MAX_QUERY_AMOUNT, not MAX_LOAN_AMOUNT: these are search bounds over existing
 	# applications, and api/v1/leads.py accepts credit-information amounts far above
 	# the catalogue cap. Capping the filter lower would hide those rows from search.
@@ -72,9 +81,9 @@ class GetAllLoansSchema(BaseModel):
 				raise ValueError("min_loan_amount cannot be greater than max_loan_amount.")
 		return self
 
-	@field_validator("status")
+	@field_validator("archetype")
 	@classmethod
-	def validate_statuses(cls, value: str | None):
+	def validate_archetypes(cls, value: str | None):
 		if value is None:
 			return value
 		allowed_statuses = get_workflow_state_names("A2C Loan Application")
@@ -453,6 +462,7 @@ def get_all_loans(**kwargs):
 	frappe.has_permission("A2C Loan Application", "read", throw=True)
 
 	status = kwargs.get("status")
+	archetype = kwargs.get("archetype")
 	loan_amount = kwargs.get("loan_amount")
 	min_loan_amount = kwargs.get("min_loan_amount")
 	max_loan_amount = kwargs.get("max_loan_amount")
@@ -482,10 +492,17 @@ def get_all_loans(**kwargs):
 	filters = {}
 
 	if status:
-		allowed_statuses = get_workflow_state_names("A2C Loan Application")
-		valid_statuses = parse_multi_value(status, allowed_statuses)
-		if valid_statuses:
-			filters["status"] = ["in", valid_statuses]
+		# Free-text, no allowed-list: stages are per-bank, so an unknown/foreign
+		# stage_id just matches zero rows rather than raising, same as loan_type.
+		valid_stages = parse_multi_value(status)
+		if valid_stages:
+			filters["stage_id"] = ["in", valid_stages]
+
+	if archetype:
+		allowed_archetypes = get_workflow_state_names("A2C Loan Application")
+		valid_archetypes = parse_multi_value(archetype, allowed_archetypes)
+		if valid_archetypes:
+			filters["status"] = ["in", valid_archetypes]
 
 	if lead_id:
 		filters["lead_id"] = lead_id
