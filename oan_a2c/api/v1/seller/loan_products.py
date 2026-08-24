@@ -493,6 +493,12 @@ def get_product(**kwargs):
 
 	product_data = {
 		"name": doc.name,
+		"is_saved": bool(
+			frappe.db.exists(
+				"A2C Saved Product",
+				{"user": frappe.session.user, "loan_product": product_id},
+			)
+		),
 		"product_name": doc.product_name,
 		"slug": doc.slug,
 		"status": doc.status,
