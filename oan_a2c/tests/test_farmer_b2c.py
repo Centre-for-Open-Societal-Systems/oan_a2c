@@ -201,6 +201,104 @@ class TestSavedProducts(FarmerB2CFixtures):
 		self.assertEqual([p["name"] for p in still_mine], [self.prod_1.name])
 
 
+class TestCatalogSavedFlag(FarmerB2CFixtures):
+	"""Every catalog row says whether the caller bookmarked it."""
+
+	def setUp(self):
+		import frappe
+
+		frappe.set_user("Administrator")
+		frappe.db.delete("A2C Saved Product")
+
+	def _catalog(self, **kwargs):
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		kwargs.setdefault("limit", 20)
+		kwargs.setdefault("start", 0)
+		kwargs.setdefault("sort_by", "product_name")
+		# Pinned to this run's own fixtures. The default page is 20 rows out of
+		# whatever the bench already holds, so asserting over "the catalog" would
+		# pass or fail on how much leftover data a developer's site is carrying.
+		kwargs.setdefault("search", self.h)
+		return {p["name"]: p for p in list_catalog(**kwargs)["data"]["products"]}
+
+	def test_catalog_rows_carry_the_callers_bookmark_state(self):
+		"""The flag is what a card draws its star from; without it every star is empty."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+
+		rows = self._catalog()
+		self.assertTrue(rows[self.prod_1.name]["is_saved"])
+		self.assertFalse(rows[self.prod_2.name]["is_saved"])
+
+	def test_the_flag_is_the_callers_own_and_not_another_users(self):
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+
+		frappe.set_user(self.farmer_b)
+		rows = self._catalog()
+		self.assertFalse(
+			rows[self.prod_1.name]["is_saved"],
+			"farmer B's catalog must not report farmer A's bookmark",
+		)
+
+	def test_the_flag_is_present_even_when_nothing_is_saved(self):
+		"""Absent and False are the same to a client only if the key is always sent."""
+		import frappe
+
+		frappe.set_user(self.farmer_b)
+		rows = self._catalog()
+		self.assertEqual(
+			[row["is_saved"] for row in rows.values()],
+			[False] * len(rows),
+		)
+
+	def test_unsaving_clears_the_flag_on_the_next_page(self):
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product, unsave_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+		self.assertTrue(self._catalog()[self.prod_1.name]["is_saved"])
+
+		unsave_product(loan_product=self.prod_1.name)
+		self.assertFalse(self._catalog()[self.prod_1.name]["is_saved"])
+
+	def test_rows_under_the_is_saved_filter_are_flagged(self):
+		"""The filtered page selected on the bookmark, so its rows must show as one."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+
+		rows = self._catalog(is_saved=True)
+		self.assertEqual(list(rows), [self.prod_1.name])
+		self.assertTrue(rows[self.prod_1.name]["is_saved"])
+
+	def test_saved_products_rows_are_flagged(self):
+		"""get_saved_products returns the same shape the catalog does."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import get_saved_products, save_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+
+		products = get_saved_products()["data"]["products"]
+		self.assertEqual([p["is_saved"] for p in products], [True])
+
+
 class TestCatalogFilterComposition(FarmerB2CFixtures):
 	"""Filters that all constrain `name` must intersect, never overwrite."""
 
