@@ -793,3 +793,67 @@ class TestProductDetailPermissions(FarmerB2CFixtures):
 		visible = frappe.get_list("A2C Loan Product", pluck="name")
 		self.assertIn(self.prod_1.name, visible)
 		self.assertNotIn(self.inactive_prod.name, visible)
+
+	def test_bank_agent_catalog_is_scoped_to_own_bank(self):
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		other_bank = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"bank_name": f"OtherBank-{self.h}",
+				"bank_code": f"OtherBank-{self.h}",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Participating Bank", other_bank.name, "status", "Active")
+
+		other_prod = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"OtherProd-{self.h}",
+				"bank": other_bank.name,
+				"min_interest_rate": 5,
+				"max_amount": 1000,
+				"tenure_months": 12,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", other_prod.name, "status", "Active")
+
+		frappe.set_user(self.bank_agent)
+		catalog_res = list_catalog(limit=50, start=0)
+		products = catalog_res["data"]["products"]
+		product_names = [p["name"] for p in products]
+
+		self.assertIn(self.prod_1.name, product_names)
+		self.assertNotIn(other_prod.name, product_names)
+
+	def test_bank_agent_cannot_call_get_product_for_another_bank(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		other_bank = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"bank_name": f"OtherBank2-{self.h}",
+				"bank_code": f"OtherBank2-{self.h}",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Participating Bank", other_bank.name, "status", "Active")
+
+		other_prod = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"OtherProd2-{self.h}",
+				"bank": other_bank.name,
+				"min_interest_rate": 5,
+				"max_amount": 1000,
+				"tenure_months": 12,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", other_prod.name, "status", "Active")
+
+		frappe.set_user(self.bank_agent)
+		res = get_product(product_id=other_prod.name)
+		self.assertEqual(res["status"], "error")
