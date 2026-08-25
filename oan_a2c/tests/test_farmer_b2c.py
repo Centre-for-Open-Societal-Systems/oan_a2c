@@ -726,3 +726,70 @@ class TestFarmerProfileAndConsent(FarmerB2CFixtures):
 		self.assertEqual(res["status"], "error")
 		self.assertEqual(res.get("code"), "VALIDATION_ERROR")
 		self.assertIn("lead_id is required", res.get("message", "").lower())
+
+
+class TestProductDetailPermissions(FarmerB2CFixtures):
+	"""Test get_product and catalog permissions for Farmer and Development Agent."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		import frappe
+
+		cls.inactive_prod = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"InactiveProd-{cls.h}",
+				"bank": cls.bank,
+				"min_interest_rate": 5,
+				"max_amount": 1000,
+				"tenure_months": 12,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", cls.inactive_prod.name, "status", "Pending Approval")
+
+	def test_farmer_can_call_get_product_for_active_product(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		frappe.set_user(self.farmer_a)
+		res = get_product(product_id=self.prod_1.name)
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(res["data"]["product"]["name"], self.prod_1.name)
+
+	def test_farmer_cannot_call_get_product_for_inactive_product(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		frappe.set_user(self.farmer_a)
+		res = get_product(product_id=self.inactive_prod.name)
+		self.assertEqual(res["status"], "error")
+
+	def test_dev_agent_can_call_get_product_for_active_product(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		frappe.set_user(self.dev_agent)
+		res = get_product(product_id=self.prod_1.name)
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(res["data"]["product"]["name"], self.prod_1.name)
+
+	def test_dev_agent_cannot_call_get_product_for_inactive_product(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		frappe.set_user(self.dev_agent)
+		res = get_product(product_id=self.inactive_prod.name)
+		self.assertEqual(res["status"], "error")
+
+	def test_dev_agent_query_loan_products_only_returns_active(self):
+		import frappe
+
+		frappe.set_user(self.dev_agent)
+		visible = frappe.get_list("A2C Loan Product", pluck="name")
+		self.assertIn(self.prod_1.name, visible)
+		self.assertNotIn(self.inactive_prod.name, visible)

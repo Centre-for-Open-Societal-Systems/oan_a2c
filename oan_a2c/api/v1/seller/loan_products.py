@@ -465,21 +465,19 @@ def get_product(**kwargs):
 	for meta in getattr(doc, "product_meta", []):
 		product_meta.append({"meta_key": meta.meta_key, "meta_value": meta.meta_value})
 
-	# get_list applies the bank scope on these bank-scoped taxonomy doctypes;
-	# product_id was already authorized via has_permission above.
-	categories = frappe.get_list(
+	categories = frappe.get_all(  # bank-scope-exempt: product_id authorized via has_permission above
 		"A2C Term Relationship",
 		filters={"loan_product": product_id, "term_type": "Category"},
 		pluck="term_category",
 	)
 
-	tags = frappe.get_list(
+	tags = frappe.get_all(  # bank-scope-exempt: product_id authorized via has_permission above
 		"A2C Term Relationship",
 		filters={"loan_product": product_id, "term_type": "Tag"},
 		pluck="term_tag",
 	)
 
-	lookups = frappe.get_list(
+	lookups = frappe.get_all(  # bank-scope-exempt: product_id authorized via has_permission above
 		"A2C Loan Product Attribute Lookup",
 		filters={"loan_product": product_id},
 		fields=["taxonomy", "term_id"],
