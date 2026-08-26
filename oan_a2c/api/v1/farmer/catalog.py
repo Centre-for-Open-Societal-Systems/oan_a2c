@@ -388,14 +388,13 @@ def save_product(**kwargs):
 	"""
 	user = frappe.session.user
 	loan_product = kwargs["loan_product"]
-
 	# get_list, not db.exists: db.exists is a raw, permission-agnostic lookup and
 	# would let a product outside the caller's normal visibility (wrong bank, or
 	# Draft/Archived for a Farmer) be bookmarked anyway -- and its 200-vs-404
 	# response would double as an existence oracle for docnames the caller has no
 	# business knowing about. get_list re-applies loan_product_scope_query, so a
 	# product the caller couldn't otherwise see is treated as not found here too.
-	if not frappe.get_list("A2C Loan Product", filters={"name": loan_product}, limit_page_length=1):
+	if not frappe.get_list("A2C Loan Product", filters={"name": loan_product, "status": "Active"}, limit_page_length=1):
 		frappe.throw(_("Loan Product not found."), frappe.DoesNotExistError)
 
 	if frappe.db.exists("A2C Saved Product", {"user": user, "loan_product": loan_product}):
@@ -468,7 +467,7 @@ def get_saved_products(**kwargs):
 	if page_names:
 		products = frappe.get_list(
 			"A2C Loan Product",
-			filters={"name": ["in", page_names]},
+			filters={"name": ["in", page_names], "status": "Active"},
 			fields=[
 				"name",
 				"product_name",

@@ -85,7 +85,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 
-		def _product(name):
+		def _product(name, status="Active"):
 			return frappe.get_doc(
 				{
 					"doctype": "A2C Loan Product",
@@ -94,12 +94,13 @@ class FarmerB2CFixtures(unittest.TestCase):
 					"min_interest_rate": 5,
 					"max_amount": 1000,
 					"tenure_months": 12,
-					"status": "Active",
+					"status": status,
 				}
 			).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.prod_1 = _product(f"B2CProd1-{cls.h}")
 		cls.prod_2 = _product(f"B2CProd2-{cls.h}")
+		cls.prod_archived = _product(f"B2CProdArchived-{cls.h}", status="Archived")
 		frappe.db.commit()
 
 	@classmethod
@@ -295,6 +296,44 @@ class TestCatalogFilterComposition(FarmerB2CFixtures):
 		saved_products = saved_res["data"]["products"]
 		self.assertTrue(len(saved_products) > 0)
 		self.assertEqual(saved_products[0]["bank_name"], self.bank_label)
+
+	def test_catalog_excludes_archived_products_by_default(self):
+		"""list_catalog must exclude Archived products by default, even for Administrator."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		frappe.set_user("Administrator")
+		res = list_catalog(bank=self.bank, limit=20, start=0)
+		products = res["data"]["products"]
+		product_names = [p["name"] for p in products]
+
+		self.assertIn(self.prod_1.name, product_names)
+		self.assertIn(self.prod_2.name, product_names)
+		self.assertNotIn(self.prod_archived.name, product_names)
+
+		# Explicitly requesting Archived returns it for admin
+		archived_res = list_catalog(bank=self.bank, status="Archived", limit=20, start=0)
+		archived_products = [p["name"] for p in archived_res["data"]["products"]]
+		self.assertIn(self.prod_archived.name, archived_products)
+		self.assertNotIn(self.prod_1.name, archived_products)
+
+		# Farmers always see only Active products
+		frappe.set_user(self.farmer_a)
+		farmer_res = list_catalog(bank=self.bank, limit=20, start=0)
+		farmer_products = [p["name"] for p in farmer_res["data"]["products"]]
+		self.assertIn(self.prod_1.name, farmer_products)
+		self.assertNotIn(self.prod_archived.name, farmer_products)
+
+	def test_cannot_save_archived_product(self):
+		"""Saving an archived product should be rejected."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product
+
+		frappe.set_user(self.farmer_a)
+		with self.assertRaises(frappe.ValidationError):
+			save_product(loan_product=self.prod_archived.name)
 
 
 class TestApplicationSourceScoping(FarmerB2CFixtures):
@@ -905,3 +944,35 @@ class TestProductDetailPermissions(FarmerB2CFixtures):
 		frappe.set_user(self.bank_agent)
 		res = get_product(product_id=other_prod.name)
 		self.assertEqual(res["status"], "error")
+
+	def test_bank_agent_sees_all_product_statuses_in_catalog(self):
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		rejected_prod = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"RejectedProd-{self.h}",
+				"bank": self.bank,
+				"min_interest_rate": 5,
+				"max_amount": 1000,
+				"tenure_months": 12,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", rejected_prod.name, "status", "Rejected")
+
+		frappe.set_user(self.bank_agent)
+		res = list_catalog(limit=50, start=0)
+		products = res["data"]["products"]
+		product_names = [p["name"] for p in products]
+
+		self.assertIn(rejected_prod.name, product_names)
+		self.assertIn(self.inactive_prod.name, product_names)
+
+		# Farmer must not see rejected or pending approval products
+		frappe.set_user(self.farmer_a)
+		farmer_res = list_catalog(limit=50, start=0)
+		farmer_product_names = [p["name"] for p in farmer_res["data"]["products"]]
+		self.assertNotIn(rejected_prod.name, farmer_product_names)
+		self.assertNotIn(self.inactive_prod.name, farmer_product_names)
