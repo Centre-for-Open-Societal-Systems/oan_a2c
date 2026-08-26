@@ -129,6 +129,84 @@ def _get_app(application_id):
 	return frappe.get_doc("A2C Loan Application", application_id)
 
 
+def _resolve_loan_type(doc) -> str | None:
+	"""Returns doc.loan_type with fallback to term_snapshot child table or product category."""
+	loan_type = doc.get("loan_type")
+	if loan_type:
+		return loan_type
+
+	for row in doc.get("term_snapshot") or []:
+		if row.taxonomy == "Category" and row.term_name:
+			return row.term_name
+
+	if doc.get("loan_product"):
+		category = frappe.db.get_value(
+			"A2C Term Relationship",
+			{"loan_product": doc.loan_product, "term_type": "Category"},
+			"term_category",
+		)
+		if category:
+			term = frappe.db.get_value("A2C Term Category", category, "term")
+			t_name = frappe.db.get_value("A2C Term", term, "term_name") if term else None
+			return t_name or category
+	return None
+
+
+def _batch_resolve_loan_types(records: list[dict]) -> None:
+	"""Batch resolve missing loan_type for records using term_snapshot or product category."""
+	missing = [r for r in records if not r.get("loan_type")]
+	if not missing:
+		return
+
+	app_ids = [r["application_id"] for r in missing if r.get("application_id")]
+	snap_map = {}
+	if app_ids:
+		snapshots = frappe.get_all(
+			"A2C Loan Application Term Snapshot",
+			filters={"parent": ["in", app_ids], "taxonomy": "Category"},
+			fields=["parent", "term_name"],
+		)
+		snap_map = {s.parent: s.term_name for s in snapshots if s.term_name}
+
+	unresolved_prods = list(
+		{
+			r.get("loan_product")
+			for r in missing
+			if r.get("loan_product") and r.get("application_id") not in snap_map
+		}
+	)
+	prod_type_map = {}
+	if unresolved_prods:
+		cat_rows = frappe.get_all(
+			"A2C Term Relationship",
+			filters={"loan_product": ["in", unresolved_prods], "term_type": "Category"},
+			fields=["loan_product", "term_category"],
+		)
+		if cat_rows:
+			term_cats = {cr.term_category for cr in cat_rows if cr.term_category}
+			term_cat_rows = frappe.get_all(
+				"A2C Term Category",
+				filters={"name": ["in", list(term_cats)]},
+				fields=["name", "term"],
+			)
+			cat_to_term = {t.name: t.term for t in term_cat_rows if t.term}
+			terms = list(set(cat_to_term.values()))
+			term_rows = frappe.get_all(
+				"A2C Term",
+				filters={"name": ["in", terms]},
+				fields=["name", "term_name"],
+			)
+			term_to_name = {tr.name: tr.term_name for tr in term_rows}
+
+			for cr in cat_rows:
+				term_id = cat_to_term.get(cr.term_category)
+				name = term_to_name.get(term_id) or cr.term_category
+				prod_type_map[cr.loan_product] = name
+
+	for r in missing:
+		r["loan_type"] = snap_map.get(r.get("application_id")) or prod_type_map.get(r.get("loan_product"))
+
+
 def _get_lead(lead_id):
 	if not frappe.db.exists("A2C Lead", lead_id):
 		frappe.throw(_("A2C Lead {0} not found").format(lead_id), frappe.DoesNotExistError)
@@ -331,7 +409,7 @@ def get_full_profile(**kwargs):
 		"id_number": doc.id_number,
 		"farmer_id": doc.farmer_id,
 		"consent_id": doc.consent_id,
-		"loan_type": doc.loan_type,
+		"loan_type": _resolve_loan_type(doc),
 		"loan_product": doc.loan_product,
 		"loan_product_name": doc.loan_product_name,
 		"loan_amount": flt(doc.loan_amount),
@@ -608,6 +686,7 @@ def get_all_loans(**kwargs):
 	)
 
 	build_status_payloads(records)
+	_batch_resolve_loan_types(records)
 	for r in records:
 		r["loan_amount"] = float(r["loan_amount"]) if r.get("loan_amount") else 0.0
 		r["step"] = cint(r.get("step"))

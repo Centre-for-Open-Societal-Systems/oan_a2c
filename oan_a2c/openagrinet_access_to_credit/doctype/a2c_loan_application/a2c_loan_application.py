@@ -119,6 +119,9 @@ class A2CLoanApplication(Document):
 			)
 			return
 
+		if self.status == "Active":
+			return
+
 		stage_name = self.stage_label or self.status
 		notify_users(
 			self._bank_recipients(),
@@ -184,6 +187,8 @@ class A2CLoanApplication(Document):
 					)
 
 		self._sync_bank_from_product()
+		self._sync_loan_type_from_product()
+		self._sync_term_snapshot_from_product()
 
 	def _sync_bank_from_product(self):
 		"""Keep the denormalized `bank` snapshot authoritative to the loan product.
@@ -211,3 +216,75 @@ class A2CLoanApplication(Document):
 
 		if self.bank != product_bank:
 			self.bank = product_bank
+
+	def _sync_loan_type_from_product(self):
+		"""Keep loan_type in sync with term_snapshot or loan product's taxonomy category."""
+		if self.loan_type:
+			return
+
+		# 1. Fallback to existing term_snapshot child table if present
+		for row in self.get("term_snapshot") or []:
+			if row.taxonomy == "Category" and row.term_name:
+				self.loan_type = row.term_name
+				return
+
+		if not self.loan_product:
+			return
+
+		# 2. Derive from product's category taxonomy
+		category = frappe.db.get_value(
+			"A2C Term Relationship",
+			{"loan_product": self.loan_product, "term_type": "Category"},
+			"term_category",
+		)
+		if category:
+			term = frappe.db.get_value("A2C Term Category", category, "term")
+			loan_type = frappe.db.get_value("A2C Term", term, "term_name") if term else None
+			self.loan_type = loan_type or category
+
+	def _sync_term_snapshot_from_product(self):
+		"""Snapshot category and tag terms into term_snapshot child table if not already populated."""
+		if not self.loan_product or self.get("term_snapshot"):
+			return
+
+		rels = frappe.get_all(
+			"A2C Term Relationship",
+			filters={"loan_product": self.loan_product},
+			fields=["term_type", "term_category", "term_tag"],
+		)
+		if not rels:
+			return
+
+		for r in rels:
+			if r.term_type == "Category" and r.term_category:
+				term = frappe.db.get_value("A2C Term Category", r.term_category, "term")
+				term_doc = (
+					frappe.db.get_value("A2C Term", term, ["term_name", "slug"], as_dict=True)
+					if term
+					else None
+				)
+				self.append(
+					"term_snapshot",
+					{
+						"taxonomy": "Category",
+						"term_name": term_doc.term_name if term_doc else r.term_category,
+						"term_slug": term_doc.slug if term_doc else None,
+						"source_ref": r.term_category,
+					},
+				)
+			elif r.term_type == "Tag" and r.term_tag:
+				term = frappe.db.get_value("A2C Term Tag", r.term_tag, "term")
+				term_doc = (
+					frappe.db.get_value("A2C Term", term, ["term_name", "slug"], as_dict=True)
+					if term
+					else None
+				)
+				self.append(
+					"term_snapshot",
+					{
+						"taxonomy": "Tag",
+						"term_name": term_doc.term_name if term_doc else r.term_tag,
+						"term_slug": term_doc.slug if term_doc else None,
+						"source_ref": r.term_tag,
+					},
+				)
