@@ -197,6 +197,37 @@ def _enrich_products_with_categories(products: list[dict]) -> None:
 		p["category"] = category_map.get(p.get("name"))
 
 
+def _enrich_products_with_saved_flag(products: list[dict]) -> None:
+	"""Flag which of these rows the calling user has bookmarked.
+
+	One batched query for the whole page, not one per row. Without it the catalog
+	returns no bookmark state at all, so every star on a freshly loaded page draws
+	empty however many products the user has saved -- and the "Bookmarked only"
+	filter shows a page of loans none of which look bookmarked.
+
+	bank-scope-exempt: A2C Saved Product is bank-scoped, so get_list returns
+	nothing for a bank-bound user. Reading it directly is safe here because the
+	query is pinned to the session user's own rows and only ever annotates
+	products that the permission-filtered query above already returned -- it can
+	neither expose another user's bookmarks nor pull an unreadable product in.
+	"""
+	product_ids = [p["name"] for p in products]
+	if not product_ids:
+		return
+
+	# own rows only; used to annotate an already permission-filtered page
+	saved = set(
+		frappe.get_all(  # bank-scope-exempt: see docstring
+			"A2C Saved Product",
+			filters={"user": frappe.session.user, "loan_product": ["in", product_ids]},
+			pluck="loan_product",
+		)
+	)
+
+	for p in products:
+		p["is_saved"] = p["name"] in saved
+
+
 def _enrich_products_with_application_counts(products: list[dict]) -> None:
 	"""Batch attach applications_count per product if caller is a bank user or admin."""
 	if not products:
@@ -248,6 +279,8 @@ def list_catalog(**kwargs):
 	if is_bank_user:
 		if kwargs.get("status"):
 			filters["status"] = kwargs["status"]
+		else:
+			filters["status"] = ["!=", "Archived"]
 	else:
 		filters["status"] = "Active"
 
@@ -351,6 +384,7 @@ def list_catalog(**kwargs):
 
 	_enrich_products_with_bank_info(products)
 	_enrich_products_with_categories(products)
+	_enrich_products_with_saved_flag(products)
 	_enrich_products_with_application_counts(products)
 
 	count_res = frappe.get_list(
@@ -388,14 +422,15 @@ def save_product(**kwargs):
 	"""
 	user = frappe.session.user
 	loan_product = kwargs["loan_product"]
-
 	# get_list, not db.exists: db.exists is a raw, permission-agnostic lookup and
 	# would let a product outside the caller's normal visibility (wrong bank, or
 	# Draft/Archived for a Farmer) be bookmarked anyway -- and its 200-vs-404
 	# response would double as an existence oracle for docnames the caller has no
 	# business knowing about. get_list re-applies loan_product_scope_query, so a
 	# product the caller couldn't otherwise see is treated as not found here too.
-	if not frappe.get_list("A2C Loan Product", filters={"name": loan_product}, limit_page_length=1):
+	if not frappe.get_list(
+		"A2C Loan Product", filters={"name": loan_product, "status": "Active"}, limit_page_length=1
+	):
 		frappe.throw(_("Loan Product not found."), frappe.DoesNotExistError)
 
 	if frappe.db.exists("A2C Saved Product", {"user": user, "loan_product": loan_product}):
@@ -468,7 +503,7 @@ def get_saved_products(**kwargs):
 	if page_names:
 		products = frappe.get_list(
 			"A2C Loan Product",
-			filters={"name": ["in", page_names]},
+			filters={"name": ["in", page_names], "status": "Active"},
 			fields=[
 				"name",
 				"product_name",
@@ -489,6 +524,11 @@ def get_saved_products(**kwargs):
 		_enrich_products_with_bank_info(products)
 		_enrich_products_with_categories(products)
 		_enrich_products_with_application_counts(products)
+		# True by construction -- this list was built from the bookmark table. Stated
+		# rather than queried so the field is present on every product payload a
+		# client can receive, not only on the catalog's.
+		for p in products:
+			p["is_saved"] = True
 
 	pagination = {
 		"page": (start // limit) + 1,

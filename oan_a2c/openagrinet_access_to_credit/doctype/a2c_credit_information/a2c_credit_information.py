@@ -7,6 +7,7 @@ class A2CCreditInformation(Document):
 	def before_save(self):
 		self._validate_lead_existence()
 		self._validate_loan_amount()
+		self._validate_loan_product()
 		self._populate_creator()
 
 	def _validate_lead_existence(self):
@@ -23,6 +24,35 @@ class A2CCreditInformation(Document):
 
 		if amount <= 0:
 			frappe.throw(_("Loan Amount must be a positive non-zero number"), frappe.ValidationError)
+
+	def _validate_loan_product(self):
+		if not self.loan_product:
+			return
+		product_info = frappe.db.get_value(
+			"A2C Loan Product",
+			self.loan_product,
+			["status", "min_amount", "max_amount"],
+			as_dict=True,
+		)
+		if not product_info:
+			frappe.throw(
+				_("Loan Product {0} does not exist").format(self.loan_product), frappe.DoesNotExistError
+			)
+		if product_info.status != "Active":
+			frappe.throw(
+				_("Loan Product {0} is not active (currently {1}).").format(
+					self.loan_product, product_info.status or "Unknown"
+				),
+				frappe.ValidationError,
+			)
+		if self.loan_amount:
+			from oan_a2c.api.utils import assert_amount_within_product_range
+
+			assert_amount_within_product_range(
+				self.loan_amount,
+				min_amount=product_info.min_amount,
+				max_amount=product_info.max_amount,
+			)
 
 	def _populate_creator(self):
 		if not self.created_by:

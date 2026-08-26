@@ -19,6 +19,7 @@ from oan_a2c.api.utils import (
 	SafeDate,
 	SafeEmail,
 	apply_status_transition,
+	assert_amount_within_product_range,
 	handle_api_errors,
 	parse_multi_value,
 	success_response,
@@ -579,8 +580,28 @@ def add_lead_credit_info(**kwargs):
 	if not loan_product:
 		frappe.throw(_("Loan Product is required for Credit Information."), frappe.ValidationError)
 
-	if not frappe.db.exists("A2C Loan Product", loan_product):
+	product_info = frappe.db.get_value(
+		"A2C Loan Product",
+		loan_product,
+		["status", "min_amount", "max_amount"],
+		as_dict=True,
+	)
+	if not product_info:
 		frappe.throw(_("Loan Product {0} not found").format(loan_product), frappe.DoesNotExistError)
+
+	if product_info.status != "Active":
+		frappe.throw(
+			_("Loan Product {0} is not active (currently {1}).").format(
+				loan_product, product_info.status or "Unknown"
+			),
+			frappe.ValidationError,
+		)
+
+	assert_amount_within_product_range(
+		loan_amount,
+		min_amount=product_info.min_amount,
+		max_amount=product_info.max_amount,
+	)
 
 	if not loan_type:
 		category = frappe.db.get_value(

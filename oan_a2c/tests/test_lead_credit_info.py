@@ -25,47 +25,62 @@ class TestLeadCreditInfo(unittest.TestCase):
 		cls.lead.insert(ignore_permissions=True)
 		cls.lead_id = cls.lead.name
 
-		prod = frappe.db.get_value("A2C Loan Product", {}, "name")
-		if not prod:
-			bank = frappe.db.get_value("A2C Participating Bank", {}, "name")
-			if not bank:
-				bank = (
-					frappe.get_doc(
-						{
-							"doctype": "A2C Participating Bank",
-							"registered_city": "Test City",
-							"kyc_document": "/private/files/test_kyc.pdf",
-							"gro_name": "Test GRO",
-							"ops_name": "Test Ops",
-							"bank_name": "Test Bank",
-							"bank_code": "TB123",
-							"status": "In Review",
-							"entity_type": "Commercial Bank",
-							"registered_email": "tb123@test.com",
-							"registered_phone": "+251911000000",
-							"registered_region": "Addis Ababa",
-							"registered_country": "Ethiopia",
-						}
-					)
-					.insert(ignore_permissions=True)
-					.name
-				)
-			prod = (
-				frappe.get_doc(
-					{
-						"doctype": "A2C Loan Product",
-						"product_name": "Test Product",
-						"bank": bank,
-						"status": "Active",
-						"min_interest_rate": 5,
-						"max_amount": 100000,
-						"tenure_months": 12,
-					}
-				)
-				.insert(ignore_permissions=True)
-				.name
+		bank_name = f"TB_{frappe.generate_hash(length=6)}"
+		bank_doc = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"registered_city": "Test City",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO",
+				"ops_name": "Test Ops",
+				"bank_name": f"Test Bank {bank_name}",
+				"bank_code": bank_name,
+				"status": "Active",
+				"entity_type": "Commercial Bank",
+				"registered_email": f"{bank_name.lower()}@test.com",
+				"registered_phone": "+251911000000",
+				"registered_region": "Addis Ababa",
+				"registered_country": "Ethiopia",
+			}
+		).insert(ignore_permissions=True)
+		cls.bank = bank_doc.name
+
+		prod = (
+			frappe.get_doc(
+				{
+					"doctype": "A2C Loan Product",
+					"product_name": f"Test Product Active {bank_name}",
+					"bank": cls.bank,
+					"status": "Active",
+					"min_interest_rate": 5,
+					"min_amount": 1000,
+					"max_amount": 200000,
+					"tenure_months": 12,
+				}
 			)
+			.insert(ignore_permissions=True)
+			.name
+		)
 		cls.test_product = prod
+
+		archived_prod = (
+			frappe.get_doc(
+				{
+					"doctype": "A2C Loan Product",
+					"product_name": f"Test Product Archived {bank_name}",
+					"bank": cls.bank,
+					"status": "Archived",
+					"min_interest_rate": 5,
+					"min_amount": 1000,
+					"max_amount": 200000,
+					"tenure_months": 12,
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+		frappe.db.set_value("A2C Loan Product", archived_prod, "status", "Archived")
+		cls.archived_product = archived_prod
 
 		frappe.db.commit()
 
@@ -174,3 +189,36 @@ class TestLeadCreditInfo(unittest.TestCase):
 
 		first = res["data"][0]
 		self.assertEqual(float(first["loan_amount"]), 150000.00)
+
+	def test_5_archived_loan_product_rejected(self):
+		"""Verifies that add_lead_credit_info rejects inactive/archived products."""
+		res = add_lead_credit_info(
+			lead_id=self.lead_id,
+			loan_type="Input loan (seeds, agrochemicals)",
+			loan_amount=50000,
+			purpose_message="Trying to use archived product",
+			loan_product=self.archived_product,
+		)
+		self.assertEqual(res["status"], "error")
+
+	def test_6_loan_amount_exceeding_max_rejected(self):
+		"""Verifies that loan amounts above product max_amount are rejected."""
+		res = add_lead_credit_info(
+			lead_id=self.lead_id,
+			loan_type="Input loan (seeds, agrochemicals)",
+			loan_amount=250000,  # Max is 200000
+			purpose_message="Amount too high",
+			loan_product=self.test_product,
+		)
+		self.assertEqual(res["status"], "error")
+
+	def test_7_loan_amount_below_min_rejected(self):
+		"""Verifies that loan amounts below product min_amount are rejected."""
+		res = add_lead_credit_info(
+			lead_id=self.lead_id,
+			loan_type="Input loan (seeds, agrochemicals)",
+			loan_amount=500,  # Min is 1000
+			purpose_message="Amount too low",
+			loan_product=self.test_product,
+		)
+		self.assertEqual(res["status"], "error")

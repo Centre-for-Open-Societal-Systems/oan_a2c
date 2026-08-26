@@ -85,7 +85,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 
-		def _product(name):
+		def _product(name, status="Active"):
 			return frappe.get_doc(
 				{
 					"doctype": "A2C Loan Product",
@@ -94,12 +94,14 @@ class FarmerB2CFixtures(unittest.TestCase):
 					"min_interest_rate": 5,
 					"max_amount": 1000,
 					"tenure_months": 12,
-					"status": "Active",
+					"status": status,
 				}
 			).insert(ignore_permissions=True, ignore_mandatory=True)
 
 		cls.prod_1 = _product(f"B2CProd1-{cls.h}")
 		cls.prod_2 = _product(f"B2CProd2-{cls.h}")
+		cls.prod_archived = _product(f"B2CProdArchived-{cls.h}", status="Archived")
+		frappe.db.set_value("A2C Loan Product", cls.prod_archived.name, "status", "Archived")
 		frappe.db.commit()
 
 	@classmethod
@@ -199,6 +201,104 @@ class TestSavedProducts(FarmerB2CFixtures):
 		self.assertEqual([p["name"] for p in still_mine], [self.prod_1.name])
 
 
+class TestCatalogSavedFlag(FarmerB2CFixtures):
+	"""Every catalog row says whether the caller bookmarked it."""
+
+	def setUp(self):
+		import frappe
+
+		frappe.set_user("Administrator")
+		frappe.db.delete("A2C Saved Product")
+
+	def _catalog(self, **kwargs):
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		kwargs.setdefault("limit", 20)
+		kwargs.setdefault("start", 0)
+		kwargs.setdefault("sort_by", "product_name")
+		# Pinned to this run's own fixtures. The default page is 20 rows out of
+		# whatever the bench already holds, so asserting over "the catalog" would
+		# pass or fail on how much leftover data a developer's site is carrying.
+		kwargs.setdefault("search", self.h)
+		return {p["name"]: p for p in list_catalog(**kwargs)["data"]["products"]}
+
+	def test_catalog_rows_carry_the_callers_bookmark_state(self):
+		"""The flag is what a card draws its star from; without it every star is empty."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+
+		rows = self._catalog()
+		self.assertTrue(rows[self.prod_1.name]["is_saved"])
+		self.assertFalse(rows[self.prod_2.name]["is_saved"])
+
+	def test_the_flag_is_the_callers_own_and_not_another_users(self):
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+
+		frappe.set_user(self.farmer_b)
+		rows = self._catalog()
+		self.assertFalse(
+			rows[self.prod_1.name]["is_saved"],
+			"farmer B's catalog must not report farmer A's bookmark",
+		)
+
+	def test_the_flag_is_present_even_when_nothing_is_saved(self):
+		"""Absent and False are the same to a client only if the key is always sent."""
+		import frappe
+
+		frappe.set_user(self.farmer_b)
+		rows = self._catalog()
+		self.assertEqual(
+			[row["is_saved"] for row in rows.values()],
+			[False] * len(rows),
+		)
+
+	def test_unsaving_clears_the_flag_on_the_next_page(self):
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product, unsave_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+		self.assertTrue(self._catalog()[self.prod_1.name]["is_saved"])
+
+		unsave_product(loan_product=self.prod_1.name)
+		self.assertFalse(self._catalog()[self.prod_1.name]["is_saved"])
+
+	def test_rows_under_the_is_saved_filter_are_flagged(self):
+		"""The filtered page selected on the bookmark, so its rows must show as one."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+
+		rows = self._catalog(is_saved=True)
+		self.assertEqual(list(rows), [self.prod_1.name])
+		self.assertTrue(rows[self.prod_1.name]["is_saved"])
+
+	def test_saved_products_rows_are_flagged(self):
+		"""get_saved_products returns the same shape the catalog does."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import get_saved_products, save_product
+
+		frappe.set_user(self.farmer_a)
+		save_product(loan_product=self.prod_1.name)
+
+		products = get_saved_products()["data"]["products"]
+		self.assertEqual([p["is_saved"] for p in products], [True])
+
+
 class TestCatalogFilterComposition(FarmerB2CFixtures):
 	"""Filters that all constrain `name` must intersect, never overwrite."""
 
@@ -295,6 +395,44 @@ class TestCatalogFilterComposition(FarmerB2CFixtures):
 		saved_products = saved_res["data"]["products"]
 		self.assertTrue(len(saved_products) > 0)
 		self.assertEqual(saved_products[0]["bank_name"], self.bank_label)
+
+	def test_catalog_excludes_archived_products_by_default(self):
+		"""list_catalog must exclude Archived products by default, even for Administrator."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		frappe.set_user("Administrator")
+		res = list_catalog(bank=self.bank, limit=20, start=0)
+		products = res["data"]["products"]
+		product_names = [p["name"] for p in products]
+
+		self.assertIn(self.prod_1.name, product_names)
+		self.assertIn(self.prod_2.name, product_names)
+		self.assertNotIn(self.prod_archived.name, product_names)
+
+		# Explicitly requesting Archived returns it for admin
+		archived_res = list_catalog(bank=self.bank, status="Archived", limit=20, start=0)
+		archived_products = [p["name"] for p in archived_res["data"]["products"]]
+		self.assertIn(self.prod_archived.name, archived_products)
+		self.assertNotIn(self.prod_1.name, archived_products)
+
+		# Farmers always see only Active products
+		frappe.set_user(self.farmer_a)
+		farmer_res = list_catalog(bank=self.bank, limit=20, start=0)
+		farmer_products = [p["name"] for p in farmer_res["data"]["products"]]
+		self.assertIn(self.prod_1.name, farmer_products)
+		self.assertNotIn(self.prod_archived.name, farmer_products)
+
+	def test_cannot_save_archived_product(self):
+		"""Saving an archived product should be rejected."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import save_product
+
+		frappe.set_user(self.farmer_a)
+		res = save_product(loan_product=self.prod_archived.name)
+		self.assertEqual(res["status"], "error")
 
 
 class TestApplicationSourceScoping(FarmerB2CFixtures):
@@ -905,3 +1043,35 @@ class TestProductDetailPermissions(FarmerB2CFixtures):
 		frappe.set_user(self.bank_agent)
 		res = get_product(product_id=other_prod.name)
 		self.assertEqual(res["status"], "error")
+
+	def test_bank_agent_sees_all_product_statuses_in_catalog(self):
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		rejected_prod = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"RejectedProd-{self.h}",
+				"bank": self.bank,
+				"min_interest_rate": 5,
+				"max_amount": 1000,
+				"tenure_months": 12,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", rejected_prod.name, "status", "Rejected")
+
+		frappe.set_user(self.bank_agent)
+		res = list_catalog(limit=50, start=0)
+		products = res["data"]["products"]
+		product_names = [p["name"] for p in products]
+
+		self.assertIn(rejected_prod.name, product_names)
+		self.assertIn(self.inactive_prod.name, product_names)
+
+		# Farmer must not see rejected or pending approval products
+		frappe.set_user(self.farmer_a)
+		farmer_res = list_catalog(limit=50, start=0)
+		farmer_product_names = [p["name"] for p in farmer_res["data"]["products"]]
+		self.assertNotIn(rejected_prod.name, farmer_product_names)
+		self.assertNotIn(self.inactive_prod.name, farmer_product_names)
