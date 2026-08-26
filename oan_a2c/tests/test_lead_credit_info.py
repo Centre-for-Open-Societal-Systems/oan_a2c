@@ -79,6 +79,7 @@ class TestLeadCreditInfo(unittest.TestCase):
 			.insert(ignore_permissions=True)
 			.name
 		)
+		frappe.db.set_value("A2C Loan Product", archived_prod, "status", "Archived")
 		cls.archived_product = archived_prod
 
 		frappe.db.commit()
@@ -191,33 +192,33 @@ class TestLeadCreditInfo(unittest.TestCase):
 
 	def test_5_archived_loan_product_rejected(self):
 		"""Verifies that add_lead_credit_info rejects inactive/archived products."""
-		with self.assertRaises(frappe.ValidationError):
-			add_lead_credit_info(
-				lead_id=self.lead_id,
-				loan_type="Input loan (seeds, agrochemicals)",
-				loan_amount=50000,
-				purpose_message="Trying to use archived product",
-				loan_product=self.archived_product,
-			)
+		res = add_lead_credit_info(
+			lead_id=self.lead_id,
+			loan_type="Input loan (seeds, agrochemicals)",
+			loan_amount=50000,
+			purpose_message="Trying to use archived product",
+			loan_product=self.archived_product,
+		)
+		self.assertEqual(res["status"], "error")
 
 	def test_6_loan_amount_exceeding_max_rejected(self):
 		"""Verifies that loan amounts above product max_amount are rejected."""
-		with self.assertRaises(frappe.ValidationError):
-			add_lead_credit_info(
-				lead_id=self.lead_id,
-				loan_type="Input loan (seeds, agrochemicals)",
-				loan_amount=250000,  # Max is 200000
-				purpose_message="Amount too high",
-				loan_product=self.test_product,
-			)
+		res = add_lead_credit_info(
+			lead_id=self.lead_id,
+			loan_type="Input loan (seeds, agrochemicals)",
+			loan_amount=250000,  # Max is 200000
+			purpose_message="Amount too high",
+			loan_product=self.test_product,
+		)
+		self.assertEqual(res["status"], "error")
 
 	def test_7_loan_amount_below_min_rejected(self):
 		"""Verifies that loan amounts below product min_amount are rejected."""
-		with self.assertRaises(frappe.ValidationError):
-			add_lead_credit_info(
-				lead_id=self.lead_id,
-				loan_type="Input loan (seeds, agrochemicals)",
-				loan_amount=500,  # Min is 1000
-				purpose_message="Amount too low",
-				loan_product=self.test_product,
-			)
+		res = add_lead_credit_info(
+			lead_id=self.lead_id,
+			loan_type="Input loan (seeds, agrochemicals)",
+			loan_amount=500,  # Min is 1000
+			purpose_message="Amount too low",
+			loan_product=self.test_product,
+		)
+		self.assertEqual(res["status"], "error")

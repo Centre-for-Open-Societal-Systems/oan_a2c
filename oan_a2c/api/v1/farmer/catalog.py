@@ -248,6 +248,8 @@ def list_catalog(**kwargs):
 	if is_bank_user:
 		if kwargs.get("status"):
 			filters["status"] = kwargs["status"]
+		else:
+			filters["status"] = ["!=", "Archived"]
 	else:
 		filters["status"] = "Active"
 

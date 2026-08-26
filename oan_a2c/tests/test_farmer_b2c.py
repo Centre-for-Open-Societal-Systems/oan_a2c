@@ -101,6 +101,7 @@ class FarmerB2CFixtures(unittest.TestCase):
 		cls.prod_1 = _product(f"B2CProd1-{cls.h}")
 		cls.prod_2 = _product(f"B2CProd2-{cls.h}")
 		cls.prod_archived = _product(f"B2CProdArchived-{cls.h}", status="Archived")
+		frappe.db.set_value("A2C Loan Product", cls.prod_archived.name, "status", "Archived")
 		frappe.db.commit()
 
 	@classmethod
@@ -332,8 +333,8 @@ class TestCatalogFilterComposition(FarmerB2CFixtures):
 		from oan_a2c.api.v1.farmer.catalog import save_product
 
 		frappe.set_user(self.farmer_a)
-		with self.assertRaises(frappe.ValidationError):
-			save_product(loan_product=self.prod_archived.name)
+		res = save_product(loan_product=self.prod_archived.name)
+		self.assertEqual(res["status"], "error")
 
 
 class TestApplicationSourceScoping(FarmerB2CFixtures):
