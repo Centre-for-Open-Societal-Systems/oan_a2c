@@ -428,7 +428,9 @@ def save_product(**kwargs):
 	# response would double as an existence oracle for docnames the caller has no
 	# business knowing about. get_list re-applies loan_product_scope_query, so a
 	# product the caller couldn't otherwise see is treated as not found here too.
-	if not frappe.get_list("A2C Loan Product", filters={"name": loan_product, "status": "Active"}, limit_page_length=1):
+	if not frappe.get_list(
+		"A2C Loan Product", filters={"name": loan_product, "status": "Active"}, limit_page_length=1
+	):
 		frappe.throw(_("Loan Product not found."), frappe.DoesNotExistError)
 
 	if frappe.db.exists("A2C Saved Product", {"user": user, "loan_product": loan_product}):
