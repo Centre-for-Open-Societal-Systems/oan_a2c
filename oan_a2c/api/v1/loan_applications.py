@@ -177,6 +177,7 @@ def _batch_resolve_loan_types(records: list[dict]) -> None:
 	)
 	prod_type_map = {}
 	if unresolved_prods:
+		# bank-scope-exempt: reads taxonomy category terms for loan products
 		cat_rows = frappe.get_all(
 			"A2C Term Relationship",
 			filters={"loan_product": ["in", unresolved_prods], "term_type": "Category"},

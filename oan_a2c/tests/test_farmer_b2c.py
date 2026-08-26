@@ -566,6 +566,7 @@ class TestFarmerApplicationCreation(FarmerB2CFixtures):
 		term = frappe.get_doc(
 			{
 				"doctype": "A2C Term",
+				"term_id": f"term-tractor-{self.h}",
 				"term_name": f"Tractor Financing-{self.h}",
 				"slug": f"tractor-financing-{self.h}",
 			}

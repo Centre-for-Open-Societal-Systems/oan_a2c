@@ -247,6 +247,7 @@ class A2CLoanApplication(Document):
 		if not self.loan_product or self.get("term_snapshot"):
 			return
 
+		# bank-scope-exempt: reads taxonomy terms for loan_product snapshot
 		rels = frappe.get_all(
 			"A2C Term Relationship",
 			filters={"loan_product": self.loan_product},
