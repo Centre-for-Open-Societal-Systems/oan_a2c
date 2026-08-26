@@ -279,8 +279,6 @@ def list_catalog(**kwargs):
 	if is_bank_user:
 		if kwargs.get("status"):
 			filters["status"] = kwargs["status"]
-		else:
-			filters["status"] = ["!=", "Archived"]
 	else:
 		filters["status"] = "Active"
 
@@ -492,7 +490,11 @@ def get_saved_products(**kwargs):
 		# saved product that is Archived, or otherwise no longer visible to this
 		# caller, is excluded here rather than merely from the page's fields.
 		visible_names = set(
-			frappe.get_list("A2C Loan Product", filters={"name": ["in", saved_order]}, pluck="name")
+			frappe.get_list(
+				"A2C Loan Product",
+				filters={"name": ["in", saved_order], "status": "Active"},
+				pluck="name",
+			)
 		)
 	visible_order = [name for name in saved_order if name in visible_names]
 

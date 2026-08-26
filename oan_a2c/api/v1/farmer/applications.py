@@ -20,7 +20,9 @@ from oan_a2c.api.utils import (
 from oan_a2c.api.v1.loan_applications import (
 	GetAllLoansSchema,
 	LoanApplicationIDSchema,
+	_batch_resolve_loan_types,
 	_get_app,
+	_resolve_loan_type,
 )
 
 
@@ -76,6 +78,7 @@ def list_applications(**kwargs):
 			"stage_label",
 			"loan_amount",
 			"requested_amount",
+			"loan_type",
 			"loan_product",
 			"loan_product_name",
 			"bank",
@@ -88,6 +91,7 @@ def list_applications(**kwargs):
 	)
 
 	build_status_payloads(records)
+	_batch_resolve_loan_types(records)
 	for r in records:
 		r["loan_amount"] = float(r["loan_amount"]) if r.get("loan_amount") else 0.0
 		r["requested_amount"] = float(r["requested_amount"]) if r.get("requested_amount") else 0.0
@@ -132,7 +136,7 @@ def get_application(**kwargs):
 		"id_number": doc.id_number,
 		"farmer_id": doc.farmer_id,
 		"consent_id": doc.consent_id,
-		"loan_type": doc.loan_type,
+		"loan_type": _resolve_loan_type(doc),
 		"loan_product": doc.loan_product,
 		"loan_product_name": doc.loan_product_name,
 		"requested_amount": flt(doc.requested_amount),
