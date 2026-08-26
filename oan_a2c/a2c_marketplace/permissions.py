@@ -4,7 +4,7 @@ import frappe
 from frappe import _
 
 # Role names live in one place (oan_a2c.a2c_marketplace.roles).
-from oan_a2c.a2c_marketplace.roles import BANK_UNBOUND_ROLES, FARMER_ROLE
+from oan_a2c.a2c_marketplace.roles import BANK_UNBOUND_ROLES, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE
 
 
 class BankNotOnboarded(frappe.PermissionError):
@@ -41,6 +41,13 @@ def is_farmer(user=None):
 	if not user:
 		user = frappe.session.user
 	return FARMER_ROLE in frappe.get_roles(user)
+
+
+def is_development_agent(user=None):
+	"""True if the user is a Development Agent (platform field agent)."""
+	if not user:
+		user = frappe.session.user
+	return DEVELOPMENT_AGENT_ROLE in frappe.get_roles(user)
 
 
 def get_user_farmer_profile(user=None):
@@ -317,14 +324,19 @@ def loan_application_scope_query(user=None):
 def loan_product_scope_query(user=None):
 	"""permission_query_conditions for A2C Loan Product.
 
-	A farmer browses the marketplace across every bank but only ever sees Active
-	products -- Draft and Archived belong to the owning bank's catalog workspace.
+	Farmers and Development Agents browse the marketplace across every bank
+	but only ever see Active products -- Draft, Pending Approval, Rejected and Archived
+	belong to the owning bank's catalog workspace.
+	Platform admins see all products across all banks and statuses.
 	Everyone else keeps plain bank scoping.
 	"""
 	if not user:
 		user = frappe.session.user
 
-	if is_farmer(user) and not is_bank_unbound(user):
+	if is_platform_admin(user):
+		return ""
+
+	if is_farmer(user) or is_development_agent(user):
 		return "`status` = 'Active'"
 
 	return bank_scope_query(user)
@@ -370,6 +382,9 @@ def bank_scope_doc(doc, user=None):
 		# does not work self-service applications.
 		if doc.doctype == "A2C Loan Application":
 			return (doc.get("application_source") or "Agent") != SELF_SERVICE
+		# Development Agents browse products across banks, but only Active products.
+		if doc.doctype == "A2C Loan Product":
+			return doc.get("status") == "Active"
 		return True
 
 	# Mirror of the query hooks above, for single-doc reads (get_doc, has_permission).

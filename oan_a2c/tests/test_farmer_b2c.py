@@ -565,6 +565,37 @@ class TestCatalogLimits(unittest.TestCase):
 			self.assertIn("id", t)
 			self.assertIn("name", t)
 
+	def test_facets_always_carry_a_tenures_list(self):
+		"""The sidebar reads `tenures` unconditionally; dropping it crashed the page.
+
+		It is also the data the tenure chips are built from -- `tenure_range` is the
+		schema's 1..1200 validation span, which is not something to render chips
+		inside. The values must be real tenures, sorted, with no blanks.
+		"""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import get_catalog_facets, list_catalog
+
+		frappe.set_user("Administrator")
+		data = get_catalog_facets()["data"]
+
+		self.assertIn("tenures", data)
+		tenures = data["tenures"]
+		self.assertIsInstance(tenures, list)
+		self.assertTrue(all(isinstance(t, int) and t > 0 for t in tenures))
+		self.assertEqual(tenures, sorted(tenures))
+		self.assertEqual(len(tenures), len(set(tenures)))
+
+		# Every offered tenure has to return something -- that is the whole contract
+		# of a facet, and ListCatalogSchema takes it as a min/max span.
+		for months in tenures:
+			page = list_catalog(min_tenure_months=months, max_tenure_months=months)
+			self.assertEqual(page["status"], "success")
+			self.assertTrue(
+				page["data"]["products"],
+				f"tenure facet {months} is offered but matches no product",
+			)
+
 	def test_product_schema_rejects_values_beyond_the_published_bounds(self):
 		from pydantic import ValidationError
 
@@ -695,3 +726,182 @@ class TestFarmerProfileAndConsent(FarmerB2CFixtures):
 		self.assertEqual(res["status"], "error")
 		self.assertEqual(res.get("code"), "VALIDATION_ERROR")
 		self.assertIn("lead_id is required", res.get("message", "").lower())
+
+	def test_dev_agent_can_submit_application(self):
+		"""Development Agent can call submit_application to submit an Active application."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.applications import submit_application
+
+		frappe.set_user("Administrator")
+		cr_approved = frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"farmer": "openg2p-id-dev-sub",
+				"farmer_fayda_id": f"fayda-dev-sub-{self.h}",
+				"status": "Approved",
+				"owner": self.dev_agent,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		app = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Agent",
+				"farmer_profile": self.profile_a.name,
+				"bank": self.bank,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 200,
+				"loan_amount": 200,
+				"consent_id": cr_approved.name,
+				"status": "Active",
+				"current_step": 1,
+				"first_name": "DevSubmitted",
+				"last_name": "DevTest",
+				"phone_number": "+251911999888",
+			}
+		).insert(ignore_permissions=True)
+
+		frappe.set_user(self.dev_agent)
+		res = submit_application(application_id=app.name)
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(frappe.db.get_value("A2C Loan Application", app.name, "status"), "In Transition")
+
+
+class TestProductDetailPermissions(FarmerB2CFixtures):
+	"""Test get_product and catalog permissions for Farmer and Development Agent."""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		import frappe
+
+		cls.inactive_prod = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"InactiveProd-{cls.h}",
+				"bank": cls.bank,
+				"min_interest_rate": 5,
+				"max_amount": 1000,
+				"tenure_months": 12,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", cls.inactive_prod.name, "status", "Pending Approval")
+
+	def test_farmer_can_call_get_product_for_active_product(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		frappe.set_user(self.farmer_a)
+		res = get_product(product_id=self.prod_1.name)
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(res["data"]["product"]["name"], self.prod_1.name)
+
+	def test_farmer_cannot_call_get_product_for_inactive_product(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		frappe.set_user(self.farmer_a)
+		res = get_product(product_id=self.inactive_prod.name)
+		self.assertEqual(res["status"], "error")
+
+	def test_dev_agent_can_call_get_product_for_active_product(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		frappe.set_user(self.dev_agent)
+		res = get_product(product_id=self.prod_1.name)
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(res["data"]["product"]["name"], self.prod_1.name)
+
+	def test_dev_agent_cannot_call_get_product_for_inactive_product(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		frappe.set_user(self.dev_agent)
+		res = get_product(product_id=self.inactive_prod.name)
+		self.assertEqual(res["status"], "error")
+
+	def test_dev_agent_query_loan_products_only_returns_active(self):
+		import frappe
+
+		frappe.set_user(self.dev_agent)
+		visible = frappe.get_list("A2C Loan Product", pluck="name")
+		self.assertIn(self.prod_1.name, visible)
+		self.assertNotIn(self.inactive_prod.name, visible)
+
+	def test_bank_agent_catalog_is_scoped_to_own_bank(self):
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		other_bank = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"bank_name": f"OtherBank-{self.h}",
+				"bank_code": f"OtherBank-{self.h}",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Participating Bank", other_bank.name, "status", "Active")
+
+		other_prod = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"OtherProd-{self.h}",
+				"bank": other_bank.name,
+				"min_interest_rate": 5,
+				"max_amount": 1000,
+				"tenure_months": 12,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", other_prod.name, "status", "Active")
+
+		frappe.set_user(self.bank_agent)
+		catalog_res = list_catalog(limit=50, start=0)
+		products = catalog_res["data"]["products"]
+		product_names = [p["name"] for p in products]
+
+		self.assertIn(self.prod_1.name, product_names)
+		self.assertNotIn(other_prod.name, product_names)
+		self.assertTrue(all("applications_count" in p for p in products))
+		self.assertTrue(all("category" in p for p in products))
+
+		frappe.set_user(self.farmer_a)
+		farmer_catalog = list_catalog(limit=50, start=0)["data"]["products"]
+		self.assertTrue(all("applications_count" not in p for p in farmer_catalog))
+		self.assertTrue(all(p.get("status") == "Active" for p in farmer_catalog))
+		self.assertTrue(all("category" in p for p in farmer_catalog))
+
+	def test_bank_agent_cannot_call_get_product_for_another_bank(self):
+		import frappe
+
+		from oan_a2c.api.v1.seller.loan_products import get_product
+
+		other_bank = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"bank_name": f"OtherBank2-{self.h}",
+				"bank_code": f"OtherBank2-{self.h}",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Participating Bank", other_bank.name, "status", "Active")
+
+		other_prod = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"OtherProd2-{self.h}",
+				"bank": other_bank.name,
+				"min_interest_rate": 5,
+				"max_amount": 1000,
+				"tenure_months": 12,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", other_prod.name, "status", "Active")
+
+		frappe.set_user(self.bank_agent)
+		res = get_product(product_id=other_prod.name)
+		self.assertEqual(res["status"], "error")

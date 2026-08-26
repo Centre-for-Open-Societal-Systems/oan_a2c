@@ -30,6 +30,11 @@ class A2CLoanStatusStage(Document):
 		if not self.bank:
 			frappe.throw(_("Bank is required for a Loan Status Stage"))
 
+	def on_update(self):
+		from oan_a2c.a2c_marketplace.stages import invalidate_stage_map_cache
+
+		invalidate_stage_map_cache(self.bank)
+
 	def on_trash(self):
 		# Prevent deletion if any Loan Application is currently using this stage
 		count = frappe.db.count("A2C Loan Application", {"stage_id": self.stage_id, "bank": self.bank})
@@ -39,3 +44,7 @@ class A2CLoanStatusStage(Document):
 					self.label, count
 				)
 			)
+
+		from oan_a2c.a2c_marketplace.stages import invalidate_stage_map_cache
+
+		invalidate_stage_map_cache(self.bank)

@@ -97,6 +97,59 @@ silently. Same rule inbound: the webhook matches `external_code`, never the labe
 
 The API returns both — a stable id integrations bind to, and a label they display.
 
+### The exposure rule
+
+**The archetype is internal. It never leaves the backend.**
+
+Every consumer reads stages — not just banks. A farmer checking their application, a
+Development Agent working the CRM pipeline, and a Bank Agent updating a loan all want to
+see `Verified`, never `In Transition`. So the archetype is not a display vocabulary for
+_anyone_; it is machinery for `docstatus`, workflow gating, permission gates, and volume
+semantics.
+
+| Layer                      | Where it may appear                                                                                                                                                     |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Archetype (`status`)       | Backend only: permission queries, workflow transitions, stats bucketing, guards.                                                                                        |
+| Stage (`stage_label`)      | Every consumer-facing response and filter. This is what `status` means to an API caller.                                                                                |
+| Archetype, named in an API | **One exception:** the stage-configuration endpoints in `api/v1/seller/loan_stages.py`, where the archetype is the actual subject matter. Bank Admin / Bank Agent only. |
+
+Three consequences follow:
+
+1. **`status` in an API response is the bank's stage label**, resolved as
+   `stage_label or status`. The fallback exists only because `Active` has no stage row
+   behind it (see below) — and `Active` is itself a name banks and farmers recognise, so
+   nothing archetype-shaped leaks through it.
+
+2. **`status` in an API filter is a stage label, `stage_id`, or `external_code`** — plus
+   the literal `Active`. It is resolved per caller, because the valid set is tenant data,
+   not a static list. Cross-bank callers (Development Agent, a farmer with applications at
+   several banks) match on `label` as well, since two banks' `Verified` stages are
+   different rows with different `stage_id`s. Label matching is acceptable for a _filter_,
+   which is a search convenience; it is not acceptable for a _write_, which is a durable
+   binding — the identifier rule above still governs that path.
+
+3. **Terminality is exposed as a flag, not a name.** Consumers need to know when an
+   application is finished, and telling them to hardcode "Disbursed and Rejected are
+   terminal" would reintroduce exactly the coupling this design removes. So responses
+   carry `is_terminal` and `is_successful` — derived from the archetype, without naming
+   it — alongside the stage `sequence`.
+
+### Why `Active` has no stage row
+
+`Active` is the farmer's private pre-submission state. It is deliberately left as an
+archetype with no backing stage: banks must not be able to rename or delete it, and no
+bank pipeline begins before submission. The cost is a `stage_label or status` fallback,
+which is confined to one helper in `a2c_marketplace/stages.py` rather than repeated at
+each call site.
+
+The one place this costs something real: a single request that filters on `Active` _and_
+on stage names needs an OR across two columns, and Frappe's `get_list` allows only one
+`or_filters` group — already spent on `search_query` in `get_all_loans`. That exact
+combination is rejected with a 400. It is reachable only by Development Agents and Admins
+(bank users cannot see `Active` at all, per `permissions.py`) and only alongside a text
+search. Seeding `Active` as a locked, platform-owned stage row would remove the
+limitation if it ever becomes a real complaint.
+
 ---
 
 ## 3. Why no separate `outcome` field
@@ -128,30 +181,99 @@ and outcome is still empty — and docstatus 1 blocks most further writes.
 
 ## 5. Status of implementation
 
-Codex implemented steps 1–6 of the _previous_ plan. Where that leaves us:
+**The write path is two-layer and correct. Every read path is one-layer and shows the
+wrong layer.**
 
-| Previous step                                     | State                                                                      |
-| ------------------------------------------------- | -------------------------------------------------------------------------- |
-| 1. Transitions read from the Workflow doc, cached | **Keep.** Still correct and needed.                                        |
-| 2. 403 vs 400 error split                         | **Keep.** Independent of layering.                                         |
-| 3. Role gate on `update_loan_status`              | **Keep.** Independent of layering.                                         |
-| 4. Semantic tags (`is_pending`, `is_success`, …)  | **Drop.** Broken _and_ superseded — see below.                             |
-| 5. Auto-generated Select options                  | **Rework.** Depends which layer `status` shows.                            |
-| 6. Runtime pydantic validator                     | **Rework.** Must validate against the bank's stages, not archetype states. |
+Built and working:
 
-**Step 4 was broken on delivery.** Six tag keys were written into
-`fixtures/workflow.json` with no custom fields backing them on
-`Workflow Document State`. Frappe drops unknown keys on fixture import, so every tag
-would read `False`, and `permissions.py` would `return "1=0"` — **locking every bank
-user out of every loan application**. It never surfaced because `bench migrate` could
-not run in this environment.
+- The archetype Workflow, its transitions, and the `workflow_state → status` mirror in
+  `apply_status_transition` (`api/utils.py`).
+- `A2C Loan Status Stage`, bank-scoped via `BANK_SCOPED` in `hooks.py`, with the default
+  six-stage pipeline seeded per bank (`patches/seed_default_stages_for_existing_banks.py`).
+- `update_loan_status` (`api/v1/loan_applications.py`) and the farmer's
+  `submit_application` (`api/v1/farmer/applications.py`), both of which resolve and write
+  `stage_id` / `stage_label` alongside the archetype transition.
+- `get_stages` / `add_stage` / `sync_stages` (`api/v1/seller/loan_stages.py`).
 
-It is also unnecessary under the new design: with five fixed, platform-owned archetype
-names, code can compare names directly. The tags existed only because the state set was
-editable.
+Not yet built — the read path. Every consumer-facing endpoint returns the archetype and
+omits the stage:
+
+| Site                                                           | Problem                                                                                               |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `farmer/applications.py` list + detail                         | returns `doc.status` — a farmer sees `In Transition`, never `Verified`                                |
+| `farmer/dashboard.py` recent applications                      | same                                                                                                  |
+| `loan_applications.py` `get_all_loans`                         | the CRM list for Dev Agents and bank users selects no stage fields at all                             |
+| `loan_applications.py` `get_full_profile`                      | returns the archetype                                                                                 |
+| `loan_applications.py` `get_loan_metadata`                     | the status dropdown is read from the archetype Select options                                         |
+| `GetAllLoansSchema.validate_statuses` + `get_all_loans` filter | validate against `get_workflow_state_names()`, so `status=Verified` **400s**                          |
+| `farmer/applications.py` status filter                         | passes the value straight at the archetype column — `status=Verified` returns **zero rows, silently** |
+| `a2c_loan_application.py` `on_update`                          | notification subject reads `"… is now In Transition"`                                                 |
+
+### The work
+
+**1 — Shared helpers in `a2c_marketplace/stages.py`.** All display and filter logic lands
+here so no endpoint reimplements it: `get_stage_map(bank)` (cached, invalidated from the
+stage doctype's `on_update`/`on_trash`), `status_payload(row)` returning
+`{status, stage_id, sequence, is_terminal, is_successful}`, a batched
+`build_status_payloads(rows)` for list endpoints, and `resolve_status_filter(value, user)`
+reusing `parse_multi_value` from `api/utils.py`. `status_payload` is the single
+replacement for the six `stage_label or status` coalesces currently spread across
+`loan_applications.py` and `stats_cache.py`.
+
+**2 — Read endpoints return the stage.** Apply the helpers at each site above; every list
+query adds `stage_id`, `stage_label`, `bank` to its `fields`. Internal guards
+(`doc.status != "Active"` in the farmer endpoints, the permission gates in
+`permissions.py`) keep comparing the archetype — they are backend machinery.
+
+**3 — Filters and validation.** Delete `GetAllLoansSchema.validate_statuses`; the valid
+set is per-caller tenant data, not a static list, so validation moves to
+`resolve_status_filter` at request time. Same replacement in the farmer list endpoint,
+which currently fails silently.
+
+**4 — `get_loan_metadata` returns the caller's stages**, ordered by `sequence`, plus
+`Active`: their own bank's for a bank user, the union of labels for a bank-unbound caller,
+the union across their banks for a farmer. Returning `is_terminal` and `sequence` per entry
+lets the frontend build both a dropdown and pipeline columns from one call.
+
+**5 — Summary and dashboard buckets.** `get_loan_summary` drops `by_status` and zero-fills
+`stages` from the caller's stage set, so kanban and pipeline views get complete columns.
+`stats_cache`'s stored `stage_counts` map is already keyed on `stage_label or status` and
+needs no change; zero-fill at read time in `get_dashboard_stats`. `_EXCLUDED_APPLICATION_STATUSES`
+and `_PENDING_APPLICATION_STATUS` keep comparing the archetype — that is internal semantics,
+and `test_stats_cache.py` asserts they stay valid Select options.
+
+**6 — Notifications.** The `on_update` subject must use the stage label. It currently fires
+on `has_value_changed("status")`, so a stage move _within_ one archetype — the common case,
+since four of the six default stages are `In Transition` — sends nothing. Fire on a
+`stage_label` change too.
+
+### Known debt, deliberately not in this work
+
+- `resolve_bank_stage` accepts a **label** as a write identifier, contradicting §2's
+  identifier rule. Filters may match on label; writes should not.
+- `sync_stages` does insert, update, rename, reorder and delete-by-omission in one call,
+  plus a raw SQL label fan-out, plus unreachable `hasattr`/dict branches (its inputs are
+  always pydantic models). Delete-by-omission is a footgun: a client that omits a stage
+  triggers its deletion.
+- `status_has_tag` / `workflow_state_has_tag` in `api/utils.py` are leftovers from the
+  abandoned tag design below, with no live caller.
 
 **Note:** `ruff check` passes on files that fail `py_compile`. It was verified passing
 on two files containing Python 2 `except A, B:` syntax. Lint is not a syntax gate here.
+
+### Historical: why the semantic-tag approach was dropped
+
+An earlier iteration tagged workflow states with `is_pending` / `is_success` / etc. so
+code could ask about meaning rather than name. Six tag keys were written into
+`fixtures/workflow.json` with no custom fields backing them on `Workflow Document State`.
+Frappe drops unknown keys on fixture import, so every tag would have read `False`, and
+`permissions.py` would `return "1=0"` — **locking every bank user out of every loan
+application**. It never surfaced because `bench migrate` could not run in that environment.
+
+It is also unnecessary under this design: with five fixed, platform-owned archetype names,
+code can compare names directly. The tags existed only because the state set was editable —
+and under the two-layer model, the editable set is the stage layer, which platform code
+never compares against by name.
 
 ---
 
@@ -172,16 +294,28 @@ on two files containing Python 2 `except A, B:` syntax. Lint is not a syntax gat
    putting resolution behind one `resolve_pipeline(application)` function so a
    product-level override can be added later without touching call sites. **Undecided.**
 
-4. **Which layer does the API's `status` field show?** The bank label is what external
-   callers will treat as "the real status", but platform consumers (farmer app,
-   dashboards) need the archetype. Likely both fields, always. **Leaning: return both.**
+4. **Which layer does the API's `status` field show?** ~~Likely both fields, always.~~
+   **Resolved: the stage, everywhere.** The premise was wrong — platform consumers do
+   _not_ need the archetype. The farmer app and the CRM want `Verified` just as much as a
+   bank does; nobody outside the backend wants `In Transition`. Returning both would have
+   left the archetype in every payload for a need that does not exist. What consumers
+   actually need from the archetype is terminality, and that ships as `is_terminal` /
+   `is_successful` flags instead. See §2, _The exposure rule_.
 
-5. **Existing data migration.** Current rows hold `Draft` / `Processing` / `Approved` /
-   `Rejected`. Mapping to the archetype is straightforward
-   (`Draft→Active`, `Processing→In Transition`, `Approved→Completed`,
-   `Rejected→Rejected`), but `Approved` rows are currently docstatus 1 and
-   `Completed` is also docstatus 1 — so no un-submit is needed. **Verify** no row
-   relies on the old `Approved`-is-not-terminal assumption before migrating.
+5. **Existing data migration.** **Resolved.** `Draft` / `Processing` / `Approved` /
+   `Rejected` were mapped onto the archetype (`Draft→Active`, `Processing→In Transition`,
+   `Approved→Completed`, `Rejected→Rejected`) with stage backfill, via the legacy-status
+   map in `patches/create_lead_loan_workflows.py` and
+   `patches/backfill_processing_loan_stage.py`. `Approved` and `Completed` are both
+   docstatus 1, so no un-submit was needed.
+
+6. **Cross-bank stage filtering.** **Resolved, with a caveat.** Bank A's `Verified` and
+   Bank B's `Verified` are different rows with different `stage_id`s, so a Development
+   Agent filtering across banks has no per-bank identifier to bind to. Filters therefore
+   match on `label` in addition to `stage_id` and `external_code` — acceptable because a
+   filter is a search convenience, not a durable binding. The alternative considered was
+   promoting `external_code` to a platform-controlled cross-bank vocabulary; that is left
+   for the CRM inbound direction it was designed for.
 
 ---
 

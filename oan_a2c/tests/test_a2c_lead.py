@@ -395,6 +395,65 @@ class TestLeadListAPI(unittest.TestCase):
 		for lead in res_unassigned["data"]:
 			self.assertFalse(lead["assigned_to"])
 
+	def test_get_leads_end_date_includes_the_last_day(self):
+		"""A date-only end bound must cover the whole day, not stop at its midnight.
+
+		`between` expands a bare date to end-of-day itself, but the single-sided `<=`
+		branch did not -- so filtering "up to today" excluded everything created today.
+		"""
+		from frappe.utils import add_days, nowdate
+
+		from oan_a2c.api.v1.leads import get_leads
+
+		today = nowdate()
+
+		res = get_leads(end_date=today, search_query="+251922000")
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(res["pagination"]["total"], 5)
+
+		# The bound is still a bound: yesterday must exclude leads created today.
+		res_before = get_leads(end_date=add_days(today, -1), search_query="+251922000")
+		self.assertEqual(res_before["pagination"]["total"], 0)
+
+	def test_get_leads_returns_location_from_farmer_profile(self):
+		"""A2C Lead stores no location; it comes from the linked farmer profile.
+
+		A lead that has not been profiled yet has no location at all, which has to
+		read as absent rather than as a blank region.
+		"""
+		from oan_a2c.api.v1.leads import get_leads
+
+		profile = frappe.get_doc(
+			{
+				"doctype": "A2C Farmer Profile",
+				"first_name": "LOC",
+				"last_name": "Test",
+				"phone_number": "+251922000001",
+				"region": "Oromia",
+				"woreda": "Adama",
+				"lead_id": self.leads[0],
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.set_value("A2C Lead", self.leads[0], "farmer_profile", profile.name)
+		frappe.db.commit()
+
+		try:
+			res = get_leads(search_query="+251922000")
+			self.assertEqual(res["status"], "success")
+
+			by_name = {lead["name"]: lead for lead in res["data"]}
+			profiled = by_name[self.leads[0]]
+			self.assertEqual(profiled["region"], "Oromia")
+			self.assertEqual(profiled["woreda"], "Adama")
+
+			unprofiled = by_name[self.leads[1]]
+			self.assertIsNone(unprofiled["region"])
+			self.assertIsNone(unprofiled["woreda"])
+		finally:
+			frappe.db.set_value("A2C Lead", self.leads[0], "farmer_profile", None)
+			frappe.delete_doc("A2C Farmer Profile", profile.name, ignore_permissions=True, force=True)
+			frappe.db.commit()
+
 	def test_get_leads_invalid_filters_throw(self):
 		"""Verifies that passing invalid status or lead_source values returns a validation error."""
 		from oan_a2c.api.v1.leads import get_leads

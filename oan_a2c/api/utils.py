@@ -181,30 +181,6 @@ def workflow_state_is_initial(doctype: str, state: str | None) -> bool:
 	return bool(state) and state == get_workflow_initial_state(doctype)
 
 
-def workflow_state_has_tag(doctype: str, state: str | None, tag: str) -> bool:
-	if not state:
-		return False
-	workflow = get_workflow_definition(doctype)
-	if not workflow:
-		return False
-	for row in workflow["states"]:
-		if row.get("state") == state:
-			return bool(row.get(tag))
-	return False
-
-
-def status_has_tag(doctype: str, status: str | None, tag: str) -> bool:
-	"""Alias for workflow_state_has_tag, used by call sites that talk about status."""
-	return workflow_state_has_tag(doctype, status, tag)
-
-
-def get_workflow_states_with_tag(doctype: str, tag: str) -> tuple[str, ...]:
-	workflow = get_workflow_definition(doctype)
-	if not workflow:
-		return ()
-	return tuple(row["state"] for row in workflow["states"] if row.get(tag))
-
-
 def resolve_workflow_transition(doc, target_status: str, roles: list[str] | None = None) -> dict:
 	"""Resolve a workflow transition for `doc` toward `target_status`.
 

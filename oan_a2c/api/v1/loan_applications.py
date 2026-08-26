@@ -3,20 +3,26 @@ from typing import Literal
 import frappe
 from frappe import _
 from frappe.utils import cint, flt, sanitize_html
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from oan_a2c.a2c_marketplace.doctype_schemas import MAX_LOAN_AMOUNT, MAX_QUERY_AMOUNT
 from oan_a2c.a2c_marketplace.permissions import get_user_farmer_profile, is_farmer
 from oan_a2c.a2c_marketplace.roles import ADMIN_ROLE, BANK_ADMIN_ROLE, BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
+from oan_a2c.a2c_marketplace.stages import (
+	SUCCESSFUL_ARCHETYPES,
+	TERMINAL_ARCHETYPES,
+	build_status_payloads,
+	get_visible_stages,
+	resolve_status_filter,
+	status_payload,
+)
 from oan_a2c.api.utils import (
 	SafeDate,
 	SafeEmail,
 	apply_status_transition,
-	get_workflow_state_names,
 	handle_api_errors,
 	parse_multi_value,
 	require_role,
-	status_has_tag,
 	success_response,
 	to_tz_aware_iso,
 	validate_request,
@@ -45,16 +51,9 @@ class LeadIDSchema(BaseModel):
 
 
 class GetAllLoansSchema(BaseModel):
-	# Filters on the bank pipeline stage (A2C Loan Status Stage.stage_id), not the
-	# archetype workflow status. Stages are defined per-bank, so unlike `archetype`
-	# below there is no single global allowed-list to validate against here -- a
-	# stage_id that doesn't exist (or belongs to another bank) just matches zero
-	# rows, same as any other free-text filter (e.g. loan_type).
+	# Filters on the bank pipeline stage (label, stage_id, or external_code) or 'Active'.
+	# Resolved per caller in get_all_loans via resolve_status_filter.
 	status: str | None = Field(None, max_length=140)
-	# Filters on the coarse workflow archetype (Active / In Transition / Completed /
-	# Rejected / Cancelled). Separate from `status` above -- use this when the caller
-	# wants the bucket, not the bank-specific pipeline stage.
-	archetype: str | None = Field(None, max_length=140)
 	# MAX_QUERY_AMOUNT, not MAX_LOAN_AMOUNT: these are search bounds over existing
 	# applications, and api/v1/leads.py accepts credit-information amounts far above
 	# the catalogue cap. Capping the filter lower would hide those rows from search.
@@ -62,7 +61,12 @@ class GetAllLoansSchema(BaseModel):
 	min_loan_amount: float | None = Field(None, ge=0, le=MAX_QUERY_AMOUNT)
 	max_loan_amount: float | None = Field(None, ge=0, le=MAX_QUERY_AMOUNT)
 	loan_type: str | None = Field(None, max_length=140)
-	location: str | None = Field(None, max_length=140)
+	# Location is three Data fields on the application, not one `location` column.
+	# A `location` filter used to be accepted here and put a nonexistent column into
+	# the WHERE clause, which failed the entire query rather than being ignored.
+	region: str | None = Field(None, max_length=140)
+	woreda: str | None = Field(None, max_length=140)
+	kebele: str | None = Field(None, max_length=140)
 	phone_number: str | None = Field(None, max_length=50)
 	loan_officer: str | None = Field(None, max_length=140)
 	from_date: SafeDate = None
@@ -80,21 +84,6 @@ class GetAllLoansSchema(BaseModel):
 			if self.min_loan_amount > self.max_loan_amount:
 				raise ValueError("min_loan_amount cannot be greater than max_loan_amount.")
 		return self
-
-	@field_validator("archetype")
-	@classmethod
-	def validate_archetypes(cls, value: str | None):
-		if value is None:
-			return value
-		allowed_statuses = get_workflow_state_names("A2C Loan Application")
-		if allowed_statuses:
-			requested = parse_multi_value(value)
-			invalid = [status for status in requested if status not in allowed_statuses]
-			if invalid:
-				raise ValueError(
-					"Invalid value '{0}'. Allowed values: {1}".format(invalid[0], ", ".join(allowed_statuses))
-				)
-		return value
 
 
 class BrowseProductsSchema(BaseModel):
@@ -326,6 +315,7 @@ def get_full_profile(**kwargs):
 	application_id = kwargs.get("application_id")
 	frappe.has_permission("A2C Loan Application", "read", doc=application_id, throw=True)
 	doc = _get_app(application_id)
+	status_info = status_payload(doc)
 
 	data = {
 		"application_id": doc.name,
@@ -346,7 +336,11 @@ def get_full_profile(**kwargs):
 		"loan_product_name": doc.loan_product_name,
 		"loan_amount": flt(doc.loan_amount),
 		"loan_reason": doc.loan_reason,
-		"status": doc.status,
+		"status": status_info["status"],
+		"stage_id": status_info["stage_id"],
+		"sequence": status_info["sequence"],
+		"is_terminal": status_info["is_terminal"],
+		"is_successful": status_info["is_successful"],
 		"current_step": cint(doc.current_step),
 		"loan_officer": doc.loan_officer,
 		"creation": to_tz_aware_iso(doc.creation),
@@ -379,6 +373,7 @@ def get_full_profile(**kwargs):
 def get_loan_summary():
 	frappe.has_permission("A2C Loan Application", "read", throw=True)
 
+	user = frappe.session.user
 	meta = frappe.get_meta("A2C Loan Application")
 	has_loan_officer = meta.has_field("loan_officer")
 
@@ -392,33 +387,37 @@ def get_loan_summary():
 		"A2C Loan Application", fields=fields, group_by=group_by, ignore_permissions=False
 	)
 
-	from oan_a2c.a2c_marketplace.stages import ARCHETYPE_STATES
+	# Zero-fill from the caller's visible stages so an empty stage reads 0 rather than
+	# going missing from the payload and rendering as a dash.
+	visible_stages = get_visible_stages(user)
+	summary = {"total": 0, "stages": dict.fromkeys(["Active", *(s["label"] for s in visible_stages)], 0)}
 
-	# Two buckets, deliberately. `stages` is what the owning bank calls each step and
-	# differs between tenants, so it cannot be keyed on by a caller that spans banks.
-	# `by_status` is the archetype -- platform constants -- and is seeded with every
-	# state so an absent one reads 0 rather than going missing from the payload and
-	# rendering as a dash.
-	summary = {"total": 0, "stages": {}, "by_status": dict.fromkeys(ARCHETYPE_STATES, 0)}
+	# Legacy rows sit on In Transition with no stage stamped on them. Name them after
+	# the entry stage, same as status_payload does, so the archetype never leaks into
+	# a bucket key. Counts are grouped across banks here, so this can only be the
+	# caller's own entry stage when they are bank-scoped -- which is the case that
+	# renders a pipeline.
+	#
+	# None when no In Transition stage is visible. Those rows then land in `total` but
+	# in no bucket: a breakdown that sums to less than the total is a visible symptom
+	# of a bank with no pipeline, where inventing a label would hide it.
+	entry_label = next((s["label"] for s in visible_stages if s["archetype_state"] == "In Transition"), None)
+
 	my_applications = 0
 	unassigned = 0
 
-	user = frappe.session.user
 	for row in counts:
 		count = row.get("COUNT(*)", 0)
 		summary["total"] += count
 
 		# If the bank has defined a stage, use it, else fallback to the archetype status
 		stage_name = row.stage_label or row.status
-		if stage_name not in summary["stages"]:
-			summary["stages"][stage_name] = 0
-		summary["stages"][stage_name] += count
-
-		# Rows carrying a status from before the archetype refactor would otherwise
-		# add a key nobody expects, so unknown values are counted in the total and
-		# the stage breakdown but never invent a new archetype bucket.
-		if row.status in summary["by_status"]:
-			summary["by_status"][row.status] += count
+		if stage_name == "In Transition":
+			stage_name = entry_label
+		if stage_name:
+			if stage_name not in summary["stages"]:
+				summary["stages"][stage_name] = 0
+			summary["stages"][stage_name] += count
 
 		if has_loan_officer:
 			if row.loan_officer == user:
@@ -442,14 +441,29 @@ def get_loan_metadata():
 	"""
 	frappe.has_permission("A2C Loan Application", "read", throw=True)
 
-	meta = frappe.get_meta("A2C Loan Application")
-	status_field = meta.get_field("status")
+	# "Active" is the pre-submission archetype and has no stage behind it, so it is
+	# prepended by hand; everything after it is the caller's own pipeline.
+	status_list = [
+		{
+			"status": "Active",
+			"stage_id": None,
+			"sequence": None,
+			"is_terminal": False,
+			"is_successful": False,
+		}
+	]
+	for stage in get_visible_stages():
+		status_list.append(
+			{
+				"status": stage["label"],
+				"stage_id": stage["stage_id"],
+				"sequence": stage["sequence"],
+				"is_terminal": stage["archetype_state"] in TERMINAL_ARCHETYPES,
+				"is_successful": stage["archetype_state"] in SUCCESSFUL_ARCHETYPES,
+			}
+		)
 
-	statuses = (
-		[s for s in status_field.options.split("\n") if s] if status_field and status_field.options else []
-	)
-
-	return success_response(data={"statuses": statuses}, message="Loan metadata retrieved successfully")
+	return success_response(data={"statuses": status_list}, message="Loan metadata retrieved successfully")
 
 
 @frappe.whitelist(allow_guest=False)
@@ -462,12 +476,13 @@ def get_all_loans(**kwargs):
 	frappe.has_permission("A2C Loan Application", "read", throw=True)
 
 	status = kwargs.get("status")
-	archetype = kwargs.get("archetype")
 	loan_amount = kwargs.get("loan_amount")
 	min_loan_amount = kwargs.get("min_loan_amount")
 	max_loan_amount = kwargs.get("max_loan_amount")
 	loan_type = kwargs.get("loan_type")
-	location = kwargs.get("location")
+	region = kwargs.get("region")
+	woreda = kwargs.get("woreda")
+	kebele = kwargs.get("kebele")
 	phone_number = kwargs.get("phone_number")
 	from_date = kwargs.get("from_date")
 	to_date = kwargs.get("to_date")
@@ -492,17 +507,7 @@ def get_all_loans(**kwargs):
 	filters = {}
 
 	if status:
-		# Free-text, no allowed-list: stages are per-bank, so an unknown/foreign
-		# stage_id just matches zero rows rather than raising, same as loan_type.
-		valid_stages = parse_multi_value(status)
-		if valid_stages:
-			filters["stage_id"] = ["in", valid_stages]
-
-	if archetype:
-		allowed_archetypes = get_workflow_state_names("A2C Loan Application")
-		valid_archetypes = parse_multi_value(archetype, allowed_archetypes)
-		if valid_archetypes:
-			filters["status"] = ["in", valid_archetypes]
+		filters.update(resolve_status_filter(status))
 
 	if lead_id:
 		filters["lead_id"] = lead_id
@@ -523,8 +528,11 @@ def get_all_loans(**kwargs):
 		if valid_loan_types:
 			filters["loan_type"] = ["in", valid_loan_types]
 
-	if location:
-		filters["location"] = ("like", f"{location}%")
+	# One field per level of the hierarchy, each ANDed. A prefix match keeps this
+	# usable from a plain text box while still hitting an index.
+	for location_field, location_value in (("region", region), ("woreda", woreda), ("kebele", kebele)):
+		if location_value:
+			filters[location_field] = ("like", f"{location_value}%")
 
 	if phone_number:
 		filters["phone_number"] = ("like", f"{phone_number}%")
@@ -580,11 +588,16 @@ def get_all_loans(**kwargs):
 			"stage_label",
 			"current_step as step",
 			"lead_id",
+			"first_name",
+			"last_name",
 			"loan_amount",
 			"loan_type",
 			"loan_product",
 			"loan_product_name",
-			"location",
+			"bank",
+			"region",
+			"woreda",
+			"kebele",
 			"phone_number",
 			"creation",
 		],
@@ -594,6 +607,7 @@ def get_all_loans(**kwargs):
 		ignore_permissions=False,
 	)
 
+	build_status_payloads(records)
 	for r in records:
 		r["loan_amount"] = float(r["loan_amount"]) if r.get("loan_amount") else 0.0
 		r["step"] = cint(r.get("step"))
@@ -911,13 +925,18 @@ def create_loan_application(**kwargs):
 	# update_lead_status. There is no Active -> Processed shortcut, so loan creation does not
 	# move the lead; the client applies the workflow actions explicitly.
 
+	status_info = status_payload(loan_app)
 	return success_response(
 		data={
 			"application_id": loan_app.name,
 			"lead_status": lead_doc.status,
 			"application": {
 				"name": loan_app.name,
-				"status": loan_app.status,
+				"status": status_info["status"],
+				"stage_id": status_info["stage_id"],
+				"sequence": status_info["sequence"],
+				"is_terminal": status_info["is_terminal"],
+				"is_successful": status_info["is_successful"],
 				"first_name": loan_app.first_name,
 				"last_name": loan_app.last_name,
 				"loan_type": loan_app.loan_type,

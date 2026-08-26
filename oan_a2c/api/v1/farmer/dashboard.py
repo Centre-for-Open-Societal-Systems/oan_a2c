@@ -1,6 +1,7 @@
 import frappe
 
 from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
+from oan_a2c.a2c_marketplace.stages import build_status_payloads
 from oan_a2c.api.utils import (
 	handle_api_errors,
 	require_role,
@@ -51,10 +52,20 @@ def get_dashboard_summary(**kwargs):
 	# those, and disagree with the My Applications list.
 	recent = frappe.get_list(
 		"A2C Loan Application",
-		fields=["name", "bank", "loan_product_name", "requested_amount", "status", "creation"],
+		fields=[
+			"name",
+			"bank",
+			"loan_product_name",
+			"requested_amount",
+			"status",
+			"stage_id",
+			"stage_label",
+			"creation",
+		],
 		limit_page_length=5,
 		order_by="creation desc",
 	)
+	build_status_payloads(recent)
 	recent_applications = [
 		{
 			"application_id": app.name,
@@ -62,6 +73,10 @@ def get_dashboard_summary(**kwargs):
 			"loan_product_name": app.loan_product_name,
 			"requested_amount": app.requested_amount,
 			"status": app.status,
+			"stage_id": app.stage_id,
+			"sequence": app.sequence,
+			"is_terminal": app.is_terminal,
+			"is_successful": app.is_successful,
 			"creation": to_tz_aware_iso(app.creation),
 		}
 		for app in recent

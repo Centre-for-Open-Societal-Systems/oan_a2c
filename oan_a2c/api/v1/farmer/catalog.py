@@ -9,6 +9,8 @@ from oan_a2c.a2c_marketplace.doctype_schemas import (
 	MAX_LOAN_AMOUNT,
 	MAX_TENURE_MONTHS,
 )
+from oan_a2c.a2c_marketplace.permissions import get_user_bank, is_platform_admin
+from oan_a2c.a2c_marketplace.roles import BANK_ROLES
 from oan_a2c.api.utils import (
 	handle_api_errors,
 	success_response,
@@ -48,6 +50,7 @@ class FarmerCatalogSchema(BrowseProductsSchema):
 	nothing is worse than no control.
 	"""
 
+	status: str | None = Field(None, max_length=140)
 	category: str | None = Field(None, max_length=140)
 	tag: str | None = Field(None, max_length=140)
 	region: str | None = Field(None, max_length=140)
@@ -163,6 +166,59 @@ def _enrich_products_with_bank_info(products: list[dict]) -> None:
 		p["bank_logo"] = bank_info.logo if bank_info else None
 
 
+def _enrich_products_with_categories(products: list[dict]) -> None:
+	"""Batch resolve category for product rows.
+
+	bank-scope-exempt: A2C Term Relationship is bank-scoped, so get_list returns
+	nothing for a bank-bound farmer. Reading it directly with get_all is safe here
+	because product_names came from a get_list that already applied
+	loan_product_scope_query, so this only decorates rows the caller may see.
+	"""
+	if not products:
+		return
+	product_names = [p["name"] for p in products if p.get("name")]
+	if not product_names:
+		return
+	cat_rows = frappe.get_all(  # bank-scope-exempt: see docstring
+		"A2C Term Relationship",
+		filters={"loan_product": ["in", product_names], "term_type": "Category"},
+		fields=["loan_product", "term_category"],
+	)
+	category_map = {row.loan_product: row.term_category for row in cat_rows if row.term_category}
+
+	for p in products:
+		p["category"] = category_map.get(p.get("name"))
+
+
+def _enrich_products_with_application_counts(products: list[dict]) -> None:
+	"""Batch attach applications_count per product if caller is a bank user or admin."""
+	if not products:
+		return
+	user = frappe.session.user
+	user_roles = set(frappe.get_roles(user))
+	is_bank_user = (
+		bool(user_roles.intersection(BANK_ROLES)) or bool(get_user_bank(user)) or is_platform_admin(user)
+	)
+	if not is_bank_user:
+		return
+
+	product_names = [p["name"] for p in products if p.get("name")]
+	if not product_names:
+		return
+
+	# get_list applies DocPerm and loan_application_scope_query (bank scope)
+	app_counts = frappe.get_list(
+		"A2C Loan Application",
+		filters={"loan_product": ["in", product_names]},
+		fields=["loan_product", {"COUNT": "*"}],
+		group_by="loan_product",
+	)
+	counts_map = {row.loan_product: row.get("COUNT(*)") for row in app_counts}
+
+	for p in products:
+		p["applications_count"] = counts_map.get(p.get("name"), 0)
+
+
 @frappe.whitelist(allow_guest=False)
 @validate_request(FarmerCatalogSchema)
 @handle_api_errors
@@ -175,7 +231,19 @@ def list_catalog(**kwargs):
 	"""
 	frappe.has_permission("A2C Loan Product", "read", throw=True)
 
-	filters = {"status": "Active"}
+	user = frappe.session.user
+	user_roles = set(frappe.get_roles(user))
+	is_bank_user = (
+		bool(user_roles.intersection(BANK_ROLES)) or bool(get_user_bank(user)) or is_platform_admin(user)
+	)
+
+	filters = {}
+	if is_bank_user:
+		if kwargs.get("status"):
+			filters["status"] = kwargs["status"]
+	else:
+		filters["status"] = "Active"
+
 	if kwargs.get("bank"):
 		filters["bank"] = kwargs["bank"]
 
@@ -256,6 +324,7 @@ def list_catalog(**kwargs):
 			"name",
 			"product_name",
 			"slug",
+			"status",
 			"bank",
 			"image as image_url",
 			"min_interest_rate",
@@ -270,6 +339,8 @@ def list_catalog(**kwargs):
 	)
 
 	_enrich_products_with_bank_info(products)
+	_enrich_products_with_categories(products)
+	_enrich_products_with_application_counts(products)
 
 	count_res = frappe.get_list(
 		"A2C Loan Product",
@@ -374,6 +445,7 @@ def get_saved_products(**kwargs):
 				"name",
 				"product_name",
 				"slug",
+				"status",
 				"bank",
 				"image as image_url",
 				"min_interest_rate",
@@ -387,6 +459,8 @@ def get_saved_products(**kwargs):
 		order_map = {name: i for i, name in enumerate(saved_docs)}
 		products.sort(key=lambda p: order_map.get(p.name, 999))
 		_enrich_products_with_bank_info(products)
+		_enrich_products_with_categories(products)
+		_enrich_products_with_application_counts(products)
 
 	pagination = {
 		"page": (start // limit) + 1,
@@ -446,13 +520,45 @@ def get_catalog_facets(**kwargs):
 	)
 	regions = sorted(list({b.registered_region for b in active_banks if b.registered_region}))
 
+	# The tenures actually on offer, not a span the sidebar would have to invent
+	# chips inside. `tenure_months` is one value per product, so the distinct set is
+	# exactly the set of choices that can return something -- which is the rule this
+	# module's ListCatalogSchema docstring states: a control that silently does
+	# nothing is worse than no control.
+	#
+	# get_list, not get_all: A2C Loan Product is bank-scoped, and get_all bypasses
+	# both loan_product_scope_query and DocPerm. Going through get_list means a
+	# farmer's chips come from Active products across every bank, and a bank user's
+	# from their own -- the same rows the list underneath them will contain.
+	#
+	# `status: Active` mirrors list_catalog's own base filter, so the sidebar cannot
+	# offer a tenure that only Draft or Archived products carry.
+	tenures = sorted(
+		{
+			t
+			for t in frappe.get_list(
+				"A2C Loan Product",
+				filters={"status": "Active"},
+				pluck="tenure_months",
+				distinct=True,
+			)
+			if t
+		}
+	)
+
 	return success_response(
 		data={
 			"categories": categories,
 			"tags": tags,
 			"regions": regions,
 			"banks": active_banks,
-			"tenures": [],  # Kept for backward compatibility if frontend maps it
+			# The tenures on offer. This was hardcoded to [] and the sidebar renders its
+			# tenure section only when the list is non-empty, so the control never
+			# appeared; dropping the key outright then crashed the sidebar outright.
+			"tenures": tenures,
+			# The schema's bounds, not the catalog's -- MAX_TENURE_MONTHS is 1200, so
+			# this is a validation range for min_tenure_months / max_tenure_months, not
+			# something to build chips out of. `tenures` above is the data.
 			"tenure_range": {"min": 1, "max": MAX_TENURE_MONTHS},
 			"amount_range": {
 				"min": 0.0,
