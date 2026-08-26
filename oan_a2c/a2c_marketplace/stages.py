@@ -137,11 +137,13 @@ def status_payload(row, stage_map: dict | None = None) -> dict:
 		# stage can sort first and would otherwise label a freshly submitted loan
 		# "Disbursed".
 		#
-		# None when the bank has no In Transition stage at all: the archetype must not
-		# leak, and there is no honest label to substitute. That config also means
-		# get_initial_pipeline_stage returns None, so the write path could never have
-		# stamped a stage here either -- null status is the accurate report.
-		status = _entry_stage_label(stage_map)
+		# Temporary fallback for older legacy/test records where the bank has no In Transition
+		# stage configured so status is never null; will be removed later.
+		status = _entry_stage_label(stage_map) or "Submitted"
+
+	# Fallback for older legacy records where status is null; will be removed later.
+	if not status:
+		status = "Active"
 
 	is_terminal = raw_status in TERMINAL_ARCHETYPES
 	is_successful = raw_status in SUCCESSFUL_ARCHETYPES
