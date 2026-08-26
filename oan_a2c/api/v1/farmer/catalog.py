@@ -9,6 +9,8 @@ from oan_a2c.a2c_marketplace.doctype_schemas import (
 	MAX_LOAN_AMOUNT,
 	MAX_TENURE_MONTHS,
 )
+from oan_a2c.a2c_marketplace.permissions import get_user_bank, is_platform_admin
+from oan_a2c.a2c_marketplace.roles import BANK_ROLES
 from oan_a2c.api.utils import (
 	handle_api_errors,
 	success_response,
@@ -48,6 +50,7 @@ class FarmerCatalogSchema(BrowseProductsSchema):
 	nothing is worse than no control.
 	"""
 
+	status: str | None = Field(None, max_length=140)
 	category: str | None = Field(None, max_length=140)
 	tag: str | None = Field(None, max_length=140)
 	region: str | None = Field(None, max_length=140)
@@ -163,6 +166,59 @@ def _enrich_products_with_bank_info(products: list[dict]) -> None:
 		p["bank_logo"] = bank_info.logo if bank_info else None
 
 
+def _enrich_products_with_categories(products: list[dict]) -> None:
+	"""Batch resolve category for product rows.
+
+	bank-scope-exempt: A2C Term Relationship is bank-scoped, so get_list returns
+	nothing for a bank-bound farmer. Reading it directly with get_all is safe here
+	because product_names came from a get_list that already applied
+	loan_product_scope_query, so this only decorates rows the caller may see.
+	"""
+	if not products:
+		return
+	product_names = [p["name"] for p in products if p.get("name")]
+	if not product_names:
+		return
+	cat_rows = frappe.get_all(  # bank-scope-exempt: see docstring
+		"A2C Term Relationship",
+		filters={"loan_product": ["in", product_names], "term_type": "Category"},
+		fields=["loan_product", "term_category"],
+	)
+	category_map = {row.loan_product: row.term_category for row in cat_rows if row.term_category}
+
+	for p in products:
+		p["category"] = category_map.get(p.get("name"))
+
+
+def _enrich_products_with_application_counts(products: list[dict]) -> None:
+	"""Batch attach applications_count per product if caller is a bank user or admin."""
+	if not products:
+		return
+	user = frappe.session.user
+	user_roles = set(frappe.get_roles(user))
+	is_bank_user = (
+		bool(user_roles.intersection(BANK_ROLES)) or bool(get_user_bank(user)) or is_platform_admin(user)
+	)
+	if not is_bank_user:
+		return
+
+	product_names = [p["name"] for p in products if p.get("name")]
+	if not product_names:
+		return
+
+	# get_list applies DocPerm and loan_application_scope_query (bank scope)
+	app_counts = frappe.get_list(
+		"A2C Loan Application",
+		filters={"loan_product": ["in", product_names]},
+		fields=["loan_product", {"COUNT": "*"}],
+		group_by="loan_product",
+	)
+	counts_map = {row.loan_product: row.get("COUNT(*)") for row in app_counts}
+
+	for p in products:
+		p["applications_count"] = counts_map.get(p.get("name"), 0)
+
+
 @frappe.whitelist(allow_guest=False)
 @validate_request(FarmerCatalogSchema)
 @handle_api_errors
@@ -175,7 +231,19 @@ def list_catalog(**kwargs):
 	"""
 	frappe.has_permission("A2C Loan Product", "read", throw=True)
 
-	filters = {"status": "Active"}
+	user = frappe.session.user
+	user_roles = set(frappe.get_roles(user))
+	is_bank_user = (
+		bool(user_roles.intersection(BANK_ROLES)) or bool(get_user_bank(user)) or is_platform_admin(user)
+	)
+
+	filters = {}
+	if is_bank_user:
+		if kwargs.get("status"):
+			filters["status"] = kwargs["status"]
+	else:
+		filters["status"] = "Active"
+
 	if kwargs.get("bank"):
 		filters["bank"] = kwargs["bank"]
 
@@ -256,6 +324,7 @@ def list_catalog(**kwargs):
 			"name",
 			"product_name",
 			"slug",
+			"status",
 			"bank",
 			"image as image_url",
 			"min_interest_rate",
@@ -270,6 +339,8 @@ def list_catalog(**kwargs):
 	)
 
 	_enrich_products_with_bank_info(products)
+	_enrich_products_with_categories(products)
+	_enrich_products_with_application_counts(products)
 
 	count_res = frappe.get_list(
 		"A2C Loan Product",
@@ -374,6 +445,7 @@ def get_saved_products(**kwargs):
 				"name",
 				"product_name",
 				"slug",
+				"status",
 				"bank",
 				"image as image_url",
 				"min_interest_rate",
@@ -387,6 +459,8 @@ def get_saved_products(**kwargs):
 		order_map = {name: i for i, name in enumerate(saved_docs)}
 		products.sort(key=lambda p: order_map.get(p.name, 999))
 		_enrich_products_with_bank_info(products)
+		_enrich_products_with_categories(products)
+		_enrich_products_with_application_counts(products)
 
 	pagination = {
 		"page": (start // limit) + 1,

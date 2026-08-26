@@ -99,16 +99,26 @@ Retrieves aggregated statistics for the bank's loan products and applications. T
     "stats": {
       "total_products": 10,
       "active_products": 8,
+      "pending_products": 1,
+      "rejected_products": 1,
+      "archived_products": 0,
       "total_applications": 150,
+      "total_applicants": 120,
       "pending_applications": 45,
-      "approved_applications": 20,
-      "total_approved_amount": 100000.0
+      "stage_counts": {
+        "Submitted": 25,
+        "Processed": 10,
+        "Verified": 10,
+        "Approved": 15,
+        "Disbursed": 50,
+        "Rejected": 40
+      }
     }
   }
 }
 ```
 
-_(Note: If called by an unbound platform admin without specifying `bank`, returns `{"stats": totals, "by_bank": [...]}` across all banks)._
+_(Note: If called by an unbound platform admin without specifying `bank`, returns `{"stats": totals, "by_bank": [...]}` aggregating scalar counters and merging `stage_counts` key-wise across all banks)._
 
 **Error Cases:**
 
@@ -1421,3 +1431,154 @@ Registers a new user account with a default role of `A2C Bank Admin` (or `A2C De
 
 - **400 `VALIDATION_ERROR`**: Invalid email/phone format, missing required fields, or invalid role requested.
 - **500 `INTERNAL_ERROR`**: Database save failure.
+
+---
+
+## 8. Endpoint Reference: Loan Status Stages (`api/v1/seller/loan_stages.py`)
+
+Banks configure their own custom loan status pipeline through these endpoints. Each stage is defined per bank and mapped to an underlying system archetype (`In Transition`, `Completed`, `Rejected`).
+
+### 8.1 `GET /api/method/oan_a2c.api.v1.seller.loan_stages.get_stages`
+
+Retrieves all loan status stages configured for the caller's bank along with the current count of active loan applications in each stage.
+
+**Authentication & Permissions:** Requires JWT Bearer token and role `A2C Bank Admin`, `A2C Bank Agent`, `A2C Administrator`, or `System Manager`.
+**Parameters (Query):**
+| Param | Type | Required | Default | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| `bank` | string | No | null | Bank identifier. Required for platform administrators (`A2C Administrator`, `System Manager`). Automatically resolved for Bank Admins and Agents. |
+
+**Success Response (HTTP 200):**
+
+```json
+{
+  "status": "success",
+  "message": "Loan status stages retrieved successfully",
+  "data": {
+    "bank": "PB-2026-0001",
+    "stages": [
+      {
+        "name": "STG-2026-00001",
+        "bank": "PB-2026-0001",
+        "stage_id": "submitted-4ea390",
+        "label": "Submitted",
+        "archetype_state": "In Transition",
+        "sequence": 1,
+        "external_code": "STG_SUB",
+        "description": "Initial submission received",
+        "application_count": 25,
+        "creation": "2026-08-20 00:00:00",
+        "modified": "2026-08-20 00:00:00"
+      },
+      {
+        "name": "STG-2026-00002",
+        "bank": "PB-2026-0001",
+        "stage_id": "underwriting-98792a",
+        "label": "Underwriting",
+        "archetype_state": "In Transition",
+        "sequence": 2,
+        "external_code": "STG_UND",
+        "description": "Credit assessment in progress",
+        "application_count": 10,
+        "creation": "2026-08-20 00:00:00",
+        "modified": "2026-08-20 00:00:00"
+      },
+      {
+        "name": "STG-2026-00003",
+        "bank": "PB-2026-0001",
+        "stage_id": "disbursed-3d2ac2",
+        "label": "Disbursed",
+        "archetype_state": "Completed",
+        "sequence": 3,
+        "external_code": "STG_DIS",
+        "description": "Funds disbursed to farmer account",
+        "application_count": 50,
+        "creation": "2026-08-20 00:00:00",
+        "modified": "2026-08-20 00:00:00"
+      }
+    ]
+  }
+}
+```
+
+**Error Cases:**
+
+- **400 `VALIDATION_ERROR`**: Missing `bank` parameter when called by an unbound platform administrator.
+- **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user (`Guest`).
+- **403 `PERMISSION_DENIED`**: Caller lacks required bank role or bank binding.
+
+---
+
+### 8.2 `POST /api/method/oan_a2c.api.v1.seller.loan_stages.add_stage`
+
+Adds a single new stage to the caller's bank pipeline.
+
+**Authentication & Permissions:** Requires JWT Bearer token and role `A2C Bank Admin`, `A2C Administrator`, or `System Manager`.
+**Parameters (JSON Body):**
+| Param | Type | Required | Default | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **`label`** | string | Yes | — | Display label for the pipeline stage (1–140 chars) |
+| **`archetype_state`** | string | Yes | — | Exactly one of: `In Transition`, `Completed`, `Rejected` |
+| `sequence` | int | No | max(seq) + 1 | Stage ordering index (1–1000) |
+| `external_code` | string | No | null | External integration identifier (max 140 chars) |
+| `description` | string | No | null | Stage description (max 2000 chars) |
+
+**Success Response (HTTP 200):**
+
+```json
+{
+  "status": "success",
+  "message": "Loan status stage added successfully",
+  "data": {
+    "name": "STG-2026-00004",
+    "stage_id": "field-verification-a29117",
+    "label": "Field Verification",
+    "archetype_state": "In Transition",
+    "sequence": 4,
+    "external_code": "STG_FV"
+  }
+}
+```
+
+**Error Cases:**
+
+- **400 `VALIDATION_ERROR`**: Missing required fields, invalid archetype state, or duplicate label within the bank (`A stage with label '<label>' already exists for your bank.`).
+- **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user.
+- **403 `PERMISSION_DENIED`**: Caller lacks `A2C Bank Admin` role.
+
+---
+
+### 8.3 `POST /api/method/oan_a2c.api.v1.seller.loan_stages.sync_stages`
+
+Batch synchronization endpoint for managing the bank's entire pipeline in a single call.
+
+- **Renames** existing stages and denormalizes new labels onto active applications.
+- **Re-orders** sequence indexes.
+- **Updates** archetype mapping and metadata.
+- **Inserts** any new stage items omitted from `stage_id`.
+- **Deletes** omitted stages (safely fails with `400 VALIDATION_ERROR` if active loan applications exist on the deleted stage).
+
+**Authentication & Permissions:** Requires JWT Bearer token and role `A2C Bank Admin`, `A2C Administrator`, or `System Manager`.
+**Parameters (JSON Body):**
+| Param | Type | Required | Default | Notes |
+| :--- | :--- | :--- | :--- | :--- |
+| **`stages`** | list[object] | Yes | — | Array of stage objects representing the complete desired pipeline (min 1) |
+
+**Stage Item Schema:**
+| Field | Type | Required | Notes |
+| :--- | :--- | :--- | :--- |
+| `stage_id` | string | No | Existing stage ID. Omit to create a new stage |
+| `label` | string | Yes | Stage display name (1–140 chars) |
+| `archetype_state` | string | No | One of: `In Transition`, `Completed`, `Rejected` (defaults to `In Transition`) |
+| `sequence` | int | No | Order sequence (defaults to array index order) |
+| `external_code` | string | No | External integration code |
+| `description` | string | No | Stage description |
+
+**Success Response (HTTP 200):**
+_Returns the refreshed stage configuration payload identical to `8.1 get_stages`._
+
+**Error Cases:**
+
+- **400 `VALIDATION_ERROR`**: Duplicate stage labels in payload, invalid archetype state, or attempted deletion of a stage that has active applications assigned.
+- **401 `AUTHENTICATION_ERROR`**: Called by unauthenticated user.
+- **403 `PERMISSION_DENIED`**: Caller lacks `A2C Bank Admin` role.

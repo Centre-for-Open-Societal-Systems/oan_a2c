@@ -100,7 +100,9 @@ class A2CLoanApplication(Document):
 
 	def on_update(self):
 		"""Notify the bank's team when the application status changes."""
-		if self.is_new() or not self.has_value_changed("status"):
+		if self.is_new() or (
+			not self.has_value_changed("status") and not self.has_value_changed("stage_label")
+		):
 			return
 
 		actor = frappe.session.user
@@ -117,12 +119,13 @@ class A2CLoanApplication(Document):
 			)
 			return
 
+		stage_name = self.stage_label or self.status
 		notify_users(
 			self._bank_recipients(),
-			subject=f"Loan application {self.name} is now {self.status}",
+			subject=f"Loan application {self.name} is now {stage_name}",
 			message=(
 				f"Loan Application {self.name} for {self.lead_id or self.name} "
-				f"has been {self.status} by {actor}"
+				f"has been {stage_name} by {actor}"
 			),
 			doctype="A2C Loan Application",
 			docname=self.name,

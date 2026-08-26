@@ -727,6 +727,46 @@ class TestFarmerProfileAndConsent(FarmerB2CFixtures):
 		self.assertEqual(res.get("code"), "VALIDATION_ERROR")
 		self.assertIn("lead_id is required", res.get("message", "").lower())
 
+	def test_dev_agent_can_submit_application(self):
+		"""Development Agent can call submit_application to submit an Active application."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.applications import submit_application
+
+		frappe.set_user("Administrator")
+		cr_approved = frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"farmer": "openg2p-id-dev-sub",
+				"farmer_fayda_id": f"fayda-dev-sub-{self.h}",
+				"status": "Approved",
+				"owner": self.dev_agent,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		app = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Agent",
+				"farmer_profile": self.profile_a.name,
+				"bank": self.bank,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 200,
+				"loan_amount": 200,
+				"consent_id": cr_approved.name,
+				"status": "Active",
+				"current_step": 1,
+				"first_name": "DevSubmitted",
+				"last_name": "DevTest",
+				"phone_number": "+251911999888",
+			}
+		).insert(ignore_permissions=True)
+
+		frappe.set_user(self.dev_agent)
+		res = submit_application(application_id=app.name)
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(frappe.db.get_value("A2C Loan Application", app.name, "status"), "In Transition")
+
 
 class TestProductDetailPermissions(FarmerB2CFixtures):
 	"""Test get_product and catalog permissions for Farmer and Development Agent."""
@@ -827,6 +867,14 @@ class TestProductDetailPermissions(FarmerB2CFixtures):
 
 		self.assertIn(self.prod_1.name, product_names)
 		self.assertNotIn(other_prod.name, product_names)
+		self.assertTrue(all("applications_count" in p for p in products))
+		self.assertTrue(all("category" in p for p in products))
+
+		frappe.set_user(self.farmer_a)
+		farmer_catalog = list_catalog(limit=50, start=0)["data"]["products"]
+		self.assertTrue(all("applications_count" not in p for p in farmer_catalog))
+		self.assertTrue(all(p.get("status") == "Active" for p in farmer_catalog))
+		self.assertTrue(all("category" in p for p in farmer_catalog))
 
 	def test_bank_agent_cannot_call_get_product_for_another_bank(self):
 		import frappe

@@ -1116,7 +1116,7 @@ At least one field should be provided (no error if omitted — returns current v
 {
   "status": "success",
   "data": {
-    "application_id": "LOANAPP-2026-0001",
+    "application_id": "APP-2026-0001",
     "lead_id": "LEAD-2026-0001",
     "first_name": "Abebe",
     "last_name": "Kebede",
@@ -1132,7 +1132,11 @@ At least one field should be provided (no error if omitted — returns current v
     "loan_type": "Crop Loan",
     "loan_amount": 5000.0,
     "loan_reason": "Purchase seeds and fertilizer",
-    "status": "Draft",
+    "status": "Submitted",
+    "stage_id": "submitted-31011c",
+    "sequence": 1,
+    "is_terminal": false,
+    "is_successful": false,
     "current_step": 1,
     "loan_officer": null,
     "creation": "2026-01-15 10:30:00",
@@ -1159,7 +1163,7 @@ At least one field should be provided (no error if omitted — returns current v
 }
 ```
 
-**Type notes:** All numeric fields are `float()` cast. Boolean fields are `bool()` cast. Date fields are ISO 8601 strings.
+**Type notes:** All numeric fields are `float()` or `int()` cast. Boolean fields are `bool()` cast. Date fields are ISO 8601 strings.
 
 **Error cases:**
 
@@ -1173,7 +1177,7 @@ At least one field should be provided (no error if omitted — returns current v
 
 #### `GET /api/method/oan_a2c.api.v1.loan_applications.get_loan_summary`
 
-No parameters.
+No parameters. Returns zero-filled pipeline stage counts scoped to caller's visible bank stages.
 
 **Success response** (HTTP 200):
 
@@ -1183,9 +1187,15 @@ No parameters.
   "message": "Loan summary retrieved successfully",
   "data": {
     "total": 85,
-    "processing": 30,
-    "approved": 25,
-    "rejected": 10,
+    "stages": {
+      "Active": 10,
+      "Submitted": 25,
+      "Processed": 15,
+      "Verified": 10,
+      "Approved": 10,
+      "Disbursed": 10,
+      "Rejected": 5
+    },
     "tab_counts": {
       "all": 85,
       "my": 20,
@@ -1207,14 +1217,53 @@ No parameters.
 
 #### `GET /api/method/oan_a2c.api.v1.loan_applications.get_loan_metadata`
 
-No parameters.
+No parameters. Returns dynamic, caller-scoped status metadata objects (Bank Agent -> own bank stages; Farmer -> banks applied to; Dev Agent / Admin -> union across all banks).
 
 **Success response** (HTTP 200):
 
 ```json
 {
   "status": "success",
-  "data": { "statuses": ["Draft", "Processing", "Approved", "Rejected"] }
+  "message": "Loan metadata retrieved successfully",
+  "data": {
+    "statuses": [
+      {
+        "status": "Active",
+        "stage_id": null,
+        "sequence": null,
+        "is_terminal": false,
+        "is_successful": false
+      },
+      {
+        "status": "Submitted",
+        "stage_id": "submitted-31011c",
+        "sequence": 1,
+        "is_terminal": false,
+        "is_successful": false
+      },
+      {
+        "status": "Underwriting",
+        "stage_id": "underwriting-98792a",
+        "sequence": 2,
+        "is_terminal": false,
+        "is_successful": false
+      },
+      {
+        "status": "Disbursed",
+        "stage_id": "disbursed-3d2ac2",
+        "sequence": 5,
+        "is_terminal": true,
+        "is_successful": true
+      },
+      {
+        "status": "Rejected",
+        "stage_id": "rejected-2a68ff",
+        "sequence": 6,
+        "is_terminal": true,
+        "is_successful": false
+      }
+    ]
+  }
 }
 ```
 
@@ -1230,22 +1279,26 @@ No parameters.
 
 **Parameters:**
 
-| Param             | Type   | Required | Default | Constraint                                                                                                                                                                                                                                                                                                            |
-| ----------------- | ------ | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `status`          | string | No       | —       | Single value, comma-separated list, or stringified JSON array. Each value validated against `{Draft, Processing, Approved, Rejected}`, de-duplicated. Invalid values silently dropped (`in` filter).                                                                                                                  |
-| `loan_amount`     | float  | No       | —       | Exact match (overridden by min/max if both provided)                                                                                                                                                                                                                                                                  |
-| `min_loan_amount` | float  | No       | —       |                                                                                                                                                                                                                                                                                                                       |
-| `max_loan_amount` | float  | No       | —       |                                                                                                                                                                                                                                                                                                                       |
-| `loan_type`       | string | No       | —       | Single value, comma-separated list, or stringified JSON array (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is.                                                                                                                             |
-| `location`        | string | No       | —       | `LIKE` match                                                                                                                                                                                                                                                                                                          |
-| `phone_number`    | string | No       | —       | `LIKE` match                                                                                                                                                                                                                                                                                                          |
-| `loan_officer`    | string | No       | —       | Filter by assigned Loan Officer (User). Single value or **comma-separated** list (`in` filter). The literal `unassigned` matches loans with no officer (same notion as the `unassigned` tab in `get_loan_summary`) and can be combined with named users. Not allowlist-validated — an unknown user yields no matches. |
-| `from_date`       | string | No       | —       | ISO date. Filters `creation`                                                                                                                                                                                                                                                                                          |
-| `to_date`         | string | No       | —       | ISO date. End time is padded to `23:59:59`                                                                                                                                                                                                                                                                            |
-| `page`            | int    | No       | 1       |                                                                                                                                                                                                                                                                                                                       |
-| `page_size`       | int    | No       | 20      | Clamped to [1, 100]                                                                                                                                                                                                                                                                                                   |
-| `lead_id`         | string | No       | —       | Exact match                                                                                                                                                                                                                                                                                                           |
-| `search_query`    | string | No       | —       | `LIKE` match on `name`, `phone_number`, `farmer_id`, `first_name`, `last_name`                                                                                                                                                                                                                                        |
+| Param             | Type   | Required | Default    | Constraint                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ------ | -------- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`          | string | No       | —          | Filter by bank stage label, `stage_id`, `external_code`, or `"Active"`. Single value, comma-separated, or JSON array. Validated against caller's visible bank stages; raises `400 VALIDATION_ERROR` with allowed values if unrecognized. Cannot mix `"Active"` with other stages.                                     |
+| `loan_amount`     | float  | No       | —          | Exact match (overridden by min/max if both provided)                                                                                                                                                                                                                                                                  |
+| `min_loan_amount` | float  | No       | —          |                                                                                                                                                                                                                                                                                                                       |
+| `max_loan_amount` | float  | No       | —          |                                                                                                                                                                                                                                                                                                                       |
+| `loan_type`       | string | No       | —          | Single value, comma-separated list, or stringified JSON array (`in` filter). Free-text Data field on A2C Loan Application — **not** validated against an allowlist; values matched as-is.                                                                                                                             |
+| `region`          | string | No       | —          | Hierarchical location prefix match (`LIKE 'value%'`)                                                                                                                                                                                                                                                                  |
+| `woreda`          | string | No       | —          | Hierarchical location prefix match (`LIKE 'value%'`)                                                                                                                                                                                                                                                                  |
+| `kebele`          | string | No       | —          | Hierarchical location prefix match (`LIKE 'value%'`)                                                                                                                                                                                                                                                                  |
+| `phone_number`    | string | No       | —          | `LIKE` match                                                                                                                                                                                                                                                                                                          |
+| `loan_officer`    | string | No       | —          | Filter by assigned Loan Officer (User). Single value or **comma-separated** list (`in` filter). The literal `unassigned` matches loans with no officer (same notion as the `unassigned` tab in `get_loan_summary`) and can be combined with named users. Not allowlist-validated — an unknown user yields no matches. |
+| `from_date`       | string | No       | —          | ISO date. Filters `creation`                                                                                                                                                                                                                                                                                          |
+| `to_date`         | string | No       | —          | ISO date. End time is padded to `23:59:59`                                                                                                                                                                                                                                                                            |
+| `sort_by`         | string | No       | `creation` | Order by column (`creation`, `loan_amount`, `name`, `status`)                                                                                                                                                                                                                                                         |
+| `sort_order`      | string | No       | `desc`     | `asc` or `desc`                                                                                                                                                                                                                                                                                                       |
+| `page`            | int    | No       | 1          |                                                                                                                                                                                                                                                                                                                       |
+| `page_size`       | int    | No       | 20         | Clamped to [1, 100]                                                                                                                                                                                                                                                                                                   |
+| `lead_id`         | string | No       | —          | Exact match                                                                                                                                                                                                                                                                                                           |
+| `search_query`    | string | No       | —          | `LIKE` match on `name`, `phone_number`, `farmer_id`, `first_name`, `last_name`, `loan_product`, `loan_product_name`                                                                                                                                                                                                   |
 
 **Success response** (HTTP 200):
 
@@ -1255,15 +1308,27 @@ No parameters.
   "message": "Loan applications retrieved successfully",
   "data": [
     {
-      "application_id": "LOANAPP-2026-0001",
-      "status": "Draft",
+      "application_id": "APP-2026-0001",
+      "status": "Submitted",
+      "stage_id": "submitted-31011c",
+      "stage_label": "Submitted",
       "step": 1,
       "lead_id": "LEAD-2026-0001",
+      "first_name": "Abebe",
+      "last_name": "Kebede",
       "loan_amount": 5000.0,
       "loan_type": "Crop Loan",
-      "location": "Oromia",
+      "loan_product": "PROD-PB-0001-0001",
+      "loan_product_name": "Smallholder Agricultural Loan",
+      "bank": "PB-0001",
+      "region": "Oromia",
+      "woreda": "East Hararge",
+      "kebele": "Gudina",
       "phone_number": "+251911000000",
-      "creation": "2026-01-15 10:30:00"
+      "creation": "2026-01-15T10:30:00+03:00",
+      "sequence": 1,
+      "is_terminal": false,
+      "is_successful": false
     }
   ],
   "pagination": {
@@ -1276,13 +1341,14 @@ No parameters.
 }
 ```
 
-> **Type notes:** `loan_amount` is `float`. `step` is `int`. `creation` is an ISO 8601 string.
+> **Type notes:** `loan_amount` is `float`. `step` is `int`. `creation` is an ISO 8601 string. `sequence` is `int` or `null`.
 
 **Error cases:**
 
-| Condition                              | HTTP | code                |
-| -------------------------------------- | ---- | ------------------- |
-| No read permission on Loan Application | 403  | `PERMISSION_DENIED` |
+| Condition                                           | HTTP | code                |
+| --------------------------------------------------- | ---- | ------------------- |
+| Unrecognized `status` or mixed `Active` with stages | 400  | `VALIDATION_ERROR`  |
+| No read permission on Loan Application              | 403  | `PERMISSION_DENIED` |
 
 ---
 
@@ -1445,22 +1511,26 @@ Method restricted to `POST`.
   "status": "success",
   "message": "Loan application created successfully",
   "data": {
-    "application_id": "LOANAPP-2026-0001",
+    "application_id": "APP-2026-0001",
     "application": {
-      "name": "LOANAPP-2026-0001",
-      "status": "Draft",
+      "name": "APP-2026-0001",
+      "status": "Active",
+      "stage_id": null,
+      "sequence": null,
+      "is_terminal": false,
+      "is_successful": false,
       "farmer_profile": "FARMPROF-2026-0001",
       "first_name": "Abebe",
       "last_name": "Kebede",
       "loan_type": "Crop Loan",
       "loan_amount": 5000.0,
-      "current_step": null
+      "current_step": 1
     }
   }
 }
 ```
 
-> **Correction from previous version:** Returns full `application` object, not only `application_id`.
+> **Correction from previous version:** Returns full `application` object with structured `status_payload`, not only `application_id`.
 
 **Error cases:**
 
@@ -1476,33 +1546,35 @@ Method restricted to `POST`.
 
 #### `POST /api/method/oan_a2c.api.v1.loan_applications.update_loan_status`
 
-Method restricted to `POST`.
+Method restricted to `POST`. Updates the status or pipeline stage of a loan application.
 
 **Parameters:**
 
-| Param                | Type   | Required | Notes                                                             |
-| -------------------- | ------ | -------- | ----------------------------------------------------------------- |
-| **`application_id`** | string | Yes      |                                                                   |
-| **`status`**         | string | Yes      | No explicit allowlist check — any string accepted if not terminal |
+| Param                | Type   | Required | Notes                                                                                                                         |
+| -------------------- | ------ | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **`application_id`** | string | Yes      | Document ID of the loan application                                                                                           |
+| **`status`**         | string | Yes      | Accepts an archetype status (`Completed`, `Rejected`) or a bank-defined stage ID or label (resolved via `resolve_bank_stage`) |
+| `reason`             | string | No       | Optional change notes (max 2000 chars). Logged to `A2C Loan Application Audit Event`                                          |
 
 **Success response** (HTTP 200):
 
 ```json
 {
   "status": "success",
-  "message": "Loan application status updated to Processing",
+  "message": "Loan application status updated to Underwriting",
   "data": null
 }
 ```
 
 **Error cases:**
 
-| Condition                                  | HTTP | code                | message                                                        |
-| ------------------------------------------ | ---- | ------------------- | -------------------------------------------------------------- |
-| Either param missing                       | 400  | `VALIDATION_ERROR`  | `"application_id and status are required"`                     |
-| Application not found                      | 404  | `NOT_FOUND`         | `"Loan Application {id} not found"`                            |
-| Current status is `Rejected` or `Approved` | 400  | `VALIDATION_ERROR`  | `"Cannot change status. Loan application is already {status}"` |
-| No write permission                        | 403  | `PERMISSION_DENIED` |                                                                |
+| Condition                                          | HTTP | code                | message                                                        |
+| -------------------------------------------------- | ---- | ------------------- | -------------------------------------------------------------- |
+| Either param missing                               | 400  | `VALIDATION_ERROR`  | `"application_id and status are required"`                     |
+| Unrecognized stage ID or label for the bank        | 400  | `VALIDATION_ERROR`  | `"Invalid stage or status '{status}' for bank {bank}"`         |
+| Application not found                              | 404  | `NOT_FOUND`         | `"Loan Application {id} not found"`                            |
+| Current status is terminal (`Rejected`/`Approved`) | 400  | `VALIDATION_ERROR`  | `"Cannot change status. Loan application is already {status}"` |
+| No write permission                                | 403  | `PERMISSION_DENIED` |                                                                |
 
 ---
 

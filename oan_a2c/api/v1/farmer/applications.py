@@ -3,12 +3,15 @@ from frappe import _
 from frappe.utils import cint, flt
 from pydantic import BaseModel, Field
 
-from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
+from oan_a2c.a2c_marketplace.roles import DEVELOPMENT_AGENT_ROLE, FARMER_ROLE
+from oan_a2c.a2c_marketplace.stages import (
+	build_status_payloads,
+	resolve_status_filter,
+	status_payload,
+)
 from oan_a2c.api.utils import (
 	apply_status_transition,
-	get_workflow_state_names,
 	handle_api_errors,
-	parse_multi_value,
 	require_role,
 	success_response,
 	to_tz_aware_iso,
@@ -52,19 +55,8 @@ def list_applications(**kwargs):
 	order_by = "creation desc"
 
 	filters = {}
-	# `status` filters by bank pipeline stage (stage_id); `archetype` filters by the
-	# coarse workflow status. Same split as get_all_loans in loan_applications.py --
-	# see that module for why the two aren't merged into one param.
 	if kwargs.get("status"):
-		valid_stages = parse_multi_value(kwargs["status"])
-		if valid_stages:
-			filters["stage_id"] = ["in", valid_stages]
-
-	if kwargs.get("archetype"):
-		allowed_archetypes = get_workflow_state_names("A2C Loan Application")
-		valid_archetypes = parse_multi_value(kwargs["archetype"], allowed_archetypes)
-		if valid_archetypes:
-			filters["status"] = ["in", valid_archetypes]
+		filters.update(resolve_status_filter(kwargs["status"]))
 
 	count_res = frappe.get_list(
 		"A2C Loan Application",
@@ -95,6 +87,7 @@ def list_applications(**kwargs):
 		ignore_permissions=False,
 	)
 
+	build_status_payloads(records)
 	for r in records:
 		r["loan_amount"] = float(r["loan_amount"]) if r.get("loan_amount") else 0.0
 		r["requested_amount"] = float(r["requested_amount"]) if r.get("requested_amount") else 0.0
@@ -123,6 +116,7 @@ def get_application(**kwargs):
 	frappe.has_permission("A2C Loan Application", "read", doc=application_id, throw=True)
 
 	doc = _get_app(application_id)
+	status_info = status_payload(doc)
 
 	data = {
 		"application_id": doc.name,
@@ -144,7 +138,11 @@ def get_application(**kwargs):
 		"requested_amount": flt(doc.requested_amount),
 		"loan_amount": flt(doc.loan_amount),
 		"loan_reason": doc.loan_reason,
-		"status": doc.status,
+		"status": status_info["status"],
+		"stage_id": status_info["stage_id"],
+		"sequence": status_info["sequence"],
+		"is_terminal": status_info["is_terminal"],
+		"is_successful": status_info["is_successful"],
 		"current_step": cint(doc.current_step),
 		"loan_officer": doc.loan_officer,
 		"creation": to_tz_aware_iso(doc.creation),
@@ -269,7 +267,7 @@ def create_application(**kwargs):
 @frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(LoanApplicationIDSchema)
 @handle_api_errors
-@require_role([FARMER_ROLE])
+@require_role([FARMER_ROLE, DEVELOPMENT_AGENT_ROLE])
 def submit_application(**kwargs):
 	"""Submits an Active application to the bank (transitions to In Transition)."""
 	application_id = kwargs.get("application_id")
@@ -283,8 +281,8 @@ def submit_application(**kwargs):
 
 	initial_stage = get_initial_pipeline_stage(doc.bank)
 	if initial_stage:
-		doc.stage_id = initial_stage["stage_id"]
-		doc.stage_label = initial_stage["label"]
+		doc.db_set("stage_id", initial_stage["stage_id"])
+		doc.db_set("stage_label", initial_stage["label"])
 
 	apply_status_transition(doc, "In Transition")
 

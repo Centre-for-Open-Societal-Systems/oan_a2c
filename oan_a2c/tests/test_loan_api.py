@@ -2,7 +2,7 @@ import unittest
 
 import frappe
 
-from oan_a2c.api.utils import get_workflow_initial_state, status_has_tag
+from oan_a2c.api.utils import get_workflow_initial_state
 from oan_a2c.api.v1.loan_applications import (
 	create_loan_application,
 	delete_supporting_document,
@@ -187,35 +187,27 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertIn("my", res["data"]["tab_counts"])
 		self.assertIn("unassigned", res["data"]["tab_counts"])
 
-	def test_1a_loan_summary_exposes_every_archetype_bucket(self):
-		"""`by_status` is the contract the bank and agent KPI cards read.
+	def test_1a_loan_summary_zero_fills_every_visible_stage(self):
+		"""`stages` is the contract the bank and agent KPI cards read.
 
-		They key on archetype names directly, so a bucket that goes missing renders
-		as a dash or -- worse, behind a `?? 0` -- as a confident zero. Seeding every
-		state server-side is what makes a quiet status readable as a real 0.
+		They key on stage names directly, so stages are zero-filled from the
+		caller's visible stage set to ensure empty stages still render as 0.
 		"""
-		from oan_a2c.a2c_marketplace.stages import ARCHETYPE_STATES
-
 		data = get_loan_summary()["data"]
 
-		self.assertIn("by_status", data)
-		self.assertEqual(set(data["by_status"]), set(ARCHETYPE_STATES))
-		for state, count in data["by_status"].items():
-			self.assertIsInstance(count, int, f"{state} is not a count")
+		self.assertNotIn("by_status", data)
+		self.assertIn("stages", data)
+		self.assertIn("Active", data["stages"])
+		for stage, count in data["stages"].items():
+			self.assertIsInstance(count, int, f"{stage} is not a count")
 
-		# Buckets may not exceed the total. They can fall short of it only because a
-		# row carries a status from before the archetype refactor, which is counted
-		# in `total` but deliberately not invented as a new bucket.
-		self.assertLessEqual(sum(data["by_status"].values()), data["total"])
-
-		# `stages` is the bank-defined view of the same rows, so it must agree.
 		self.assertEqual(sum(data["stages"].values()), data["total"])
 
 	def test_1b_workflow_helpers(self):
 		self.assertEqual(get_workflow_initial_state("A2C Loan Application"), "Active")
 
 	def test_2_get_all_loans(self):
-		res = get_all_loans(archetype="Active", page_size=10)
+		res = get_all_loans(status="Active", page_size=10)
 		self.assertEqual(res["status"], "success")
 		self.assertTrue(len(res["data"]) > 0)
 		self.assertIn("pagination", res)
@@ -293,54 +285,18 @@ class TestLoansV1API(unittest.TestCase):
 		self.assertEqual(res_miss["status"], "success")
 		self.assertFalse(any(r["application_id"] == self.app_id for r in res_miss["data"]))
 
-	def test_2c_get_all_loans_rejects_unknown_archetype(self):
-		"""An archetype outside the workflow is a 400, not a silent empty page.
-
-		`archetype` is the validated param; `status` is the per-bank stage id and is
-		deliberately free text. The pre-archetype vocabulary (Processing / Approved /
-		Pending Review / ...) lands here, so the error has to name what is allowed.
-		"""
-		frappe.local.response = frappe._dict({"http_status_code": 200})
-		res = get_all_loans(archetype="Processing")
-		self.assertEqual(res["status"], "error")
-		self.assertEqual(res["code"], "VALIDATION_ERROR")
-		self.assertEqual(frappe.local.response.get("http_status_code"), 400)
-		self.assertIn("archetype", res["details"])
-		self.assertIn("Active", res["details"]["archetype"])
-
-		# Reset response code
-		frappe.local.response["http_status_code"] = 200
-
-	def test_2d_get_all_loans_archetype_filter(self):
-		"""`archetype` narrows on the workflow state the row actually holds."""
-		archetype = frappe.db.get_value("A2C Loan Application", self.app_id, "status")
-
-		res = get_all_loans(archetype=archetype)
-		self.assertEqual(res["status"], "success")
-		self.assertTrue(any(r["application_id"] == self.app_id for r in res["data"]))
-
-		other = next(s for s in ("Active", "In Transition", "Completed", "Cancelled") if s != archetype)
-		res_other = get_all_loans(archetype=other)
-		self.assertEqual(res_other["status"], "success")
-		self.assertFalse(any(r["application_id"] == self.app_id for r in res_other["data"]))
-
 	def test_2e_get_all_loans_status_filters_the_bank_stage(self):
-		"""`status` is the per-bank stage id -- free text, so an unknown one is empty.
+		"""`status` filters by stage label, stage_id, external_code or 'Active'."""
+		res_active = get_all_loans(status="Active")
+		self.assertEqual(res_active["status"], "success")
+		self.assertTrue(any(r["application_id"] == self.app_id for r in res_active["data"]))
 
-		Not a 400: stages are defined per bank, so there is no global allowlist to
-		validate against, and a stage belonging to another bank simply matches nothing.
-		"""
-		stage_id = frappe.db.get_value("A2C Loan Application", self.app_id, "stage_id")
-		if not stage_id:
-			self.skipTest("fixture application has no bank stage applied")
-
-		res = get_all_loans(status=stage_id)
-		self.assertEqual(res["status"], "success")
-		self.assertTrue(any(r["application_id"] == self.app_id for r in res["data"]))
-
+		# Unknown status is a 400 validation error
+		frappe.local.response = frappe._dict({"http_status_code": 200})
 		res_unknown = get_all_loans(status="NO-SUCH-STAGE")
-		self.assertEqual(res_unknown["status"], "success")
-		self.assertFalse(any(r["application_id"] == self.app_id for r in res_unknown["data"]))
+		self.assertEqual(res_unknown["status"], "error")
+		self.assertEqual(res_unknown["code"], "VALIDATION_ERROR")
+		frappe.local.response["http_status_code"] = 200
 
 	def test_3_get_basic_profile(self):
 		res = get_basic_profile(lead_id="TEST_LEAD_999")
@@ -754,4 +710,545 @@ class TestLoansV1API(unittest.TestCase):
 		# Clean up
 		frappe.delete_doc("A2C Loan Application", app_id, ignore_permissions=True, force=True)
 		frappe.delete_doc("A2C Credit Information", credit_info.name, ignore_permissions=True, force=True)
+		frappe.db.commit()
+
+
+class TestLoanStatusReadPath(unittest.TestCase):
+	@classmethod
+	def setUpClass(cls):
+		frappe.set_user("Administrator")
+		cls.h = frappe.generate_hash(length=6)
+
+		# Create 2 test banks
+		cls.bank_1 = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"bank_name": f"ReadPath Bank 1 {cls.h}",
+				"bank_code": f"RP_BANK_1_{cls.h}",
+				"registered_phone": f"+251911{cls.h[:6]}",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO 1",
+				"ops_name": "Test Ops 1",
+				"status": "Active",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Participating Bank", cls.bank_1.name, "status", "Active")
+
+		cls.bank_2 = frappe.get_doc(
+			{
+				"doctype": "A2C Participating Bank",
+				"bank_name": f"ReadPath Bank 2 {cls.h}",
+				"bank_code": f"RP_BANK_2_{cls.h}",
+				"registered_phone": f"+251912{cls.h[:6]}",
+				"kyc_document": "/private/files/test_kyc.pdf",
+				"gro_name": "Test GRO 2",
+				"ops_name": "Test Ops 2",
+				"status": "Active",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Participating Bank", cls.bank_2.name, "status", "Active")
+
+		# Load auto-seeded stages for both banks
+		cls.stages_bank_1 = {
+			s.label: s
+			for s in frappe.get_all(
+				"A2C Loan Status Stage",
+				filters={"bank": cls.bank_1.name},
+				fields=["name", "stage_id", "label", "sequence", "archetype_state"],
+			)
+		}
+		cls.stages_bank_2 = {
+			s.label: s
+			for s in frappe.get_all(
+				"A2C Loan Status Stage",
+				filters={"bank": cls.bank_2.name},
+				fields=["name", "stage_id", "label", "sequence", "archetype_state"],
+			)
+		}
+
+		# Create products
+		cls.prod_1 = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"RP Prod 1 {cls.h}",
+				"bank": cls.bank_1.name,
+				"min_interest_rate": 5,
+				"max_amount": 50000,
+				"tenure_months": 12,
+				"status": "Active",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", cls.prod_1.name, "status", "Active")
+
+		cls.prod_2 = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Product",
+				"product_name": f"RP Prod 2 {cls.h}",
+				"bank": cls.bank_2.name,
+				"min_interest_rate": 5,
+				"max_amount": 50000,
+				"tenure_months": 12,
+				"status": "Active",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.set_value("A2C Loan Product", cls.prod_2.name, "status", "Active")
+
+		# Create users
+		cls.farmer_user = f"farmer_rp_{cls.h}@test.com"
+		if not frappe.db.exists("User", cls.farmer_user):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": cls.farmer_user,
+					"first_name": "RPFarmer",
+					"roles": [{"role": "A2C Farmer"}],
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		cls.dev_agent_user = f"dev_rp_{cls.h}@test.com"
+		if not frappe.db.exists("User", cls.dev_agent_user):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": cls.dev_agent_user,
+					"first_name": "RPDevAgent",
+					"roles": [{"role": "A2C Development Agent"}],
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		cls.bank_admin_user = f"bank_admin_rp_{cls.h}@test.com"
+		if not frappe.db.exists("User", cls.bank_admin_user):
+			frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": cls.bank_admin_user,
+					"first_name": "RPBankAdmin",
+					"roles": [{"role": "A2C Bank Admin"}],
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True)
+			frappe.get_doc(
+				{
+					"doctype": "User Permission",
+					"user": cls.bank_admin_user,
+					"allow": "A2C Participating Bank",
+					"for_value": cls.bank_1.name,
+				}
+			).insert(ignore_permissions=True)
+
+		# Create Farmer Profile & Consent
+		cls.consent = frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"farmer": f"openg2p-rp-{cls.h}",
+				"farmer_fayda_id": f"fayda-rp-{cls.h}",
+				"status": "Approved",
+				"owner": cls.farmer_user,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		cls.profile = frappe.get_doc(
+			{
+				"doctype": "A2C Farmer Profile",
+				"user": cls.farmer_user,
+				"consent_id": cls.consent.name,
+				"first_name": "RPFarmer",
+				"last_name": "Test",
+				"phone_number": "+251911888111",
+				"region": "Addis Ababa",
+				"woreda": "Gulele",
+				"kebele": "01",
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		frappe.db.commit()
+
+	@classmethod
+	def tearDownClass(cls):
+		frappe.set_user("Administrator")
+		frappe.db.delete("A2C Loan Application", {"bank": ["in", [cls.bank_1.name, cls.bank_2.name]]})
+		frappe.db.delete("A2C Loan Status Stage", {"bank": ["in", [cls.bank_1.name, cls.bank_2.name]]})
+		frappe.db.delete("A2C Loan Product", {"bank": ["in", [cls.bank_1.name, cls.bank_2.name]]})
+		frappe.delete_doc("A2C Participating Bank", cls.bank_1.name, force=True)
+		frappe.delete_doc("A2C Participating Bank", cls.bank_2.name, force=True)
+		frappe.delete_doc("A2C Farmer Profile", cls.profile.name, force=True)
+		frappe.delete_doc("A2C Consent Request", cls.consent.name, force=True)
+		frappe.db.commit()
+
+	def test_farmer_list_and_detail_status_progression(self):
+		"""1. Farmer list + detail return Submitted (not In Transition) for a submitted application, and Active before submission."""
+		from oan_a2c.api.v1.farmer.applications import get_application, list_applications, submit_application
+
+		# Create Active application
+		app = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Self Service",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 1000,
+				"loan_amount": 1000,
+				"consent_id": self.consent.name,
+				"status": "Active",
+				"current_step": 1,
+				"first_name": "RPFarmer",
+				"last_name": "Test",
+				"phone_number": "+251911888111",
+				"owner": self.farmer_user,
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		frappe.set_user(self.farmer_user)
+
+		# Check Active state in list and detail
+		detail_res = get_application(application_id=app.name)
+		self.assertEqual(detail_res["data"]["status"], "Active")
+		self.assertIsNone(detail_res["data"]["stage_id"])
+		self.assertIsNone(detail_res["data"]["sequence"])
+		self.assertFalse(detail_res["data"]["is_terminal"])
+		self.assertFalse(detail_res["data"]["is_successful"])
+
+		list_res = list_applications()
+		app_row = next(r for r in list_res["data"] if r["application_id"] == app.name)
+		self.assertEqual(app_row["status"], "Active")
+
+		# Submit application
+		submit_res = submit_application(application_id=app.name)
+		self.assertEqual(submit_res["status"], "success")
+
+		# Check Submitted state in list and detail
+		detail_submitted = get_application(application_id=app.name)
+		self.assertEqual(detail_submitted["data"]["status"], "Submitted")
+		self.assertEqual(detail_submitted["data"]["stage_id"], self.stages_bank_1["Submitted"].stage_id)
+		self.assertEqual(detail_submitted["data"]["sequence"], 1)
+		self.assertFalse(detail_submitted["data"]["is_terminal"])
+		self.assertFalse(detail_submitted["data"]["is_successful"])
+
+		list_submitted = list_applications()
+		app_row_sub = next(r for r in list_submitted["data"] if r["application_id"] == app.name)
+		self.assertEqual(app_row_sub["status"], "Submitted")
+		self.assertEqual(app_row_sub["stage_id"], self.stages_bank_1["Submitted"].stage_id)
+		self.assertEqual(app_row_sub["sequence"], 1)
+
+		# Clean up
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Loan Application", app.name, force=True)
+		frappe.db.commit()
+
+	def test_get_all_loans_status_filter_resolves_stage_labels(self):
+		"""2. get_all_loans(status="Verified") returns rows instead of 400."""
+		from oan_a2c.api.v1.loan_applications import get_all_loans
+
+		app = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Agent",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 1000,
+				"loan_amount": 1000,
+				"consent_id": self.consent.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_1["Verified"].stage_id,
+				"stage_label": "Verified",
+				"current_step": 2,
+				"first_name": "RPFarmer",
+				"last_name": "Test",
+				"phone_number": "+251911888111",
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		frappe.set_user(self.dev_agent_user)
+		res = get_all_loans(status="Verified")
+		self.assertEqual(res["status"], "success")
+		self.assertTrue(any(r["application_id"] == app.name for r in res["data"]))
+
+		# Clean up
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Loan Application", app.name, force=True)
+		frappe.db.commit()
+
+	def test_farmer_list_applications_status_filter_resolves_stage_labels(self):
+		"""3. Farmer list_applications(status="Verified") returns rows instead of silently empty."""
+		from oan_a2c.api.v1.farmer.applications import list_applications
+
+		app = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Self Service",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 1000,
+				"loan_amount": 1000,
+				"consent_id": self.consent.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_1["Verified"].stage_id,
+				"stage_label": "Verified",
+				"current_step": 2,
+				"first_name": "RPFarmer",
+				"last_name": "Test",
+				"phone_number": "+251911888111",
+				"owner": self.farmer_user,
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		frappe.set_user(self.farmer_user)
+		res = list_applications(status="Verified")
+		self.assertEqual(res["status"], "success")
+		self.assertTrue(any(r["application_id"] == app.name for r in res["data"]))
+
+		# Clean up
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Loan Application", app.name, force=True)
+		frappe.db.commit()
+
+	def test_dev_agent_filters_across_banks(self):
+		"""4. A Development Agent filtering status="Verified" across two banks whose Verified stages have different stage_ids gets both banks' rows."""
+		from oan_a2c.api.v1.loan_applications import get_all_loans
+
+		app_1 = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Agent",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 1000,
+				"loan_amount": 1000,
+				"consent_id": self.consent.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_1["Verified"].stage_id,
+				"stage_label": "Verified",
+				"current_step": 2,
+				"first_name": "RPFarmer",
+				"last_name": "Bank1",
+				"phone_number": "+251911888111",
+			}
+		).insert(ignore_permissions=True)
+
+		app_2 = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Agent",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_2.name,
+				"loan_product": self.prod_2.name,
+				"requested_amount": 2000,
+				"loan_amount": 2000,
+				"consent_id": self.consent.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_2["Verified"].stage_id,
+				"stage_label": "Verified",
+				"current_step": 2,
+				"first_name": "RPFarmer",
+				"last_name": "Bank2",
+				"phone_number": "+251911888222",
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		frappe.set_user(self.dev_agent_user)
+		res = get_all_loans(status="Verified")
+		self.assertEqual(res["status"], "success")
+
+		matched_ids = [r["application_id"] for r in res["data"]]
+		self.assertIn(app_1.name, matched_ids)
+		self.assertIn(app_2.name, matched_ids)
+
+		# Clean up
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Loan Application", app_1.name, force=True)
+		frappe.delete_doc("A2C Loan Application", app_2.name, force=True)
+		frappe.db.commit()
+
+	def test_sync_stages_rename_propagates_to_read_path(self):
+		"""5. Renaming a stage through sync_stages changes what the farmer sees on an existing application."""
+		from oan_a2c.api.v1.farmer.applications import get_application
+		from oan_a2c.api.v1.loan_applications import get_loan_metadata, get_loan_summary
+		from oan_a2c.api.v1.seller.loan_stages import sync_stages
+
+		app = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Self Service",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 1000,
+				"loan_amount": 1000,
+				"consent_id": self.consent.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_1["Verified"].stage_id,
+				"stage_label": "Verified",
+				"current_step": 2,
+				"first_name": "RPFarmer",
+				"last_name": "Test",
+				"phone_number": "+251911888111",
+				"owner": self.farmer_user,
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		# Rename Verified -> Field Check using sync_stages
+		new_stages_payload = [
+			{
+				"stage_id": self.stages_bank_1["Submitted"].stage_id,
+				"label": "Submitted",
+				"archetype_state": "In Transition",
+				"sequence": 1,
+			},
+			{
+				"stage_id": self.stages_bank_1["Processed"].stage_id,
+				"label": "Processed",
+				"archetype_state": "In Transition",
+				"sequence": 2,
+			},
+			{
+				"stage_id": self.stages_bank_1["Verified"].stage_id,
+				"label": "Field Check",
+				"archetype_state": "In Transition",
+				"sequence": 3,
+			},
+			{
+				"stage_id": self.stages_bank_1["Approved"].stage_id,
+				"label": "Approved",
+				"archetype_state": "In Transition",
+				"sequence": 4,
+			},
+			{
+				"stage_id": self.stages_bank_1["Disbursed"].stage_id,
+				"label": "Disbursed",
+				"archetype_state": "Completed",
+				"sequence": 5,
+			},
+			{
+				"stage_id": self.stages_bank_1["Rejected"].stage_id,
+				"label": "Rejected",
+				"archetype_state": "Rejected",
+				"sequence": 6,
+			},
+		]
+		frappe.set_user(self.bank_admin_user)
+		sync_stages(stages=new_stages_payload)
+		frappe.db.commit()
+
+		# Read application as farmer
+		frappe.set_user(self.farmer_user)
+		detail = get_application(application_id=app.name)
+		self.assertEqual(detail["data"]["status"], "Field Check")
+
+		# Check metadata
+		meta_res = get_loan_metadata()
+		status_names = [s["status"] for s in meta_res["data"]["statuses"]]
+		self.assertIn("Field Check", status_names)
+
+		# Restore original stage name for clean state
+		new_stages_payload[2]["label"] = "Verified"
+		frappe.set_user(self.bank_admin_user)
+		sync_stages(stages=new_stages_payload)
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Loan Application", app.name, force=True)
+		frappe.db.commit()
+
+	def test_no_consumer_response_contains_in_transition(self):
+		"""6. No consumer response contains the string 'In Transition' — assert over full JSON of each read endpoint."""
+		import json
+
+		from oan_a2c.api.v1.farmer.applications import get_application, list_applications
+		from oan_a2c.api.v1.farmer.dashboard import get_dashboard_summary
+		from oan_a2c.api.v1.loan_applications import (
+			get_all_loans,
+			get_full_profile,
+			get_loan_metadata,
+			get_loan_summary,
+		)
+
+		app_agent = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Agent",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 1000,
+				"loan_amount": 1000,
+				"consent_id": self.consent.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_1["Submitted"].stage_id,
+				"stage_label": "Submitted",
+				"current_step": 1,
+				"first_name": "RPFarmer",
+				"last_name": "Test",
+				"phone_number": "+251911888111",
+			}
+		).insert(ignore_permissions=True)
+
+		app_farmer = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Self Service",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 1000,
+				"loan_amount": 1000,
+				"consent_id": self.consent.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_1["Submitted"].stage_id,
+				"stage_label": "Submitted",
+				"current_step": 1,
+				"first_name": "RPFarmer",
+				"last_name": "Test",
+				"phone_number": "+251911888111",
+				"owner": self.farmer_user,
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		# 1. get_all_loans
+		frappe.set_user(self.dev_agent_user)
+		res_all = get_all_loans()
+		self.assertEqual(res_all["status"], "success")
+		self.assertNotIn("In Transition", json.dumps(res_all))
+
+		# 2. get_full_profile
+		res_profile = get_full_profile(application_id=app_agent.name)
+		self.assertEqual(res_profile["status"], "success")
+		self.assertNotIn("In Transition", json.dumps(res_profile))
+
+		# 3. get_loan_metadata
+		res_meta = get_loan_metadata()
+		self.assertEqual(res_meta["status"], "success")
+		self.assertNotIn("In Transition", json.dumps(res_meta))
+
+		# 4. get_loan_summary
+		res_summary = get_loan_summary()
+		self.assertEqual(res_summary["status"], "success")
+		self.assertNotIn("In Transition", json.dumps(res_summary))
+
+		# 5. Farmer list_applications
+		frappe.set_user(self.farmer_user)
+		res_farmer_list = list_applications()
+		self.assertEqual(res_farmer_list["status"], "success")
+		self.assertNotIn("In Transition", json.dumps(res_farmer_list))
+
+		# 6. Farmer get_application
+		res_farmer_app = get_application(application_id=app_farmer.name)
+		self.assertEqual(res_farmer_app["status"], "success")
+		self.assertNotIn("In Transition", json.dumps(res_farmer_app))
+
+		# 7. Farmer get_dashboard_summary
+		res_dash = get_dashboard_summary()
+		self.assertEqual(res_dash["status"], "success")
+		self.assertNotIn("In Transition", json.dumps(res_dash))
+
+		# Clean up
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Loan Application", app_agent.name, force=True)
+		frappe.delete_doc("A2C Loan Application", app_farmer.name, force=True)
 		frappe.db.commit()
