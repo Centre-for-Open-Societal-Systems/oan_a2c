@@ -1127,7 +1127,7 @@ Authenticates seller credentials and returns a short-lived access JWT (15-min ex
 - **400 `VALIDATION_ERROR`**: Missing `usr` or `pwd`.
 - **401 `AUTHENTICATION_ERROR`**: Incorrect email/password (`Incorrect email or password.`), or account disabled/locked.
 - **403 `PASSWORD_CHANGE_REQUIRED`**: The credentials are correct, but the password was issued by an admin (invite or reset) and must be rotated first. **No `token` or `refresh_token` is returned** — the response carries no `data` at all. Send the user to `7.9 set_initial_password`, then back to the login screen. See §7.9.
-- **500 `INTERNAL_ERROR`**: System configuration error (missing `encryption_key`) or database error.
+- **500 `INTERNAL_ERROR`**: System configuration error (no JWT signing key — `jwt_secrets` and `encryption_key` both unset) or database error.
 
 ---
 

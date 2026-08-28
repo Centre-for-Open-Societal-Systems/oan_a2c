@@ -5,6 +5,8 @@ import jwt
 from werkzeug.exceptions import HTTPException
 from werkzeug.wrappers import Response
 
+from oan_a2c.api.jwt_keys import JWTKeyConfigurationError, get_verification_key
+
 
 class JWTUnauthorized(HTTPException):
 	def __init__(self, message):
@@ -57,17 +59,24 @@ def validate_jwt_request(request=None):
 		raise JWTUnauthorized("Missing Authorization Header")
 
 	token = auth_header.split(" ")[1]
-	secret = frappe.conf.get("encryption_key")
-
-	if not secret:
-		# A server configuration error. The NSPF mindset demands we fail securely.
-		raise JWTUnauthorized("System encryption key missing")
 
 	try:
-		# Verify Key ID (kid) in the JWT header
+		# The kid selects which key verifies this token rather than being compared
+		# to a constant. That is what makes rotation possible: tokens minted under
+		# the previous key keep validating until they expire on their own.
 		header = jwt.get_unverified_header(token)
-		if not header or header.get("kid") != "v1":
-			raise JWTUnauthorized("Invalid or missing Key ID ('kid') in JWT header. Expected 'kid': 'v1'.")
+		kid = header.get("kid") if header else None
+
+		try:
+			secret = get_verification_key(kid)
+		except JWTKeyConfigurationError:
+			# A misconfigured server, not a bad token — reported separately so the
+			# two are distinguishable in logs. The NSPF mindset demands we fail
+			# securely in either case.
+			raise JWTUnauthorized("System encryption key missing")
+
+		if not secret:
+			raise JWTUnauthorized("Invalid or missing Key ID ('kid') in JWT header.")
 
 		# Decode and validate cryptographically
 		payload = jwt.decode(

@@ -7,6 +7,30 @@ one of them adds a test — see `docs/merge-hygiene.md`.
 """
 
 import frappe
+import jwt
+
+from oan_a2c.api.jwt_keys import get_signing_key
+
+
+def signing_secret() -> str:
+	"""The secret this site currently signs access tokens with.
+
+	Deliberately not `frappe.conf.encryption_key`. The signing secret comes from
+	`jwt_secrets` when that is configured (see `api/jwt_keys.py`), so a test that
+	hardcodes encryption_key passes only on a site that has never been given a
+	dedicated signing key — the configuration we are moving away from.
+	"""
+	_, secret = get_signing_key()
+	return secret
+
+
+def sign_access_token(payload: dict, kid: str | None = None) -> str:
+	"""Mint an access token the middleware will accept.
+
+	Pass `kid` only to forge a token naming a key the site does not have.
+	"""
+	signing_kid, secret = get_signing_key()
+	return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": kid or signing_kid})
 
 
 class RequestContextMixin:

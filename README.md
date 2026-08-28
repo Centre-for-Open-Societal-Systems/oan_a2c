@@ -33,7 +33,20 @@ This application requires specific keys to be configured in your site's `site_co
 Used for securing authentication and session tokens:
 
 ```bash
+# Access-token signing keys: a map of key id ("kid") -> secret, plus the id that
+# new tokens are signed with. Rotate by adding a new id, pointing jwt_current_kid
+# at it, then dropping the old id once the longest-lived access token (15 min)
+# has expired. Every id still in the map is accepted on verification.
+bench --site mysite.localhost set-config jwt_secrets '{"v1": "your-jwt-signing-secret"}' --parse
+bench --site mysite.localhost set-config jwt_current_kid "v1"
+
+# Frappe's Fernet key for data at rest (Password fieldtypes, 2FA secrets). Must
+# stay stable for the life of the site: rotate it and every previously encrypted
+# value becomes undecryptable. Used as the token-signing fallback when
+# jwt_secrets is unset, but the two should be configured separately.
 bench --site mysite.localhost set-config encryption_key "your-encryption-key-here"
+
+# HMAC key for consent receipt signatures.
 bench --site mysite.localhost set-config secret_key "your-secret-key-here"
 ```
 

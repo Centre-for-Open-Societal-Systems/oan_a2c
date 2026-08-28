@@ -16,7 +16,8 @@ All endpoints under `/api/method/oan_a2c.*` require a Bearer JWT token unless ex
 **Token spec:**
 
 - Algorithm: HS256
-- Secret: `frappe.conf.encryption_key`
+- Secret: resolved by `api/jwt_keys.py` from `frappe.conf.jwt_secrets` (a `{kid: secret}` map), signing with the key named by `frappe.conf.jwt_current_kid` (default `v1`). Falls back to `frappe.conf.encryption_key` under kid `v1` when `jwt_secrets` is unset, so a site configured the old way keeps working.
+- Key rotation: add a new kid to `jwt_secrets`, point `jwt_current_kid` at it, then drop the old kid once 15 minutes have passed. Every kid still in the map verifies, so tokens in flight are not invalidated.
 - Access Token Payload: `{ sub: email, iss: "oan_a2c_identity_gateway", iat, exp (now + 15 min), roles: [] }`
 - Header: `Authorization: Bearer <token>`
 
@@ -56,12 +57,13 @@ Middleware errors are thrown before `handle_api_errors` runs — they are NOT in
 { "exc_type": "AuthenticationError", "exception": "...", "_server_messages": "..." }
 ```
 
-| Condition                               | HTTP | Message                           |
-| --------------------------------------- | ---- | --------------------------------- |
-| Missing `Authorization` header          | 401  | `"Missing Authorization Header"`  |
-| Token expired                           | 401  | `"Token has expired"`             |
-| Token signature invalid                 | 401  | `"Invalid token"`                 |
-| `encryption_key` missing in site config | 401  | `"System encryption key missing"` |
+| Condition                                                            | HTTP | Message                                              |
+| -------------------------------------------------------------------- | ---- | ---------------------------------------------------- |
+| Missing `Authorization` header                                       | 401  | `"Missing Authorization Header"`                     |
+| Token expired                                                        | 401  | `"Token has expired"`                                |
+| Token signature invalid                                              | 401  | `"Invalid token"`                                    |
+| `kid` absent, or naming a key not in the map                         | 401  | `"Invalid or missing Key ID ('kid') in JWT header."` |
+| No signing key at all (`jwt_secrets` **and** `encryption_key` unset) | 401  | `"System encryption key missing"`                    |
 
 ---
 
@@ -220,10 +222,10 @@ No JWT required.
 
 **Error cases:**
 
-| Condition                               | HTTP | code                   | message                          |
-| --------------------------------------- | ---- | ---------------------- | -------------------------------- |
-| Wrong credentials                       | 401  | `AUTHENTICATION_ERROR` | `"Incorrect email or password."` |
-| `encryption_key` missing in site config | 500  | `INTERNAL_ERROR`       | `"An unexpected error occurred"` |
+| Condition                                                                 | HTTP | code                   | message                          |
+| ------------------------------------------------------------------------- | ---- | ---------------------- | -------------------------------- |
+| Wrong credentials                                                         | 401  | `AUTHENTICATION_ERROR` | `"Incorrect email or password."` |
+| No signing key configured (`jwt_secrets` and `encryption_key` both unset) | 500  | `INTERNAL_ERROR`       | `"An unexpected error occurred"` |
 
 ---
 
