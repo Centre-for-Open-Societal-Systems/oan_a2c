@@ -112,7 +112,10 @@ pipeline {
         withCredentials([
           string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
           sshUserPrivateKey(credentialsId: 'backend-ssh-key',
-                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
+          string(credentialsId: 'encryption_key_develop', variable: 'ENCRYPTION_KEY'),
+          string(credentialsId: 'secret_key_develop', variable: 'SECRET_KEY'),
+          string(credentialsId: 'jwt_secrets_develop', variable: 'JWT_SECRETS')
         ]) {
           sh '''#!/usr/bin/env bash
             set -euo pipefail
@@ -120,6 +123,8 @@ pipeline {
             AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} SSH_KEY=${SSH_KEY} SSH_USER=${SSH_USER} \
             BACKEND_IP=${BACKEND_IP} BUILD_NUMBER=${BUILD_NUMBER} \
             ECR_REPO=${ECR_REPO} AWS_REGION=${AWS_REGION} \
+            ENCRYPTION_KEY="${ENCRYPTION_KEY}" SECRET_KEY="${SECRET_KEY}" \
+            JWT_SECRETS="${JWT_SECRETS}" \
             bash ci/deploy-ec2.sh
           '''
         }
