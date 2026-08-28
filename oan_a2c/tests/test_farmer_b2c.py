@@ -1171,3 +1171,140 @@ class TestProductDetailPermissions(FarmerB2CFixtures):
 		self.assertNotIn(rejected_prod.name, farmer_product_names)
 		self.assertNotIn(self.inactive_prod.name, farmer_product_names)
 		self.assertNotIn(archived_prod.name, farmer_product_names)
+
+
+class TestCatalogCategoryFilter(FarmerB2CFixtures):
+	"""The loan-type filter is a multi-select, and a union.
+
+	The discovery sidebar ticks loan types rather than picking one, so
+	`?category=` has to accept several ids and keep a product matching any of
+	them -- while still intersecting with whatever else is narrowing `name`.
+	"""
+
+	@classmethod
+	def setUpClass(cls):
+		super().setUpClass()
+		import frappe
+
+		frappe.set_user("Administrator")
+
+		def _category(label):
+			"""An A2C Term plus the A2C Term Category that names it.
+
+			Both autoname from a field, so the category's `name` ends up being the
+			term id -- which is exactly what A2C Term Relationship.term_category
+			stores, and therefore what the filter has to be given.
+			"""
+			term_id = f"{label}-{cls.h}"
+			frappe.get_doc(
+				{
+					"doctype": "A2C Term",
+					"term_id": term_id,
+					"term_name": f"{label.title()} Loans {cls.h}",
+					"slug": term_id.lower(),
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True)
+			return (
+				frappe.get_doc({"doctype": "A2C Term Category", "term": term_id})
+				.insert(ignore_permissions=True, ignore_mandatory=True)
+				.name
+			)
+
+		cls.cat_seed = _category("seed")
+		cls.cat_equipment = _category("equipment")
+
+		def _relate(product, category):
+			frappe.get_doc(
+				{
+					"doctype": "A2C Term Relationship",
+					"loan_product": product,
+					"term_type": "Category",
+					"term_category": category,
+					"bank": cls.bank,
+				}
+			).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		_relate(cls.prod_1.name, cls.cat_seed)
+		_relate(cls.prod_2.name, cls.cat_equipment)
+		frappe.db.commit()
+
+	def _catalog(self, **kwargs):
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		kwargs.setdefault("limit", 20)
+		kwargs.setdefault("start", 0)
+		kwargs.setdefault("sort_by", "product_name")
+		return list_catalog(**kwargs)["data"]["products"]
+
+	def test_one_category_still_narrows_to_that_category(self):
+		"""The single-value case the sidebar sent before, unchanged."""
+		import frappe
+
+		frappe.set_user(self.farmer_a)
+		names = [p["name"] for p in self._catalog(category=self.cat_seed)]
+
+		self.assertIn(self.prod_1.name, names)
+		self.assertNotIn(self.prod_2.name, names)
+
+	def test_several_categories_are_a_union(self):
+		"""Ticking two loan types asks for products that are either."""
+		import frappe
+
+		frappe.set_user(self.farmer_a)
+		names = [p["name"] for p in self._catalog(category=f"{self.cat_seed},{self.cat_equipment}")]
+
+		self.assertIn(self.prod_1.name, names)
+		self.assertIn(self.prod_2.name, names)
+
+	def test_a_json_array_is_accepted_too(self):
+		"""parse_multi_value reads either encoding; both reach it as a string."""
+		import json
+
+		import frappe
+
+		frappe.set_user(self.farmer_a)
+		names = [p["name"] for p in self._catalog(category=json.dumps([self.cat_seed, self.cat_equipment]))]
+
+		self.assertIn(self.prod_1.name, names)
+		self.assertIn(self.prod_2.name, names)
+
+	def test_a_union_still_intersects_with_the_other_name_filters(self):
+		"""Widening the loan types must not widen past a filter already set.
+
+		Every category id here matches something, so the union is non-empty -- the
+		question is whether _narrow_by_names still intersects it with the explicit
+		`loan_product` rather than replacing it.
+		"""
+		import frappe
+
+		frappe.set_user(self.farmer_a)
+		names = [
+			p["name"]
+			for p in self._catalog(
+				category=f"{self.cat_seed},{self.cat_equipment}",
+				loan_product=self.prod_1.name,
+			)
+		]
+
+		self.assertEqual(names, [self.prod_1.name])
+
+	def test_an_unknown_category_returns_a_well_formed_empty_page(self):
+		"""A filter that matches nothing must not fall back to matching everything."""
+		import frappe
+
+		from oan_a2c.api.v1.farmer.catalog import list_catalog
+
+		frappe.set_user(self.farmer_a)
+		res = list_catalog(category=f"no-such-category-{self.h}", limit=20, start=0)
+
+		self.assertEqual(res["data"]["products"], [])
+		self.assertEqual(res["pagination"]["total"], 0)
+		self.assertFalse(res["pagination"]["has_next"])
+
+	def test_a_category_list_of_only_separators_matches_nothing(self):
+		"""',,' parses to no ids at all, which is an empty result, not every result."""
+		import frappe
+
+		frappe.set_user(self.farmer_a)
+
+		self.assertEqual(self._catalog(category=",,"), [])

@@ -13,6 +13,7 @@ from oan_a2c.a2c_marketplace.permissions import get_user_bank, is_platform_admin
 from oan_a2c.a2c_marketplace.roles import BANK_ROLES
 from oan_a2c.api.utils import (
 	handle_api_errors,
+	parse_multi_value,
 	success_response,
 	to_tz_aware_iso,
 	validate_request,
@@ -51,7 +52,12 @@ class FarmerCatalogSchema(BrowseProductsSchema):
 	"""
 
 	status: str | None = Field(None, max_length=140)
-	category: str | None = Field(None, max_length=140)
+	# One category id or several, comma-separated (or a JSON array) -- the same
+	# encoding every other multi-value filter on this API uses. The discovery
+	# sidebar ticks loan types rather than picking one, and a control that can
+	# only send the last box ticked is a control that silently does nothing.
+	# The cap is a length bound on the whole list, not on one id.
+	category: str | None = Field(None, max_length=1400)
 	tag: str | None = Field(None, max_length=140)
 	region: str | None = Field(None, max_length=140)
 	is_saved: bool | None = Field(None)
@@ -81,8 +87,12 @@ class PaginationSchema(BaseModel):
 	start: int = Field(0, ge=0)
 
 
-def _products_in_category(category: str) -> list[str]:
-	"""Loan product ids carrying `category`.
+def _products_in_category(category: str | list[str]) -> list[str]:
+	"""Loan product ids carrying any of `category`.
+
+	A union, not an intersection: ticking two loan types in the sidebar asks for
+	products that are either, the way a faceted filter is read everywhere else.
+	The result still only ever narrows the permission-filtered product query below.
 
 	bank-scope-exempt: A2C Term Relationship is bank-scoped, so get_list returns
 	nothing for a bank-bound farmer. Reading it directly is safe here because the
@@ -90,10 +100,13 @@ def _products_in_category(category: str) -> list[str]:
 	permission-filtered — a product the farmer may not see cannot be pulled into
 	the result by naming it here.
 	"""
+	categories = parse_multi_value(category)
+	if not categories:
+		return []
 	# ids only ever narrow the permission-filtered product query below
 	return frappe.get_all(  # bank-scope-exempt: see docstring
 		"A2C Term Relationship",
-		filters={"term_type": "Category", "term_category": category},
+		filters={"term_type": "Category", "term_category": ["in", categories]},
 		pluck="loan_product",
 	)
 
