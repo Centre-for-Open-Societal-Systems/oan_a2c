@@ -5,7 +5,6 @@ app_description = "Access to Credit platform as a DPG for the Open Agro Stack in
 app_email = "admin@openagrinet.org"
 app_license = "mit"
 
-fixtures = ["Workflow", "Workflow State", "Workflow Action Master"]
 
 # Apps
 # ------------------
@@ -88,7 +87,13 @@ fixtures = ["Workflow", "Workflow State", "Workflow Action Master"]
 # ------------
 
 # before_install = "oan_a2c.install.before_install"
-# after_install = "oan_a2c.install.after_install"
+# Install app-owned custom fields and roles. Runs on fresh install
+# (patches are skipped there via set_all_patches_as_completed) and is idempotent.
+after_install = "oan_a2c.setup.migrate.after_install"
+
+# Re-assert those custom fields and roles on every migrate so already-provisioned sites
+# stay self-healing when the definitions change.
+after_migrate = "oan_a2c.setup.migrate.after_migrate"
 
 # Uninstallation
 # ------------
@@ -128,46 +133,78 @@ fixtures = ["Workflow", "Workflow State", "Workflow Action Master"]
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+BANK_SCOPED = [
+	"A2C Loan Product",
+	"A2C Term Relationship",
+	"A2C Loan Product Lookup",
+	"A2C Loan Product Attribute Lookup",
+	"A2C Loan Application",
+	"A2C Loan Application Audit Event",
+	"A2C Loan Status Stage",
+]
+
+permission_query_conditions = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_query" for d in BANK_SCOPED}
+permission_query_conditions["A2C Loan Application"] = (
+	"oan_a2c.a2c_marketplace.permissions.loan_application_scope_query"
+)
+# A2C Loan Product adds a catalog-visibility branch on top of bank scoping: a farmer
+# browses across banks but only sees Active products. See permissions.py.
+permission_query_conditions["A2C Loan Product"] = (
+	"oan_a2c.a2c_marketplace.permissions.loan_product_scope_query"
+)
+# Neither of these is bank-scoped, so neither had a hook before farmers existed.
+permission_query_conditions["A2C Farmer Profile"] = (
+	"oan_a2c.a2c_marketplace.permissions.farmer_own_profile_query"
+)
+permission_query_conditions["A2C Consent Request"] = (
+	"oan_a2c.a2c_marketplace.permissions.farmer_own_consent_query"
+)
+# Bookmarking is open to every signed-in user (DocPerm role "All"), so this hook is
+# the only thing scoping one user's saved list away from another's.
+permission_query_conditions["A2C Saved Product"] = (
+	"oan_a2c.a2c_marketplace.permissions.saved_product_own_query"
+)
+has_permission = {d: "oan_a2c.a2c_marketplace.permissions.bank_scope_doc" for d in BANK_SCOPED}
+has_permission["A2C Saved Product"] = "oan_a2c.a2c_marketplace.permissions.saved_product_own_doc"
+has_permission["A2C Farmer Profile"] = "oan_a2c.a2c_marketplace.permissions.farmer_own_profile_doc"
+has_permission["A2C Consent Request"] = "oan_a2c.a2c_marketplace.permissions.farmer_own_consent_doc"
 
 # Document Events
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"A2C Loan Product": {
+		"after_insert": "oan_a2c.a2c_marketplace.stats_cache.on_product_change",
+		"on_update": [
+			"oan_a2c.a2c_marketplace.lookups.refresh_product_lookups",
+			"oan_a2c.a2c_marketplace.stats_cache.on_product_change",
+		],
+		"on_trash": [
+			"oan_a2c.a2c_marketplace.lookups.delete_product_lookups",
+			"oan_a2c.a2c_marketplace.stats_cache.on_product_change",
+		],
+	},
+	"A2C Loan Application": {
+		"after_insert": "oan_a2c.a2c_marketplace.stats_cache.on_application_change",
+		"on_update": "oan_a2c.a2c_marketplace.stats_cache.on_application_change",
+		"on_trash": "oan_a2c.a2c_marketplace.stats_cache.on_application_change",
+	},
+	"A2C Credit Information": {
+		"after_insert": "oan_a2c.openagrinet_access_to_credit.doctype.a2c_credit_information.a2c_credit_information.sync_lead_loan_amount",
+		"on_update": "oan_a2c.openagrinet_access_to_credit.doctype.a2c_credit_information.a2c_credit_information.sync_lead_loan_amount",
+		"on_trash": "oan_a2c.openagrinet_access_to_credit.doctype.a2c_credit_information.a2c_credit_information.sync_lead_loan_amount",
+	},
+}
 
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"oan_a2c.tasks.all"
-# 	],
-# 	"daily": [
-# 		"oan_a2c.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"oan_a2c.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"oan_a2c.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"oan_a2c.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	"hourly": [
+		"oan_a2c.a2c_marketplace.stats_cache.reconcile_all_banks",
+	],
+}
 
 # Testing
 # -------
@@ -242,9 +279,7 @@ before_tests = "oan_a2c.tests.before_tests"
 # Authentication and authorization
 # --------------------------------
 
-auth_hooks = [
-	"oan_a2c.api.middleware.validate_jwt_request"
-]
+auth_hooks = ["oan_a2c.api.middleware.validate_jwt_request"]
 
 # Automatically update python controller files with type annotations for this app.
 # export_python_type_annotations = True
@@ -257,4 +292,3 @@ auth_hooks = [
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-

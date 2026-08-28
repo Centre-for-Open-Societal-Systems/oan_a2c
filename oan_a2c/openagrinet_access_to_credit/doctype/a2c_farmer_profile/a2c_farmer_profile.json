@@ -8,8 +8,8 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "lead_id",
   "farmer_id",
+  "user",
   "id_type",
   "id_number",
   "application_status",
@@ -54,12 +54,6 @@
    "label": "Personal Information"
   },
   {
-   "fieldname": "lead_id",
-   "fieldtype": "Link",
-   "label": "Lead ID",
-   "options": "A2C Lead"
-  },
-  {
    "fieldname": "consent_id",
    "fieldtype": "Link",
    "label": "Consent ID",
@@ -86,7 +80,7 @@
    "label": "Phone Number",
    "options": "Phone",
    "reqd": 0,
-   "unique": 1
+   "search_index": 1
   },
   {
    "fieldname": "email",
@@ -237,7 +231,17 @@
   {
    "fieldname": "farmer_id",
    "fieldtype": "Data",
-   "label": "Farmer ID"
+   "label": "Farmer ID",
+   "search_index": 1
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "User Account",
+   "options": "User",
+   "read_only": 1,
+   "unique": 1,
+   "search_index": 1
   },
   {
    "fieldname": "id_type",
@@ -286,7 +290,7 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Development Agent",
+   "role": "A2C Development Agent",
    "share": 1,
    "write": 1
   },
@@ -298,8 +302,13 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Bank Agent",
+   "role": "A2C Administrator",
    "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "A2C Farmer",
    "write": 1
   }
  ],

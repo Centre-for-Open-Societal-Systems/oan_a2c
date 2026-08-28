@@ -16,6 +16,12 @@ repos:
       - id: check-toml
       - id: check-yaml
       - id: debug-statements
+      # A file with no newline on its last line makes every append to it a
+      # conflict, because both sides have to rewrite that line. .editorconfig
+      # already asks for this; the hook is what enforces it. Doctype JSON is
+      # excluded because Frappe writes those without a final newline.
+      - id: end-of-file-fixer
+        exclude: ".*json$|.*svg$"
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.10
@@ -45,6 +51,20 @@ repos:
                 oan_a2c/public/js/lib/.*
             )$
 
+      # Markdown too. docs/ is edited by nearly every feature branch, and the
+      # conflicts it produces are mostly formatting drift — one branch pads its
+      # tables and blank-lines its headings, the next one strips them, and then
+      # any real edit nearby collides. One formatter, enforced in CI, removes
+      # that whole class. Settings live in .prettierrc.
+      - id: prettier
+        name: "Run prettier on markdown"
+        types_or: [markdown]
+        exclude: |
+            (?x)^(
+                .*node_modules.*|
+                .*boilerplate.*
+            )$
+
 
   - repo: https://github.com/pre-commit/mirrors-eslint
     rev: v8.44.0
@@ -62,6 +82,7 @@ repos:
                 oan_a2c/templates/includes/.*|
                 oan_a2c/public/js/lib/.*
             )$
+
 
 ci:
     autoupdate_schedule: weekly

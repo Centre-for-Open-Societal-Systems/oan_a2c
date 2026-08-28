@@ -1,0 +1,24 @@
+# Store every text file with LF in the repository and check it out with LF.
+# Without this, a contributor whose Git is configured for CRLF can commit a
+# whole-file line-ending flip, which merges as "every line changed" and buries
+# the real edit. .editorconfig already asks editors for the same thing.
+* text=auto eol=lf
+
+# patches.txt is an append-only list, and two branches almost always append to
+# it in the same release. `merge=union` keeps both sides' lines instead of
+# raising a conflict over the last line of the file. This is only safe while the
+# file is treated as append-only — see the note at the top of the [post_model_sync]
+# section. If you ever need to rename or remove a patch, expect union to keep the
+# stale line too, and check the result by hand.
+oan_a2c/patches.txt merge=union
+
+# Same story: modules.txt is a registry that only ever grows, one line per module.
+oan_a2c/modules.txt merge=union
+
+# Give conflict hunks a useful @@ header: the enclosing heading for Markdown and
+# the enclosing def/class for Python, so a conflict says where it is.
+*.md diff=markdown
+*.py diff=python
+
+# Lock files are generated. Never hand-merge them; regenerate instead.
+uv.lock linguist-generated=true

@@ -1,0 +1,41 @@
+first_name,last_name,email,phone_number,fayda_id,credit_loan_amount,credit_loan_type,credit_purpose
+Abebe,Kebede,abebe.k@example.com,+251911000101,FAYDA101,50000,Personal,Home Renovation
+Meron,Tadesse,meron.t@example.com,+251911000102,FAYDA102,150000,Business,Inventory Purchase
+Yohannes,Alemu,yohannes.a@example.com,+251911000103,FAYDA103,300000,Agriculture,Farm Equipment
+Tigist,Bekele,tigist.b@example.com,+251911000104,FAYDA104,25000,Personal,Medical Expenses
+Dawit,Mekonnen,dawit.m@example.com,+251911000105,FAYDA105,450000,Business,Shop Expansion
+Selamawit,Girma,selam.g@example.com,+251911000106,FAYDA106,12000,Education,School Fees
+Elias,Tesfaye,elias.t@example.com,+251911000107,FAYDA107,75000,Agriculture,Seeds and Fertilizer
+Hanna,Haile,hanna.h@example.com,+251911000108,FAYDA108,200000,Business,Equipment Purchase
+Samuel,Demissie,samuel.d@example.com,+251911000109,FAYDA109,60000,Personal,Wedding Expenses
+Betelhem,Assefa,betty.a@example.com,+251911000110,FAYDA110,180000,Business,Working Capital
+Nahom,Belay,nahom.b@example.com,+251911000111,FAYDA111,350000,Agriculture,Tractor Lease
+Kidist,Tilahun,kidist.t@example.com,+251911000112,FAYDA112,40000,Personal,Car Repair
+Biniam,Woldemariam,biniam.w@example.com,+251911000113,FAYDA113,90000,Business,Marketing Campaign
+Eden,Tadesse,eden.t@example.com,+251911000114,FAYDA114,15000,Education,University Tuition
+Yosef,Dagne,yosef.d@example.com,+251911000115,FAYDA115,110000,Agriculture,Irrigation System
+Mahlet,Feleke,mahlet.f@example.com,+251911000116,FAYDA116,55000,Personal,Travel Expenses
+Robel,Getachew,robel.g@example.com,+251911000117,FAYDA117,220000,Business,New Branch Opening
+Fasika,Negash,fasika.n@example.com,+251911000118,FAYDA118,80000,Agriculture,Livestock Purchase
+Bereket,Tsegaye,bereket.t@example.com,+251911000119,FAYDA119,30000,Personal,Debt Consolidation
+Rediet,Kassa,rediet.k@example.com,+251911000120,FAYDA120,130000,Business,Software Licenses
+Natnael,Mulugeta,natnael.m@example.com,+251911000121,FAYDA121,280000,Agriculture,Greenhouse Construction
+Lidia,Solomon,lidia.s@example.com,+251911000122,FAYDA122,45000,Personal,Home Appliances
+Kaleb,Aberra,kaleb.a@example.com,+251911000123,FAYDA123,400000,Business,Vehicle Fleet
+Meti,Hailu,meti.h@example.com,+251911000124,FAYDA124,20000,Education,Online Courses
+Eyob,Dereje,eyob.d@example.com,+251911000125,FAYDA125,95000,Agriculture,Pesticides
+Gelila,Zeleke,gelila.z@example.com,+251911000126,FAYDA126,65000,Personal,Emergency Funds
+Abel,Tewodros,abel.t@example.com,+251911000127,FAYDA127,175000,Business,Raw Materials
+Tsion,Melaku,tsion.m@example.com,+251911000128,FAYDA128,210000,Agriculture,Storage Facility
+Michael,Sisay,michael.s@example.com,+251911000129,FAYDA129,35000,Personal,Furniture Purchase
+Saron,Bogale,saron.b@example.com,+251911000130,FAYDA130,160000,Business,Office Renovation
+Amanuel,Yilma,amanuel.y@example.com,+251911000131,FAYDA131,290000,Agriculture,Harvesting Equipment
+Blen,Alemayehu,blen.a@example.com,+251911000132,FAYDA132,50000,Personal,Vacation
+Henok,Gashaw,henok.g@example.com,+251911000133,FAYDA133,250000,Business,Product Development
+Kalkidan,Tefera,kalkidan.t@example.com,+251911000134,FAYDA134,25000,Education,Certifications
+Simon,Amare,simon.a@example.com,+251911000135,FAYDA135,85000,Agriculture,Poultry Farm
+Ruth,Tarekegn,ruth.t@example.com,+251911000136,FAYDA136,70000,Personal,Medical Procedure
+Ermias,Beshir,ermias.b@example.com,+251911000137,FAYDA137,190000,Business,Hiring Contractors
+Hewan,Gedion,hewan.g@example.com,+251911000138,FAYDA138,320000,Agriculture,Dairy Farm Expansion
+Yonatan,Fikre,yonatan.f@example.com,+251911000139,FAYDA139,48000,Personal,Motorcycle Purchase
+Feven,Desta,feven.d@example.com,+251911000140,FAYDA140,140000,Business,Storefront Upgrade

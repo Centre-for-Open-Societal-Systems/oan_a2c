@@ -99,7 +99,7 @@
    {
     "action": "Verify",
     "allow_self_approval": 1,
-    "allowed": "Development Agent",
+    "allowed": "A2C Development Agent",
     "condition": null,
     "next_state": "Verified",
     "send_email_to_creator": 0,
@@ -110,7 +110,7 @@
    {
     "action": "Mark Processed",
     "allow_self_approval": 1,
-    "allowed": "Development Agent",
+    "allowed": "A2C Development Agent",
     "condition": null,
     "next_state": "Processed",
     "send_email_to_creator": 0,
@@ -121,7 +121,18 @@
    {
     "action": "Grant",
     "allow_self_approval": 1,
-    "allowed": "Bank Agent",
+    "allowed": "A2C Bank Agent",
+    "condition": null,
+    "next_state": "Granted",
+    "send_email_to_creator": 0,
+    "state": "Processed",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
+    "action": "Grant",
+    "allow_self_approval": 1,
+    "allowed": "A2C Bank Admin",
     "condition": null,
     "next_state": "Granted",
     "send_email_to_creator": 0,
@@ -132,7 +143,7 @@
    {
     "action": "Reject",
     "allow_self_approval": 1,
-    "allowed": "Bank Agent",
+    "allowed": "A2C Bank Agent",
     "condition": null,
     "next_state": "Rejected",
     "send_email_to_creator": 0,
@@ -143,7 +154,18 @@
    {
     "action": "Reject",
     "allow_self_approval": 1,
-    "allowed": "Development Agent",
+    "allowed": "A2C Bank Admin",
+    "condition": null,
+    "next_state": "Rejected",
+    "send_email_to_creator": 0,
+    "state": "Processed",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
+    "action": "Reject",
+    "allow_self_approval": 1,
+    "allowed": "A2C Development Agent",
     "condition": null,
     "next_state": "Rejected",
     "send_email_to_creator": 0,
@@ -154,7 +176,7 @@
    {
     "action": "Reject",
     "allow_self_approval": 1,
-    "allowed": "Development Agent",
+    "allowed": "A2C Development Agent",
     "condition": null,
     "next_state": "Rejected",
     "send_email_to_creator": 0,
@@ -165,7 +187,7 @@
    {
     "action": "Mark Dormant",
     "allow_self_approval": 1,
-    "allowed": "Development Agent",
+    "allowed": "A2C Development Agent",
     "condition": null,
     "next_state": "Dormant",
     "send_email_to_creator": 0,
@@ -176,7 +198,7 @@
    {
     "action": "Mark Dormant",
     "allow_self_approval": 1,
-    "allowed": "Development Agent",
+    "allowed": "A2C Development Agent",
     "condition": null,
     "next_state": "Dormant",
     "send_email_to_creator": 0,
@@ -187,7 +209,7 @@
    {
     "action": "Reactivate",
     "allow_self_approval": 1,
-    "allowed": "Development Agent",
+    "allowed": "A2C Development Agent",
     "condition": null,
     "next_state": "Active",
     "send_email_to_creator": 0,
@@ -220,7 +242,7 @@
     "message": null,
     "next_action_email_template": null,
     "send_email": 1,
-    "state": "Draft",
+    "state": "Active",
     "update_field": null,
     "update_value": null,
     "workflow_builder_id": null
@@ -234,7 +256,7 @@
     "message": null,
     "next_action_email_template": null,
     "send_email": 1,
-    "state": "Processing",
+    "state": "In Transition",
     "update_field": null,
     "update_value": null,
     "workflow_builder_id": null
@@ -248,7 +270,21 @@
     "message": null,
     "next_action_email_template": null,
     "send_email": 1,
-    "state": "Approved",
+    "state": "Completed",
+    "update_field": null,
+    "update_value": null,
+    "workflow_builder_id": null
+   },
+   {
+    "allow_edit": "System Manager",
+    "avoid_status_override": 0,
+    "doc_status": "2",
+    "evaluate_as_expression": 0,
+    "is_optional_state": 0,
+    "message": null,
+    "next_action_email_template": null,
+    "send_email": 1,
+    "state": "Cancelled",
     "update_field": null,
     "update_value": null,
     "workflow_builder_id": null
@@ -270,35 +306,68 @@
   ],
   "transitions": [
    {
-    "action": "Send for Review",
+    "action": "Submit",
     "allow_self_approval": 1,
-    "allowed": "Development Agent",
+    "allowed": "A2C Development Agent",
     "condition": null,
-    "next_state": "Processing",
+    "next_state": "In Transition",
     "send_email_to_creator": 0,
-    "state": "Draft",
+    "state": "Active",
     "transition_tasks": null,
     "workflow_builder_id": null
    },
    {
-    "action": "Approve",
+    "action": "Submit",
     "allow_self_approval": 1,
-    "allowed": "Bank Agent",
+    "allowed": "A2C Farmer",
     "condition": null,
-    "next_state": "Approved",
+    "next_state": "In Transition",
     "send_email_to_creator": 0,
-    "state": "Processing",
+    "state": "Active",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
+    "action": "Complete",
+    "allow_self_approval": 1,
+    "allowed": "A2C Bank Agent",
+    "condition": null,
+    "next_state": "Completed",
+    "send_email_to_creator": 0,
+    "state": "In Transition",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
+    "action": "Complete",
+    "allow_self_approval": 1,
+    "allowed": "A2C Bank Admin",
+    "condition": null,
+    "next_state": "Completed",
+    "send_email_to_creator": 0,
+    "state": "In Transition",
     "transition_tasks": null,
     "workflow_builder_id": null
    },
    {
     "action": "Reject",
     "allow_self_approval": 1,
-    "allowed": "Bank Agent",
+    "allowed": "A2C Bank Agent",
     "condition": null,
     "next_state": "Rejected",
     "send_email_to_creator": 0,
-    "state": "Processing",
+    "state": "In Transition",
+    "transition_tasks": null,
+    "workflow_builder_id": null
+   },
+   {
+    "action": "Reject",
+    "allow_self_approval": 1,
+    "allowed": "A2C Bank Admin",
+    "condition": null,
+    "next_state": "Rejected",
+    "send_email_to_creator": 0,
+    "state": "In Transition",
     "transition_tasks": null,
     "workflow_builder_id": null
    }

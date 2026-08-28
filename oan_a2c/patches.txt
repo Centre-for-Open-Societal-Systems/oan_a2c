@@ -4,4 +4,25 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+#
+# This file is append-only: add your patch on a new line at the end, and never
+# reorder or edit an existing line. .gitattributes marks it `merge=union`, so two
+# branches that each append a patch merge without a conflict — that only holds
+# while every change is a pure append and the file keeps its trailing newline.
 oan_a2c.patches.create_lead_loan_workflows
+oan_a2c.patches.rename_a2c_roles
+oan_a2c.patches.cleanup_stale_plain_roles
+oan_a2c.patches.backfill_lead_loan_amount
+oan_a2c.patches.add_must_change_password_field
+oan_a2c.patches.round_loan_product_values
+oan_a2c.patches.normalize_loan_product_status
+oan_a2c.patches.add_farmer_role
+oan_a2c.patches.backfill_loan_application_farmer_profile
+oan_a2c.patches.update_loan_workflow_for_farmer
+oan_a2c.patches.add_saved_product_unique_index
+oan_a2c.patches.backfill_consent_request_reference
+oan_a2c.patches.backfill_application_source
+oan_a2c.patches.rekey_saved_product_on_user
+oan_a2c.patches.backfill_lead_consent_id
+oan_a2c.patches.seed_default_stages_for_existing_banks
+oan_a2c.patches.backfill_processing_loan_stage

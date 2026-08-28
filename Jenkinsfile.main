@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         AWS_REGION    = 'ap-south-1'
-        ECR_REPO      = 'oan-a2c'
+        ECR_REPO      = 'oan/a2c'
         FRAPPE_BRANCH = 'version-16'
         FRAPPE_PATH   = 'https://github.com/frappe/frappe'
         BACKEND_IP    = '10.0.2.100'

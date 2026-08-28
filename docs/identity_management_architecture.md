@@ -1,9 +1,11 @@
 # OAN Access to Credit (A2C) Identity Management Architecture
 
 ## Overview
+
 This document outlines the architectural approach for integrating Keycloak as the Identity and Access Management (IAM) provider for the OpenAgriNet (OAN) Frappe application, using a strictly stateless JWT (Bearer token) architecture to support both Mobile and Web headess clients.
 
 The primary goals of this architecture are:
+
 1. **Stateless Scalability:** Frappe remains completely stateless. No cookies or server-side sessions are used; all authentication is managed via per-request JWT validation.
 2. **Centralized Identity:** Keycloak acts as the Single Source of Truth (SSoT) for user identities, credentials, and roles.
 3. **Zero Downtime Migration:** A "Dual-Mode" JWT validation strategy ensures that legacy systems and test scripts using Frappe's native HS256 tokens do not break during the migration.
@@ -15,15 +17,16 @@ The primary goals of this architecture are:
 Unlike traditional server-side applications, the Mobile and Web frontends interact directly with Keycloak.
 
 **Workflow:**
+
 1. The Mobile or Web application utilizes standard OIDC flows (e.g., AppAuth, PKCE) to authenticate the user against the Keycloak authorization server.
 2. Keycloak issues an `access_token` (an RS256-signed JWT) to the client application.
 3. For every subsequent API request to Frappe, the client attaches this token in the header: `Authorization: Bearer <TOKEN>`.
 
 ---
 
-## 2. Dual-Mode JWT Validation 
+## 2. Dual-Mode JWT Validation
 
-Frappe's legacy architecture generates and validates symmetric `HS256` tokens. Keycloak issues asymmetric `RS256` tokens signed via a JSON Web Key Set (JWKS). 
+Frappe's legacy architecture generates and validates symmetric `HS256` tokens. Keycloak issues asymmetric `RS256` tokens signed via a JSON Web Key Set (JWKS).
 
 To ensure backward compatibility, the Frappe authentication middleware (`oan_a2c/api/middleware.py`) uses a **Dual-Mode Gateway**:
 
@@ -39,6 +42,7 @@ To ensure backward compatibility, the Frappe authentication middleware (`oan_a2c
 When a valid Keycloak RS256 token reaches Frappe, the middleware ensures the user exists locally so that foreign key constraints (such as `owner` or `assigned_to` fields) function correctly.
 
 **Workflow:**
+
 1. The middleware extracts the `email` (or `sub`) claim from the validated payload.
 2. It performs a fast lookup in the `tabUser` table.
 3. **Provisioning:** If the user does not exist, the middleware programmatically creates a new Frappe `User` document on the fly using the `given_name`, `family_name`, and `email` claims from the token.

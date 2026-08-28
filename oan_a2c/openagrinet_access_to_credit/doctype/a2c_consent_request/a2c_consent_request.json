@@ -8,11 +8,14 @@
   "farmer_fayda_id",
   "partner",
   "consent_type",
+  "purpose_id",
   "purpose",
+  "purpose_description",
   "validity_from",
   "validity_to",
   "consent_form_attachment",
-  "lead",
+  "reference_doctype",
+  "reference_name",
   "requested_data_fields",
   "openg2p_consent_id",
   "status",
@@ -44,9 +47,19 @@
    "label": "Consent Type"
   },
   {
+   "fieldname": "purpose_id",
+   "fieldtype": "Data",
+   "label": "Purpose ID"
+  },
+  {
    "fieldname": "purpose",
    "fieldtype": "Data",
    "label": "Purpose"
+  },
+  {
+   "fieldname": "purpose_description",
+   "fieldtype": "Small Text",
+   "label": "Purpose Description"
   },
   {
    "fieldname": "validity_from",
@@ -64,12 +77,6 @@
    "label": "Consent Form Attachment"
   },
   {
-   "fieldname": "lead",
-   "fieldtype": "Link",
-   "label": "Lead",
-   "options": "A2C Lead"
-  },
-  {
    "fieldname": "requested_data_fields",
    "fieldtype": "Table",
    "label": "Requested Data Fields",
@@ -84,7 +91,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
-   "options": "Draft\nPending OTP\nApproved\nRejected"
+   "options": "Draft\nPending OTP\nOTP Verified\nApproved\nRejected\nFailed"
   },
   {
    "fieldname": "otp_transaction_id",
@@ -111,6 +118,21 @@
    "fieldname": "consent_receipt",
    "fieldtype": "Data",
    "label": "Consent Receipt"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "options": "DocType",
+   "label": "Reference DocType",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "options": "reference_doctype",
+   "label": "Reference Name",
+   "read_only": 1,
+   "search_index": 1
   }
  ],
  "links": [],
@@ -125,6 +147,25 @@
    "delete": 1,
    "read": 1,
    "role": "System Manager",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "A2C Development Agent",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "read": 1,
+   "role": "A2C Administrator",
+   "write": 1
+  },
+  {
+   "create": 1,
+   "read": 1,
+   "role": "A2C Farmer",
    "write": 1
   }
  ],
