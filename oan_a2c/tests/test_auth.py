@@ -12,7 +12,7 @@ from oan_a2c.api.auth import (
 	refresh,
 )
 from oan_a2c.api.middleware import JWTUnauthorized, validate_jwt_request
-from oan_a2c.tests.request_context import RequestContextMixin
+from oan_a2c.tests.request_context import RequestContextMixin, sign_access_token, signing_secret
 
 
 class TestAuthAPI(RequestContextMixin, unittest.TestCase):
@@ -40,8 +40,9 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 
 		update_password(user=cls.test_email, pwd=cls.test_password)
 
-		# Ensure a mock encryption key is present in isolated CI/CD environments
-		if not frappe.conf.get("encryption_key"):
+		# Give the key resolver something to fall back to on an isolated CI site that
+		# has neither jwt_secrets nor encryption_key configured.
+		if not frappe.conf.get("jwt_secrets") and not frappe.conf.get("encryption_key"):
 			frappe.conf.encryption_key = "ci_cd_test_encryption_key_for_jwt"
 
 	@classmethod
@@ -63,7 +64,7 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 		token = response["data"]["token"]
 		payload = jwt.decode(
 			token,
-			frappe.conf.encryption_key,
+			signing_secret(),
 			algorithms=["HS256"],
 			audience="oan_a2c_client",
 			issuer="oan_a2c_identity_gateway",
@@ -89,7 +90,7 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 			"aud": "oan_a2c_client",
 			"exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
 		}
-		token = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v1"})
+		token = sign_access_token(payload)
 
 		# Patch frappe.local.request — this is what middleware.py reads
 		frappe.local.request = frappe._dict({"path": "/api/method/oan_a2c.api.v1.get_leads"})
@@ -112,7 +113,7 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 			# Already expired 1 hour ago
 			"exp": datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1),
 		}
-		token = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v1"})
+		token = sign_access_token(payload)
 
 		frappe.local.request = frappe._dict({"path": "/api/method/oan_a2c.api.v1.get_leads"})
 		self._mock_headers["Authorization"] = f"Bearer {token}"
@@ -150,10 +151,11 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 			"sub": self.test_email,
 			"exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
 		}
-		# Token with invalid kid
-		token_invalid_kid = jwt.encode(
-			payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v2"}
-		)
+		# A kid the site has no secret for. Deliberately not "v2": the kid is now
+		# looked up in jwt_secrets rather than compared to the literal "v1", so a
+		# plausible future rotation target would make this test fail the day
+		# someone provisions it. See tests/test_jwt_keys.py for the rotation cases.
+		token_invalid_kid = sign_access_token(payload, kid="unknown-kid")
 		frappe.local.request = frappe._dict({"path": "/api/method/oan_a2c.api.v1.get_leads"})
 		self._mock_headers["Authorization"] = f"Bearer {token_invalid_kid}"
 		with self.assertRaises(JWTUnauthorized) as context:
@@ -161,7 +163,7 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 		self.assertIn("Invalid or missing Key ID", context.exception.message)
 
 		# Token with missing kid
-		token_missing_kid = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256")
+		token_missing_kid = jwt.encode(payload, signing_secret(), algorithm="HS256")
 		self._mock_headers["Authorization"] = f"Bearer {token_missing_kid}"
 		with self.assertRaises(JWTUnauthorized) as context:
 			validate_jwt_request()
@@ -174,7 +176,7 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 			"iss": "oan_a2c_identity_gateway",
 			"aud": "oan_a2c_client",
 		}
-		token = jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v1"})
+		token = sign_access_token(payload)
 		frappe.local.request = frappe._dict({"path": "/api/method/oan_a2c.api.v1.get_leads"})
 		self._mock_headers["Authorization"] = f"Bearer {token}"
 

@@ -20,6 +20,7 @@ from oan_a2c.a2c_marketplace.roles import (
 	DEVELOPMENT_AGENT_ROLE,
 	FARMER_ROLE,
 )
+from oan_a2c.api.jwt_keys import JWTKeyConfigurationError, get_signing_key
 from oan_a2c.api.utils import (
 	PasswordChangeRequired,
 	SafeEmail,
@@ -150,9 +151,10 @@ def _classify_user_type(roles: list[str]) -> str:
 
 
 def generate_access_token(usr: str, roles: list) -> str:
-	secret = frappe.conf.get("encryption_key")
-	if not secret:
-		frappe.throw(_("System configuration error: missing encryption_key"))
+	try:
+		kid, secret = get_signing_key()
+	except JWTKeyConfigurationError:
+		frappe.throw(_("System configuration error: no JWT signing key"))
 
 	now = datetime.datetime.now(datetime.UTC)
 	payload = {
@@ -164,7 +166,7 @@ def generate_access_token(usr: str, roles: list) -> str:
 		"roles": roles,
 		"user_type": _classify_user_type(roles),
 	}
-	return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": "v1"})
+	return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": kid})
 
 
 def generate_refresh_token(usr: str, remember_me: bool = False) -> str:

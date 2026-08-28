@@ -10,7 +10,6 @@ import hashlib
 import unittest
 
 import frappe
-import jwt
 
 from oan_a2c.api.auth import (
 	generate_refresh_token,
@@ -19,7 +18,7 @@ from oan_a2c.api.auth import (
 	set_initial_password,
 )
 from oan_a2c.api.middleware import JWTUnauthorized, validate_jwt_request
-from oan_a2c.tests.request_context import RequestContextMixin
+from oan_a2c.tests.request_context import RequestContextMixin, sign_access_token
 
 
 class TestMustChangePassword(RequestContextMixin, unittest.TestCase):
@@ -52,8 +51,9 @@ class TestMustChangePassword(RequestContextMixin, unittest.TestCase):
 
 		update_password(user=cls.email, pwd=cls.temp_password)
 
-		# Ensure a mock encryption key is present in isolated CI/CD environments
-		if not frappe.conf.get("encryption_key"):
+		# Give the key resolver something to fall back to on an isolated CI site that
+		# has neither jwt_secrets nor encryption_key configured.
+		if not frappe.conf.get("jwt_secrets") and not frappe.conf.get("encryption_key"):
 			frappe.conf.encryption_key = "ci_cd_test_encryption_key_for_jwt"
 
 	@classmethod
@@ -87,7 +87,7 @@ class TestMustChangePassword(RequestContextMixin, unittest.TestCase):
 			"aud": "oan_a2c_client",
 			"exp": datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
 		}
-		return jwt.encode(payload, frappe.conf.encryption_key, algorithm="HS256", headers={"kid": "v1"})
+		return sign_access_token(payload)
 
 	# ------------------------------------------------------------------
 	# login is gated

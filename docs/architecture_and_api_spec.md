@@ -827,7 +827,7 @@ To protect sensitive agricultural and credit data under Ethiopia’s regional da
 ### **5.1 JWT Design Specs**
 
 - **Signing Algorithm:** HMAC SHA-256 (`HS256`).
-- **Signature Key:** Derived directly from the local site's private salt (`encryption_key` inside `site_config.json`). This ensures that even if the source code is compromised, tokens cannot be forged without access to the host's runtime environment.
+- **Signature Key:** A dedicated signing secret held in `jwt_secrets` inside `site_config.json`, selected by the token's `kid` header (see `api/jwt_keys.py`). This ensures that even if the source code is compromised, tokens cannot be forged without access to the host's runtime environment. It is kept separate from `encryption_key` — Frappe's Fernet key for data at rest — so the signing secret can be rotated on suspicion of a leak without making previously encrypted data undecryptable. `encryption_key` remains the fallback when `jwt_secrets` is unset.
 - **Token Expiration:** Short-lived access tokens (standard expiry is 1 hour).
 - **Token Payload:**
   ```json
