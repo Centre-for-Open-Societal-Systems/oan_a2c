@@ -54,13 +54,13 @@ ssh -i "${SSH_KEY}" \
 
     sleep 20
 
-    echo "=== Clearing stale assets ==="
-    docker compose exec -T backend bash -c "rm -rf /home/frappe/frappe-bench/sites/assets"
-
-    echo "=== Rebuilding assets ==="
-    docker compose exec -T backend bench build --force
-    docker compose exec -T backend bench --site mysite.localhost migrate
-    docker compose exec -T backend bench --site mysite.localhost clear-cache
+    # Do NOT touch sites/assets here. Images built from frappe_docker's
+    # images/layered/Containerfile bake assets into the image layer at
+    # /home/frappe/frappe-bench/assets, and the image entrypoint symlinks
+    # sites/assets -> that path on every container start. Deleting the symlink
+    # and running "bench build" breaks the site: /assets/** 404s, and the
+    # frontend overrides the entrypoint with nginx-entrypoint.sh, so a frontend
+    # restart does not recreate the link.
 
     echo "=== Setting OpenG2P config ==="
     docker compose exec -T backend bench set-config -g openg2p_base_url "https://socialregistry-22062026.dev.openg2p.test"
@@ -79,13 +79,22 @@ ssh -i "${SSH_KEY}" \
 
     echo "=== Running migrations ==="
     docker compose exec -T backend bench --site mysite.localhost migrate
+    docker compose exec -T backend bench --site mysite.localhost clear-cache
 
     echo "=== Restarting frontend ==="
     docker compose restart frontend
     sleep 10
 
     echo "=== Health check ==="
-    curl -sf http://localhost:8080/health && echo "Health check passed!" || echo "Warning: health check failed"
+    # sites/assets must be the symlink the image entrypoint creates on start
+    # (-> /home/frappe/frappe-bench/assets in the image layer). nginx serves
+    # /assets from it, so if this is missing or empty the site renders unstyled.
+    # \$ is escaped: unescaped it would expand on the Jenkins agent, not on EC2.
+    docker compose exec -T backend bash -c \
+        'test -L sites/assets && test -n "\$(ls -A sites/assets/ 2>/dev/null)"' \
+        || { echo "FAIL: sites/assets is not a populated symlink"; exit 1; }
+
+    echo "Health check passed (assets linked)"
 
     echo "=== Deployment complete ==="
     docker compose ps
