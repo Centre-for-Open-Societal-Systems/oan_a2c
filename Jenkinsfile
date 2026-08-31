@@ -5,7 +5,7 @@
 //  Per branch:
 //    develop -> build + push to ECR (oan-a2c) + ci/deploy-ec2.sh
 //               (existing EC2 docker-compose deploy — UNCHANGED)
-//    staging -> build + push to ECR (oan/a2c) + ci/update-kustomize.sh
+//    staging -> build + push to ECR (oan/a2c) + ci/update-kustomize-ati.sh
 //               (GitOps: bump oan-kustomize `staging` overlay; ArgoCD on node 41 syncs)
 //
 //  develop intentionally still targets the LEGACY `oan-a2c` repo because
@@ -43,7 +43,7 @@ pipeline {
       steps {
         script {
           // staging -> new namespaced repo; everything else -> legacy repo (unchanged).
-          env.ECR_REPO      = (env.BRANCH_NAME == 'staging') ? 'oan/a2c' : 'oan-a2c'
+          env.ECR_REPO      = (env.BRANCH_NAME == 'staging_ati') ? 'oan/a2c' : 'oan-a2c'
           env.IMMUTABLE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
           env.MOVING_TAG    = "${env.BRANCH_NAME}-latest"
           echo "branch=${env.BRANCH_NAME}  repo=${env.ECR_REPO}  tag=${env.IMMUTABLE_TAG}"
@@ -52,7 +52,7 @@ pipeline {
     }
 
     stage('Build image') {
-      when { anyOf { branch 'develop'; branch 'staging' } }
+      when { anyOf { branch 'develop'; branch 'staging_ati' } }
       steps {
         withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
           sh '''#!/usr/bin/env bash
@@ -81,7 +81,7 @@ pipeline {
     }
 
     stage('Push to ECR') {
-      when { anyOf { branch 'develop'; branch 'staging' } }
+      when { anyOf { branch 'develop'; branch 'staging_ati' } }
       steps {
         withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
           sh '''#!/usr/bin/env bash
@@ -134,9 +134,9 @@ pipeline {
     // staging -> GitOps: bump the oan-kustomize `staging` overlay to the new image.
     // Auth is the `oan-deployer` GitHub App (contents:write on oan-kustomize only);
     // gitUsernamePassword mints a short-lived installation token. All kustomize
-    // logic lives in ci/update-kustomize.sh.
+    // logic lives in ci/update-kustomize-ati.sh.
     stage('staging → GitOps (ArgoCD@41)') {
-      when { branch 'staging' }
+      when { branch 'staging_ati' }
       steps {
         withCredentials([
           string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
@@ -144,9 +144,9 @@ pipeline {
         ]) {
           sh '''#!/usr/bin/env bash
             set -euo pipefail
-            chmod +x ci/update-kustomize.sh
+            chmod +x ci/update-kustomize-ati.sh
             # args: <overlay> <kustomize image match-name> <new image ref>
-            ci/update-kustomize.sh staging oan-a2c \
+            ci/update-kustomize-ati.sh staging oan-a2c \
               "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMMUTABLE_TAG}"
           '''
         }
