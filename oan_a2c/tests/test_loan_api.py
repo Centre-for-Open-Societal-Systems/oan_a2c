@@ -1252,3 +1252,220 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		frappe.delete_doc("A2C Loan Application", app_agent.name, force=True)
 		frappe.delete_doc("A2C Loan Application", app_farmer.name, force=True)
 		frappe.db.commit()
+
+	def test_get_loan_metadata_caller_scoping(self):
+		"""Bank users do not receive 'Active' in loan metadata; farmers and bank-unbound users do."""
+		from oan_a2c.api.v1.loan_applications import get_loan_metadata
+
+		# Bank Admin caller
+		frappe.set_user(self.bank_admin_user)
+		bank_meta = get_loan_metadata()
+		bank_statuses = [s["status"] for s in bank_meta["data"]["statuses"]]
+		self.assertNotIn("Active", bank_statuses)
+		self.assertIn("Submitted", bank_statuses)
+
+		# Farmer caller
+		frappe.set_user(self.farmer_user)
+		farmer_meta = get_loan_metadata()
+		farmer_statuses = [s["status"] for s in farmer_meta["data"]["statuses"]]
+		self.assertIn("Active", farmer_statuses)
+
+		# Dev Agent caller (bank-unbound)
+		frappe.set_user(self.dev_agent_user)
+		dev_meta = get_loan_metadata()
+		dev_statuses = [s["status"] for s in dev_meta["data"]["statuses"]]
+		self.assertIn("Active", dev_statuses)
+
+	def test_get_full_profile_hides_current_step_for_bank_caller(self):
+		"""Bank callers do not see current_step in get_full_profile; unbound and farmer callers do."""
+		from oan_a2c.api.v1.loan_applications import get_full_profile
+
+		frappe.set_user("Administrator")
+		app = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Self Service",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 1000,
+				"loan_amount": 1000,
+				"consent_id": self.consent.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_1["Submitted"].stage_id,
+				"stage_label": "Submitted",
+				"current_step": 2,
+				"first_name": "RPFarmer",
+				"last_name": "Test",
+				"phone_number": "+251911888111",
+				"owner": self.farmer_user,
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		# Bank Admin caller (step omitted from get_full_profile and get_all_loans)
+		frappe.set_user(self.bank_admin_user)
+		bank_res = get_full_profile(application_id=app.name)
+		self.assertEqual(bank_res["status"], "success")
+		self.assertNotIn("current_step", bank_res["data"])
+
+		bank_list = get_all_loans()
+		self.assertEqual(bank_list["status"], "success")
+		matching = [r for r in bank_list["data"] if r.get("application_id") == app.name]
+		if matching:
+			self.assertNotIn("step", matching[0])
+
+		# Dev Agent caller (unbound - step visible)
+		frappe.set_user(self.dev_agent_user)
+		dev_res = get_full_profile(application_id=app.name)
+		self.assertEqual(dev_res["status"], "success")
+		self.assertIn("current_step", dev_res["data"])
+		self.assertEqual(dev_res["data"]["current_step"], 2)
+
+		dev_list = get_all_loans()
+		self.assertEqual(dev_list["status"], "success")
+		matching_dev = [r for r in dev_list["data"] if r.get("application_id") == app.name]
+		if matching_dev:
+			self.assertIn("step", matching_dev[0])
+			self.assertEqual(matching_dev[0]["step"], 2)
+
+		# Farmer caller
+		frappe.set_user(self.farmer_user)
+		farmer_res = get_full_profile(application_id=app.name)
+		self.assertEqual(farmer_res["status"], "success")
+		self.assertIn("current_step", farmer_res["data"])
+		self.assertEqual(farmer_res["data"]["current_step"], 2)
+
+		# Cleanup
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Loan Application", app.name, force=True)
+		frappe.db.commit()
+
+	def test_dynamic_farmer_json_webhook_and_profile_integration(self):
+		"""Dynamic farmer data is saved as JSON and preserved across profiles and loan applications."""
+		import json
+
+		from oan_a2c.api.v1.loan_applications import get_basic_profile, get_full_profile
+		from oan_a2c.api.v1.webhook_consent_data import process_consent_data
+
+		frappe.set_user("Administrator")
+		# The webhook upserts a profile keyed on the *farmer account*, so this
+		# resolves to cls.profile rather than creating a fresh one. Nine other tests
+		# in this class link against cls.profile.name, so the fixture is snapshotted
+		# here and restored in cleanup instead of being deleted.
+		profile_snapshot = frappe.db.get_value(
+			"A2C Farmer Profile",
+			self.profile.name,
+			["consent_id", "first_name", "last_name", "phone_number", "region", "woreda", "kebele"],
+			as_dict=True,
+		)
+
+		consent_uuid = f"test-consent-{self.h}"
+		consent_req = frappe.get_doc(
+			{
+				"doctype": "A2C Consent Request",
+				"openg2p_consent_id": consent_uuid,
+				"farmer": "Dynamic Farmer",
+				"farmer_fayda_id": f"FAYDA-{self.h}",
+				"partner": "Test Partner",
+				"status": "Pending OTP",
+				"owner": self.farmer_user,
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		# Dynamic webhook payload with arbitrary dynamic fields
+		webhook_payload = {
+			"source": "g2p_ati_consent_mgt",
+			"event_type": "WEBSUB_INDIVIDUAL_UPDATED",
+			"published_at": "2026-09-01 10:00:00",
+			"consent": {
+				"id": 9999,
+				"consent_creation_request_id": consent_uuid,
+				"status": "approved",
+			},
+			"farmer": {"id": 12345, "name": "Dynamic TestFarmer"},
+			"selected_data": {
+				"farmer": {
+					"Full Name": "Dynamic TestFarmer",
+					"Mobile Number": "+251911999888",
+					"Region": "Oromia",
+					"Woreda": "Ambo",
+					"Custom Dynamic Field": "Custom Dynamic Value",
+					"Soil Mineral Analysis": {"nitrogen": 45, "ph": 6.5},
+					"Irrigation Methods": ["Drip", "Rainfed"],
+				}
+			},
+		}
+
+		# Process the webhook
+		process_consent_data(webhook_payload, consent_req.name, consent_uuid)
+		frappe.db.commit()
+
+		# Verify Consent Request stored raw_consent_data
+		updated_consent = frappe.get_doc("A2C Consent Request", consent_req.name)
+		self.assertEqual(updated_consent.status, "Approved")
+		self.assertIsNotNone(updated_consent.raw_consent_data)
+
+		# Verify Farmer Profile stored both core columns and farmer_data_json
+		profile_name = frappe.db.get_value("A2C Farmer Profile", {"user": self.farmer_user}, "name")
+		profile_doc = frappe.get_doc("A2C Farmer Profile", profile_name)
+		self.assertEqual(profile_doc.first_name, "Dynamic")
+		self.assertEqual(profile_doc.last_name, "TestFarmer")
+		self.assertEqual(profile_doc.region, "Oromia")
+		self.assertIsNotNone(profile_doc.farmer_data_json)
+
+		# Verify get_basic_profile returns standard fields AND dynamic farmer_data
+		frappe.set_user(self.farmer_user)
+		basic_res = get_basic_profile()
+		self.assertEqual(basic_res["status"], "success")
+		self.assertEqual(basic_res["data"]["first_name"], "Dynamic")
+		self.assertEqual(basic_res["data"]["region"], "Oromia")
+		self.assertIn("farmer_data", basic_res["data"])
+		self.assertIn("Custom Dynamic Field", json.dumps(basic_res["data"]["farmer_data"]))
+
+		# Create a loan application for this farmer and verify get_full_profile
+		frappe.set_user("Administrator")
+		app = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Self Service",
+				"farmer_profile": profile_name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 5000,
+				"loan_amount": 5000,
+				"consent_id": consent_req.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_1["Submitted"].stage_id,
+				"stage_label": "Submitted",
+				"current_step": 1,
+				"first_name": profile_doc.first_name,
+				"last_name": profile_doc.last_name,
+				"phone_number": profile_doc.phone_number,
+				"region": profile_doc.region,
+				"farmer_data_json": profile_doc.farmer_data_json,
+				"owner": self.farmer_user,
+			}
+		).insert(ignore_permissions=True)
+		frappe.db.commit()
+
+		frappe.set_user(self.farmer_user)
+		full_res = get_full_profile(application_id=app.name)
+		self.assertEqual(full_res["status"], "success")
+		self.assertEqual(full_res["data"]["first_name"], "Dynamic")
+		self.assertIn("farmer_data", full_res["data"])
+		self.assertIn("Soil Mineral Analysis", json.dumps(full_res["data"]["farmer_data"]))
+
+		# Cleanup. The profile is a class fixture: restore the fields the webhook
+		# overwrote (including consent_id, which would otherwise dangle at the
+		# consent request deleted below) rather than dropping the doc.
+		frappe.set_user("Administrator")
+		frappe.delete_doc("A2C Loan Application", app.name, force=True)
+		frappe.db.set_value(
+			"A2C Farmer Profile",
+			profile_name,
+			{**profile_snapshot, "farmer_data_json": None},
+		)
+		frappe.delete_doc("A2C Consent Request", consent_req.name, force=True)
+		frappe.db.commit()

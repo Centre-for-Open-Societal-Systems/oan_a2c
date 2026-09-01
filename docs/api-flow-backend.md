@@ -1139,7 +1139,7 @@ At least one field should be provided (no error if omitted — returns current v
     "sequence": 1,
     "is_terminal": false,
     "is_successful": false,
-    "current_step": 1,
+    "current_step": "1 (omitted for bank callers)",
     "loan_officer": null,
     "creation": "2026-01-15 10:30:00",
     "date_of_birth": "1985-03-20 or null",
@@ -1219,7 +1219,7 @@ No parameters. Returns zero-filled pipeline stage counts scoped to caller's visi
 
 #### `GET /api/method/oan_a2c.api.v1.loan_applications.get_loan_metadata`
 
-No parameters. Returns dynamic, caller-scoped status metadata objects (Bank Agent -> own bank stages; Farmer -> banks applied to; Dev Agent / Admin -> union across all banks).
+No parameters. Returns dynamic, caller-scoped status metadata objects (Bank Agent/Admin -> own bank stages; Farmer -> banks applied to plus pre-submission `Active`; Dev Agent / Admin -> union across all banks plus `Active`).
 
 **Success response** (HTTP 200):
 
@@ -1343,7 +1343,7 @@ No parameters. Returns dynamic, caller-scoped status metadata objects (Bank Agen
 }
 ```
 
-> **Type notes:** `loan_amount` is `float`. `step` is `int`. `creation` is an ISO 8601 string. `sequence` is `int` or `null`.
+> **Type notes:** `loan_amount` is `float`. `step` is `int` (included only for bank-unbound callers and farmers; omitted for bank users). `creation` is an ISO 8601 string. `sequence` is `int` or `null`.
 
 **Error cases:**
 

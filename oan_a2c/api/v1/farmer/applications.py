@@ -1,3 +1,5 @@
+import json
+
 import frappe
 from frappe import _
 from frappe.utils import cint, flt
@@ -170,6 +172,17 @@ def get_application(**kwargs):
 		"certification_id": doc.certification_id,
 		"certification_photo_url": doc.certification_photo_url,
 	}
+
+	raw_data = doc.get("farmer_data_json")
+	if not raw_data and doc.farmer_profile:
+		raw_data = frappe.db.get_value("A2C Farmer Profile", doc.farmer_profile, "farmer_data_json")
+	if isinstance(raw_data, str):
+		try:
+			raw_data = json.loads(raw_data)
+		except Exception:
+			pass
+	data["farmer_data"] = raw_data or {}
+
 	return success_response(data=data, message="Application retrieved successfully")
 
 
@@ -261,6 +274,7 @@ def create_application(**kwargs):
 			"woreda": profile.woreda,
 			"kebele": profile.kebele,
 			"farmer_id": profile.farmer_id,
+			"farmer_data_json": profile.get("farmer_data_json"),
 		}
 	)
 	app.insert(ignore_permissions=False)
