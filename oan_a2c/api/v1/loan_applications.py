@@ -1124,7 +1124,11 @@ def update_loan_status(**kwargs):
 	audit_event.event_type = "Status Changed"
 	audit_event.event_title = "Status Updated"
 	audit_event.event_description = description
-	audit_event.insert()
+	# ignore_permissions=True: append-only audit trail, same as upload/delete_supporting_document.
+	# Bank Admin/Agent have create=0 on the audit doctype, so a plain insert() throws
+	# PermissionError after the status already changed -- breaking the endpoint for the
+	# very roles it targets and leaving no audit record.
+	audit_event.insert(ignore_permissions=True)
 
 	return success_response(message=_("Loan status updated to {0}.").format(resolved["stage_label"]))
 

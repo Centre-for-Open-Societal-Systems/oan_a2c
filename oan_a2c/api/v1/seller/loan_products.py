@@ -297,6 +297,12 @@ def list_products(
 	page: int = 1,
 	page_size: int = 20,
 ):
+	# Bound pagination: a negative page gives a negative offset, and an unbounded
+	# page_size is a memory/DoS vector. Banks hold few products, so a generous cap is
+	# safe and needs no pagination UI.
+	page = max(1, int(page))
+	page_size = min(200, max(1, int(page_size)))
+
 	base_filters = {}
 
 	if status:
@@ -324,11 +330,13 @@ def list_products(
 	matching_product_ids = None
 
 	if category:
+		# Exact match on the category id, matching the farmer catalog. A substring
+		# match here over-selected (e.g. "agri" pulled in "agriculture-secondary").
 		# get_list applies the A2C Term Relationship bank scope (it is bank-scoped),
 		# so a caller cannot enumerate another bank's taxonomy via category search.
 		cat_ids = frappe.get_list(
 			"A2C Term Relationship",
-			filters={"term_type": "Category", "term_category": ["like", f"%{category}%"]},
+			filters={"term_type": "Category", "term_category": category},
 			pluck="loan_product",
 		)
 		matching_product_ids = set(cat_ids)
@@ -336,7 +344,7 @@ def list_products(
 	if tag:
 		tag_ids = frappe.get_list(
 			"A2C Term Relationship",
-			filters={"term_type": "Tag", "term_tag": ["like", f"%{tag}%"]},
+			filters={"term_type": "Tag", "term_tag": tag},
 			pluck="loan_product",
 		)
 		if matching_product_ids is None:

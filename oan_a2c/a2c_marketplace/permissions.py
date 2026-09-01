@@ -4,7 +4,12 @@ import frappe
 from frappe import _
 
 # Role names live in one place (oan_a2c.a2c_marketplace.roles).
-from oan_a2c.a2c_marketplace.roles import BANK_UNBOUND_ROLES, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE
+from oan_a2c.a2c_marketplace.roles import (
+	ADMIN_ROLE,
+	BANK_UNBOUND_ROLES,
+	DEVELOPMENT_AGENT_ROLE,
+	FARMER_ROLE,
+)
 
 
 class BankNotOnboarded(frappe.PermissionError):
@@ -282,7 +287,8 @@ def is_platform_admin(user=None) -> bool:
 	bank-unbound."""
 	if not user:
 		user = frappe.session.user
-	return user == "Administrator" or "System Manager" in frappe.get_roles(user)
+	roles = frappe.get_roles(user)
+	return user == "Administrator" or "System Manager" in roles or ADMIN_ROLE in roles
 
 
 def loan_application_scope_query(user=None):
