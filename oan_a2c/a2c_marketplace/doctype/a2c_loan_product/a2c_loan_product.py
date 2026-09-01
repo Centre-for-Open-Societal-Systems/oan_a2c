@@ -6,7 +6,7 @@ from frappe.model.document import Document
 
 from oan_a2c.a2c_marketplace.lookups import refresh_product_lookups
 from oan_a2c.a2c_marketplace.permissions import get_bank_members
-from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, BANK_ROLES
+from oan_a2c.a2c_marketplace.roles import ADMIN_ROLE, BANK_ADMIN_ROLE, BANK_ROLES
 from oan_a2c.api.v1.notifications import notify_users
 
 
@@ -64,7 +64,9 @@ class A2CLoanProduct(Document):
 
 	def before_save(self):
 		user_roles = frappe.get_roles()
-		is_bank_admin = BANK_ADMIN_ROLE in user_roles or "System Manager" in user_roles
+		is_bank_admin = (
+			BANK_ADMIN_ROLE in user_roles or ADMIN_ROLE in user_roles or "System Manager" in user_roles
+		)
 
 		if self.is_new():
 			if is_bank_admin:

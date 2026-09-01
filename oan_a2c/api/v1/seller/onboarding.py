@@ -10,7 +10,7 @@ from oan_a2c.a2c_marketplace.doctype_schemas import (
 	POSTAL_CODE_REGEX,
 	WEBSITE_REGEX,
 )
-from oan_a2c.a2c_marketplace.permissions import is_bank_unbound, require_bank_role
+from oan_a2c.a2c_marketplace.permissions import require_bank_role
 from oan_a2c.a2c_marketplace.roles import (
 	ADMIN_ROLE,
 	BANK_ADMIN_ROLE,
@@ -154,8 +154,23 @@ class ActivateBankSchema(BaseModel):
 
 
 class UpdateBankStatusSchema(BaseModel):
-	bank_code: str | None = None
+	# Always required now: only platform admins may call update_bank_status, and
+	# they always name the bank explicitly (there is no "my own bank" caller left).
+	bank_code: str = Field(..., min_length=1)
 	new_status: str = Field(..., pattern="^(In Review|Active|Suspended)$")
+
+
+# Allowed bank status transitions. Mirrors the `status` field options on
+# A2C Participating Bank ("In Review", "Active", "Suspended") and encodes the
+# onboarding lifecycle: a bank under review is approved (-> Active) or held
+# (-> Suspended); a live bank can be suspended; a suspended bank can be
+# reinstated. "In Review" is an entry state only -- nothing transitions back
+# into it -- so it is never a destination here.
+_BANK_STATUS_TRANSITIONS: dict[str, frozenset[str]] = {
+	"In Review": frozenset({"Active", "Suspended"}),
+	"Active": frozenset({"Suspended"}),
+	"Suspended": frozenset({"Active"}),
+}
 
 
 def _validate_temp_password(v: str) -> str:
@@ -445,6 +460,19 @@ def get_bank_profile():
 	return success_response(data=data)
 
 
+def _bank_owned_file(file_url: str | None, bank: str) -> str | None:
+	"""File name if it was uploaded by a user of `bank`, else None."""
+	if not file_url:
+		return None
+	row = frappe.db.get_value("File", {"file_url": file_url}, ["name", "owner"], as_dict=True)
+	if not row:
+		return None
+	owner_bank = frappe.db.get_value(
+		"User Permission", {"user": row.owner, "allow": "A2C Participating Bank"}, "for_value"
+	)
+	return row.name if owner_bank == bank else None
+
+
 # -----------------
 # 3c-2. update_bank_profile
 # -----------------
@@ -484,10 +512,16 @@ def update_bank_profile(**kwargs):
 	for field in editable_fields:
 		if field in kwargs and kwargs.get(field) is not None:
 			new_val = kwargs.get(field)
-			if field == "logo" and doc.logo and doc.logo != new_val:
-				old_file = frappe.db.get_value("File", {"file_url": doc.logo}, "name")
-				if old_file:
-					frappe.delete_doc("File", old_file, ignore_permissions=True, force=True)
+			if field == "logo":
+				if new_val and not _bank_owned_file(new_val, bank):
+					frappe.throw(
+						_("Invalid logo: use an image uploaded to your own bank."),
+						frappe.ValidationError,
+					)
+				if doc.logo and doc.logo != new_val:
+					old_file = _bank_owned_file(doc.logo, bank)
+					if old_file:
+						frappe.delete_doc("File", old_file, ignore_permissions=True)
 			setattr(doc, field, new_val)
 
 	doc.save(ignore_permissions=True)
@@ -501,32 +535,45 @@ def update_bank_profile(**kwargs):
 @handle_api_errors
 @validate_request(UpdateBankStatusSchema)
 def update_bank_status(**kwargs):
-	bank_code = kwargs.get("bank_code")
-	new_status = kwargs.get("new_status")
+	"""Change a bank's lifecycle status. Platform-operator action only.
 
-	user = frappe.session.user
+	Approving or suspending a bank is a marketplace-governance decision, never a
+	self-service one. Two rules make that concrete:
 
-	if is_bank_unbound(user):
-		if not bank_code:
-			frappe.throw(_("bank_code is required for administrators."), frappe.ValidationError)
-		bank_id = frappe.db.get_value("A2C Participating Bank", {"bank_code": bank_code}, "name")
-		if not bank_id:
-			frappe.throw(_("Bank {0} not found").format(bank_code), frappe.DoesNotExistError)
-	else:
-		user_doc = frappe.get_doc("User", user)
-		if not any(d.role == BANK_ADMIN_ROLE for d in user_doc.roles):
-			frappe.throw(_("Only Bank Admins can update bank status."), frappe.PermissionError)
+	* A bank must not be able to move itself to `Active`. `assert_bank_active`
+	  gates every product write on this status, so a self-approval would let a
+	  bank switch its own products live and bypass onboarding review entirely.
+	* A Development Agent is bank-*unbound* platform staff, not a platform
+	  *operator*; it has no authority over any bank's standing.
 
-		bank_id = frappe.db.get_value(
-			"User Permission", {"user": user, "allow": "A2C Participating Bank"}, "for_value"
+	So the gate is a single tier: only a platform admin -- A2C Administrator or
+	System Manager (ROLE_LEVELS level 1) -- may call this. Bank Admins (level 2),
+	Bank Agents and Development Agents (level 3) are all denied. The transition
+	itself is then validated against the bank's lifecycle state machine.
+	"""
+	bank_code = kwargs["bank_code"]
+	new_status = kwargs["new_status"]
+
+	if _get_user_level(frappe.session.user) != 1:
+		frappe.throw(
+			_("Only platform administrators can change a bank's status."),
+			frappe.PermissionError,
 		)
-		if not bank_id:
-			frappe.throw(_("No bank associated with the current user."), frappe.PermissionError)
+
+	bank_id = frappe.db.get_value("A2C Participating Bank", {"bank_code": bank_code}, "name")
+	if not bank_id:
+		frappe.throw(_("Bank {0} not found").format(bank_code), frappe.DoesNotExistError)
 
 	doc = frappe.get_doc("A2C Participating Bank", bank_id)
 
 	if doc.status == new_status:
 		return success_response(data={"message": _("Status is already {0}").format(new_status)})
+
+	if new_status not in _BANK_STATUS_TRANSITIONS.get(doc.status, frozenset()):
+		frappe.throw(
+			_("Cannot change bank status from {0} to {1}.").format(doc.status, new_status),
+			frappe.ValidationError,
+		)
 
 	doc.status = new_status
 	doc.save(ignore_permissions=True)
