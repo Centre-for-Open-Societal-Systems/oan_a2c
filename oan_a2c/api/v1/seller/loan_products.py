@@ -256,18 +256,6 @@ def set_product_status(**kwargs):
 			}
 		)
 
-	# Archive lifecycle gate: Archived means "retired from the marketplace after
-	# having been live", making Active <-> Archived a closed pair. Without this, a
-	# Draft or Pending Approval product could be sent straight to Archived, so
-	# `Archived` would no longer imply the product was ever offered to a farmer --
-	# which the archived_products dashboard counter and any "retired catalogue"
-	# view both read it as meaning.
-	if status == "Archived" and doc.status != "Active":
-		frappe.throw(
-			_("Only an Active product can be archived (currently {0}).").format(doc.status),
-			frappe.ValidationError,
-		)
-
 	if reason:
 		doc._status_reason = reason
 	doc.status = status
