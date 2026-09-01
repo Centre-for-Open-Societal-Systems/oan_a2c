@@ -3,10 +3,12 @@
 //  GitHub Organization folder (multibranch).
 //
 //  Per branch:
-//    develop -> build + push to ECR (oan-a2c) + ci/deploy-ec2.sh
-//               (existing EC2 docker-compose deploy — UNCHANGED)
-//    staging -> build + push to ECR (oan/a2c) + ci/update-kustomize-ati.sh
-//               (GitOps: bump oan-kustomize `staging` overlay; ArgoCD on node 41 syncs)
+//    develop     -> build + push to ECR (oan-a2c) + ci/deploy-ec2.sh
+//                   (existing EC2 docker-compose deploy — UNCHANGED)
+//    staging_aws -> build + push to ECR (oan-a2c) + SSH docker-compose deploy to the AWS
+//                   backend EC2 (BACKEND_IP). Mirrors Jenkinsfile.main; supersedes `main`.
+//    staging_ati -> build + push to ECR (oan/a2c) + ci/update-kustomize-ati.sh
+//                   (GitOps: bump oan-kustomize `staging` overlay; ArgoCD on node 41 syncs)
 //
 //  develop intentionally still targets the LEGACY `oan-a2c` repo because
 //  ci/deploy-ec2.sh + the EC2 instance `.env` reference `oan-a2c`. Migrating
@@ -52,7 +54,7 @@ pipeline {
     }
 
     stage('Build image') {
-      when { anyOf { branch 'develop'; branch 'staging_ati' } }
+      when { anyOf { branch 'develop'; branch 'staging_aws'; branch 'staging_ati' } }
       steps {
         withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
           sh '''#!/usr/bin/env bash
@@ -81,7 +83,7 @@ pipeline {
     }
 
     stage('Push to ECR') {
-      when { anyOf { branch 'develop'; branch 'staging_ati' } }
+      when { anyOf { branch 'develop'; branch 'staging_aws'; branch 'staging_ati' } }
       steps {
         withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
           sh '''#!/usr/bin/env bash
@@ -126,6 +128,57 @@ pipeline {
             ENCRYPTION_KEY="${ENCRYPTION_KEY}" SECRET_KEY="${SECRET_KEY}" \
             JWT_SECRETS="${JWT_SECRETS}" \
             bash ci/deploy-ec2.sh
+          '''
+        }
+      }
+    }
+
+    // staging_aws -> AWS backend EC2 (docker-compose). Mirrors Jenkinsfile.main's
+    // Deploy-to-Backend: on BACKEND_IP, bump the image tag in .env to the freshly built
+    // oan-a2c:<staging_aws-build>, recreate the compose stack, rebuild assets + migrate.
+    // NOTE: BACKEND_IP is the SAME host main/develop use — staging_aws takes over the
+    // legacy `main` AWS deploy. Point BACKEND_IP at a dedicated staging box to isolate it.
+    stage('staging_aws → AWS backend') {
+      when { branch 'staging_aws' }
+      steps {
+        withCredentials([
+          string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
+          sshUserPrivateKey(credentialsId: 'backend-ssh-key',
+                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+        ]) {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no "${SSH_USER}@${BACKEND_IP}" << SSHEOF
+              set -e
+              cd /opt/oan_a2c
+
+              echo "=== ECR login ==="
+              aws ecr get-login-password --region ${AWS_REGION} \
+                | docker login --username AWS --password-stdin \
+                  ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+              echo "=== Bump image tag in .env -> oan-a2c:${IMMUTABLE_TAG} ==="
+              sed -i "s|oan-a2c:.*|oan-a2c:${IMMUTABLE_TAG}|" .env
+
+              echo "=== Pull + recreate stack ==="
+              docker compose pull
+              docker compose up -d --no-deps --force-recreate \
+                backend frontend websocket queue-short queue-long scheduler
+              sleep 20
+
+              echo "=== Rebuild assets + migrate ==="
+              docker compose exec -T backend bash -c "rm -rf /home/frappe/frappe-bench/sites/assets"
+              docker compose exec -T backend bench build --force
+              docker compose exec -T backend bench --site mysite.localhost migrate
+              docker compose exec -T backend bench --site mysite.localhost clear-cache
+
+              docker compose restart frontend
+              sleep 10
+
+              echo "=== Health check ==="
+              curl -sf http://localhost:8080/health && echo "Health check passed!" || echo "Warning: health check failed"
+              docker compose ps
+SSHEOF
           '''
         }
       }
