@@ -226,6 +226,12 @@ SSHEOF
   }
 
   post {
+    // Bound the BuildKit cache so the shared agent's disk can't fill over many builds.
+    // `docker rmi` only drops the final tag; the build cache is a SEPARATE store that
+    // otherwise grows unbounded (frappe layers are large). --max-used-space caps it at
+    // ~20GB (buildx v0.34+; replaces the deprecated --keep-storage). Scoped to the build
+    // cache only — never `docker system prune`, which wipes other jobs on a shared agent.
+    always  { sh 'docker buildx prune -f --max-used-space=20GB 2>/dev/null || true' }
     success { echo "OK  ${env.BRANCH_NAME} #${env.BUILD_NUMBER} -> ${env.IMMUTABLE_TAG}" }
     failure { echo "FAIL ${env.BRANCH_NAME} #${env.BUILD_NUMBER}" }
   }
