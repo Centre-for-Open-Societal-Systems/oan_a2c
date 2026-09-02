@@ -195,6 +195,11 @@ pipeline {
               docker compose exec -T backend bash -c 'test -L sites/assets' \
                 && echo "Health check passed (assets linked)" \
                 || { echo "FAIL: sites/assets is not a symlink"; exit 1; }
+
+              # Reclaim disk: each staging_aws deploy pulls a fresh image; -a drops the old
+              # tags no running container uses so the shared box doesn't fill up over deploys.
+              echo "=== Pruning unused images ==="
+              docker image prune -af || true
               docker compose ps
 SSHEOF
           '''

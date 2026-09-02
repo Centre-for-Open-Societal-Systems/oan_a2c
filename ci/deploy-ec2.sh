@@ -102,6 +102,13 @@ ssh -i "${SSH_KEY}" \
 
     echo "Health check passed (assets linked)"
 
+    # Reclaim disk: each deploy pulls a fresh oan/a2c:develop-<n> (~3.4GB); without this the
+    # box fills up over time and the next docker compose pull fails "no space left on device".
+    # -a removes images no running container uses (old app tags) -- the live stacks are untouched.
+    # (No backticks here: inside the unquoted <<SSHEOF heredoc they'd run on the Jenkins agent.)
+    echo "=== Pruning unused images ==="
+    docker image prune -af || true
+
     echo "=== Deployment complete ==="
     docker compose ps
 
