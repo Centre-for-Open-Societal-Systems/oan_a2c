@@ -1278,10 +1278,11 @@ class TestLoanStatusReadPath(unittest.TestCase):
 
 	def test_get_full_profile_hides_current_step_for_bank_caller(self):
 		"""Bank callers do not see current_step in get_full_profile; unbound and farmer callers do."""
-		from oan_a2c.api.v1.loan_applications import get_full_profile
+		from oan_a2c.api.v1.loan_applications import get_all_loans, get_full_profile
 
 		frappe.set_user("Administrator")
-		app = frappe.get_doc(
+		# Farmer-sourced application for testing bank and farmer callers
+		app_farmer = frappe.get_doc(
 			{
 				"doctype": "A2C Loan Application",
 				"application_source": "Self Service",
@@ -1301,44 +1302,67 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"owner": self.farmer_user,
 			}
 		).insert(ignore_permissions=True)
+
+		# Agent-sourced application for testing Development Agent (unbound) caller
+		app_agent = frappe.get_doc(
+			{
+				"doctype": "A2C Loan Application",
+				"application_source": "Agent",
+				"farmer_profile": self.profile.name,
+				"bank": self.bank_1.name,
+				"loan_product": self.prod_1.name,
+				"requested_amount": 1000,
+				"loan_amount": 1000,
+				"consent_id": self.consent.name,
+				"status": "In Transition",
+				"stage_id": self.stages_bank_1["Submitted"].stage_id,
+				"stage_label": "Submitted",
+				"current_step": 2,
+				"first_name": "RPFarmer",
+				"last_name": "Test",
+				"phone_number": "+251911888111",
+				"owner": self.dev_agent_user,
+			}
+		).insert(ignore_permissions=True)
 		frappe.db.commit()
 
 		# Bank Admin caller (step omitted from get_full_profile and get_all_loans)
 		frappe.set_user(self.bank_admin_user)
-		bank_res = get_full_profile(application_id=app.name)
+		bank_res = get_full_profile(application_id=app_farmer.name)
 		self.assertEqual(bank_res["status"], "success")
 		self.assertNotIn("current_step", bank_res["data"])
 
 		bank_list = get_all_loans()
 		self.assertEqual(bank_list["status"], "success")
-		matching = [r for r in bank_list["data"] if r.get("application_id") == app.name]
+		matching = [r for r in bank_list["data"] if r.get("application_id") == app_farmer.name]
 		if matching:
 			self.assertNotIn("step", matching[0])
 
-		# Dev Agent caller (unbound - step visible)
+		# Dev Agent caller (unbound - sees agent-sourced application with step visible)
 		frappe.set_user(self.dev_agent_user)
-		dev_res = get_full_profile(application_id=app.name)
+		dev_res = get_full_profile(application_id=app_agent.name)
 		self.assertEqual(dev_res["status"], "success")
 		self.assertIn("current_step", dev_res["data"])
 		self.assertEqual(dev_res["data"]["current_step"], 2)
 
 		dev_list = get_all_loans()
 		self.assertEqual(dev_list["status"], "success")
-		matching_dev = [r for r in dev_list["data"] if r.get("application_id") == app.name]
+		matching_dev = [r for r in dev_list["data"] if r.get("application_id") == app_agent.name]
 		if matching_dev:
 			self.assertIn("step", matching_dev[0])
 			self.assertEqual(matching_dev[0]["step"], 2)
 
-		# Farmer caller
+		# Farmer caller (sees self-service application with step visible)
 		frappe.set_user(self.farmer_user)
-		farmer_res = get_full_profile(application_id=app.name)
+		farmer_res = get_full_profile(application_id=app_farmer.name)
 		self.assertEqual(farmer_res["status"], "success")
 		self.assertIn("current_step", farmer_res["data"])
 		self.assertEqual(farmer_res["data"]["current_step"], 2)
 
 		# Cleanup
 		frappe.set_user("Administrator")
-		frappe.delete_doc("A2C Loan Application", app.name, force=True)
+		frappe.delete_doc("A2C Loan Application", app_farmer.name, force=True)
+		frappe.delete_doc("A2C Loan Application", app_agent.name, force=True)
 		frappe.db.commit()
 
 	def test_dynamic_farmer_json_webhook_and_profile_integration(self):
@@ -1361,6 +1385,7 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		)
 
 		consent_uuid = f"test-consent-{self.h}"
+		frappe.set_user(self.farmer_user)
 		consent_req = frappe.get_doc(
 			{
 				"doctype": "A2C Consent Request",
@@ -1369,7 +1394,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"farmer_fayda_id": f"FAYDA-{self.h}",
 				"partner": "Test Partner",
 				"status": "Pending OTP",
-				"owner": self.farmer_user,
 			}
 		).insert(ignore_permissions=True)
 		frappe.db.commit()
