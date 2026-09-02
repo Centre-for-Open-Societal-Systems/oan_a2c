@@ -42,8 +42,11 @@ ssh -i "${SSH_KEY}" \
         docker login --username AWS --password-stdin \
         ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
-    echo "=== Updating image tag in .env ==="
-    sed -i "s|oan-a2c:.*|oan-a2c:develop-${BUILD_NUMBER}|" .env
+    echo "=== Pointing .env at ${ECR_REPO}:develop-${BUILD_NUMBER} (rewrites whole line) ==="
+    # Rewrite the ENTIRE ECR_IMAGE line rather than sed the tag in place: this migrates
+    # the stack from the legacy `oan-a2c` repo to `oan/a2c` on the first build, and is
+    # robust regardless of what repo/tag the .env currently holds.
+    sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:develop-${BUILD_NUMBER}|" .env
 
     echo "=== Pulling new image ==="
     docker compose pull
