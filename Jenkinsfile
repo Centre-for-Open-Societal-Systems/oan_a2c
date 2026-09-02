@@ -2,16 +2,26 @@
 //  Jenkinsfile — oan_a2c (Frappe app). Single pipeline for the `oan-package`
 //  GitHub Organization folder (multibranch).
 //
-//  Per branch:
-//    develop -> build + push to ECR (oan-a2c) + ci/deploy-ec2.sh
-//               (existing EC2 docker-compose deploy — UNCHANGED)
-//    staging -> build + push to ECR (oan/a2c) + ci/update-kustomize.sh
-//               (GitOps: bump oan-kustomize `staging` overlay; ArgoCD on node 41 syncs)
+//  Per branch (all publish to the namespaced ECR repo `oan/a2c`):
+//    develop     -> build + push + ci/deploy-ec2.sh
+//                   (EC2 docker-compose deploy to BACKEND_IP:/opt/oan_a2c)
+//    staging_aws -> build + push + SSH docker-compose deploy to a SEPARATE stack on
+//                   the SAME box (BACKEND_IP:${STAGING_APP_DIR}, compose project
+//                   oan_a2c_staging). Coexists with develop's /opt/oan_a2c stack.
+//    staging_ati -> build + push + ci/update-kustomize-ati.sh
+//                   (GitOps: bump oan-kustomize `staging` overlay; ArgoCD on node 41 syncs)
 //
-//  develop intentionally still targets the LEGACY `oan-a2c` repo because
-//  ci/deploy-ec2.sh + the EC2 instance `.env` reference `oan-a2c`. Migrating
-//  develop to `oan/a2c` is a follow-up (needs the instance `.env` updated).
+//  develop + staging_aws were migrated off the legacy `oan-a2c` repo onto `oan/a2c`
+//  (staging_ati was already there). Both deploy scripts rewrite the WHOLE ECR_IMAGE
+//  line in the box `.env`, so the first build after this change repoints the stack
+//  automatically — no manual .env edit needed.
 //  `main` is handled separately by Jenkinsfile.main (retained during validation).
+//
+//  NOTE (staging_aws prereq): ${STAGING_APP_DIR} must be provisioned on BACKEND_IP
+//  before the first staging_aws build — a copy of /opt/oan_a2c with its own .env
+//  (ECR_IMAGE on oan/a2c) and DISTINCT host ports (dev uses frontend 8080 and
+//  kong 8000-8001; give staging e.g. 8090 and 8010-8011) plus its own site, so the
+//  two stacks don't collide. Same box, different image tag + different compose app.
 //
 //  Tags:  <branch>-<build>   immutable, pinned by oan-kustomize / deploy-ec2.sh
 //         <branch>-latest    moving alias (convenience)
@@ -19,7 +29,7 @@
 //  Agent needs: docker(+buildx), aws cli v2, git, kustomize.
 //  Credentials: AWS_ACCOUNT_ID (string), backend-ssh-key (ssh), oan-deployer (GitHub App).
 //  NOTE: `aws ecr get-login-password` uses the agent's ambient AWS identity, which
-//        must have ECR push on both `oan-a2c` and `oan/*`.
+//        must have ECR push on `oan/a2c`.
 // =============================================================================
 pipeline {
   agent any
@@ -32,27 +42,36 @@ pipeline {
   }
 
   environment {
-    AWS_REGION    = 'ap-south-1'
-    FRAPPE_BRANCH = 'version-16'
-    FRAPPE_PATH   = 'https://github.com/frappe/frappe'
-    BACKEND_IP    = '10.0.2.100'
+    AWS_REGION      = 'ap-south-1'
+    FRAPPE_BRANCH   = 'version-16'
+    FRAPPE_PATH     = 'https://github.com/frappe/frappe'
+    BACKEND_IP      = '10.0.2.100'
+    STAGING_APP_DIR = '/opt/oan_a2c_staging'   // staging_aws stack (separate from /opt/oan_a2c)
   }
 
   stages {
     stage('Resolve') {
       steps {
         script {
-          // staging -> new namespaced repo; everything else -> legacy repo (unchanged).
-          env.ECR_REPO      = (env.BRANCH_NAME == 'staging') ? 'oan/a2c' : 'oan-a2c'
-          env.IMMUTABLE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
-          env.MOVING_TAG    = "${env.BRANCH_NAME}-latest"
+          // All branches publish to the namespaced repo now (develop + staging_aws
+          // migrated off legacy `oan-a2c`; staging_ati was already here).
+          env.ECR_REPO      = 'oan/a2c'
+          // staging_ati / staging_aws publish under hyphenated `staging-ati-` / `staging-aws-`
+          // prefixes (not the branch-derived `staging_ati-` / `staging_aws-`) so the immutable
+          // tags read staging-ati-<build> / staging-aws-<build>, uniform across all repos.
+          // develop keeps its branch-name tag.
+          def tagPrefix     = (env.BRANCH_NAME == 'staging_ati') ? 'staging-ati'
+                            : (env.BRANCH_NAME == 'staging_aws') ? 'staging-aws'
+                            : env.BRANCH_NAME
+          env.IMMUTABLE_TAG = "${tagPrefix}-${env.BUILD_NUMBER}"
+          env.MOVING_TAG    = "${tagPrefix}-latest"
           echo "branch=${env.BRANCH_NAME}  repo=${env.ECR_REPO}  tag=${env.IMMUTABLE_TAG}"
         }
       }
     }
 
     stage('Build image') {
-      when { anyOf { branch 'develop'; branch 'staging' } }
+      when { anyOf { branch 'develop'; branch 'staging_aws'; branch 'staging_ati' } }
       steps {
         withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
           sh '''#!/usr/bin/env bash
@@ -81,7 +100,7 @@ pipeline {
     }
 
     stage('Push to ECR') {
-      when { anyOf { branch 'develop'; branch 'staging' } }
+      when { anyOf { branch 'develop'; branch 'staging_aws'; branch 'staging_ati' } }
       steps {
         withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
           sh '''#!/usr/bin/env bash
@@ -131,12 +150,69 @@ pipeline {
       }
     }
 
+    // staging_aws -> a SEPARATE docker-compose stack on the SAME backend box.
+    // Same image build as develop (layered Containerfile bakes assets), pushed to
+    // oan/a2c:<staging_aws-build>. Deploys into ${STAGING_APP_DIR} (compose project
+    // oan_a2c_staging) so it coexists with develop's /opt/oan_a2c stack — provided
+    // that dir is pre-provisioned with its own .env + DISTINCT host ports (see header).
+    // Assets are baked into the image and symlinked by the entrypoint, so we do NOT
+    // rm sites/assets or `bench build` here — doing so 404s /assets (see deploy-ec2.sh).
+    stage('staging_aws → AWS backend (separate stack)') {
+      when { branch 'staging_aws' }
+      steps {
+        withCredentials([
+          string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
+          sshUserPrivateKey(credentialsId: 'backend-ssh-key',
+                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+        ]) {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+            ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no "${SSH_USER}@${BACKEND_IP}" << SSHEOF
+              set -e
+              cd ${STAGING_APP_DIR}
+
+              echo "=== ECR login ==="
+              aws ecr get-login-password --region ${AWS_REGION} \
+                | docker login --username AWS --password-stdin ${REGISTRY}
+
+              echo "=== Point .env at ${ECR_REPO}:${IMMUTABLE_TAG} (rewrites whole line) ==="
+              sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=${REGISTRY}/${ECR_REPO}:${IMMUTABLE_TAG}|" .env
+
+              echo "=== Pull + recreate frappe services ==="
+              docker compose pull
+              docker compose up -d --no-deps --force-recreate \
+                backend frontend websocket queue-short queue-long scheduler
+              sleep 20
+
+              echo "=== Migrate + clear cache (assets are baked, do NOT rebuild) ==="
+              docker compose exec -T backend bench --site mysite.localhost migrate
+              docker compose exec -T backend bench --site mysite.localhost clear-cache
+              docker compose restart frontend
+              sleep 10
+
+              echo "=== Health check (assets symlink present) ==="
+              docker compose exec -T backend bash -c 'test -L sites/assets' \
+                && echo "Health check passed (assets linked)" \
+                || { echo "FAIL: sites/assets is not a symlink"; exit 1; }
+
+              # Reclaim disk: each staging_aws deploy pulls a fresh image; -a drops the old
+              # tags no running container uses so the shared box doesn't fill up over deploys.
+              echo "=== Pruning unused images ==="
+              docker image prune -af || true
+              docker compose ps
+SSHEOF
+          '''
+        }
+      }
+    }
+
     // staging -> GitOps: bump the oan-kustomize `staging` overlay to the new image.
     // Auth is the `oan-deployer` GitHub App (contents:write on oan-kustomize only);
     // gitUsernamePassword mints a short-lived installation token. All kustomize
-    // logic lives in ci/update-kustomize.sh.
+    // logic lives in ci/update-kustomize-ati.sh.
     stage('staging → GitOps (ArgoCD@41)') {
-      when { branch 'staging' }
+      when { branch 'staging_ati' }
       steps {
         withCredentials([
           string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
@@ -144,9 +220,9 @@ pipeline {
         ]) {
           sh '''#!/usr/bin/env bash
             set -euo pipefail
-            chmod +x ci/update-kustomize.sh
+            chmod +x ci/update-kustomize-ati.sh
             # args: <overlay> <kustomize image match-name> <new image ref>
-            ci/update-kustomize.sh staging oan-a2c \
+            ci/update-kustomize-ati.sh staging oan-a2c \
               "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMMUTABLE_TAG}"
           '''
         }
@@ -155,6 +231,12 @@ pipeline {
   }
 
   post {
+    // Bound the BuildKit cache so the shared agent's disk can't fill over many builds.
+    // `docker rmi` only drops the final tag; the build cache is a SEPARATE store that
+    // otherwise grows unbounded (frappe layers are large). --max-used-space caps it at
+    // ~20GB (buildx v0.34+; replaces the deprecated --keep-storage). Scoped to the build
+    // cache only — never `docker system prune`, which wipes other jobs on a shared agent.
+    always  { sh 'docker buildx prune -f --max-used-space=20GB 2>/dev/null || true' }
     success { echo "OK  ${env.BRANCH_NAME} #${env.BUILD_NUMBER} -> ${env.IMMUTABLE_TAG}" }
     failure { echo "FAIL ${env.BRANCH_NAME} #${env.BUILD_NUMBER}" }
   }

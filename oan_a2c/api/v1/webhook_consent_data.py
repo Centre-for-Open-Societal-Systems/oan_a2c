@@ -45,6 +45,9 @@ class ReceiveConsentDataSchema(BaseModel):
 	published_at: str | None = None
 	consent: ConsentInfoSchema
 	farmer: FarmerInfoSchema
+	# OpenG2P always sends this as a JSON object. Declaring the shape rather than
+	# `Any` keeps a malformed payload a clean 400 at validation, instead of falling
+	# through to a profile built entirely from defaults.
 	selected_data: dict[str, Any] | None = None
 
 
@@ -161,6 +164,14 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		if consent_info.validity_to:
 			updates_dict["validity_to"] = consent_info.validity_to.split(" ")[0].split("T")[0]
 
+		raw_selected_data = validated.selected_data or {}
+		raw_consent_data_str = json.dumps(raw_selected_data)
+		# Only written when the payload actually carried data. OpenG2P redelivers
+		# status-only events with no selected_data, and an unconditional write would
+		# overwrite the previously captured blob with "{}".
+		if validated.selected_data is not None:
+			updates_dict["raw_consent_data"] = raw_consent_data_str
+
 		if updates_dict:
 			frappe.db.set_value("A2C Consent Request", consent_doc_name, updates_dict)
 
@@ -168,8 +179,6 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		# Both `farmer` and its `id` are required by the schema, so this is always a
 		# populated block by the time validation has passed.
 		farmer_data = validated.farmer
-
-		raw_selected_data = validated.selected_data or {}
 		farmer_info_dict = {}
 		# Find the first dictionary inside selected_data that contains farmer info
 		if isinstance(raw_selected_data, dict):
@@ -305,6 +314,9 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 			"land_ownership_status": g("Land Ownership Status"),
 			"certification_id": certification_id,
 			"certification_photo_url": certification_photo_url,
+			# None on a status-only redelivery, which the loop below skips, so the
+			# blob captured by an earlier delivery survives.
+			"farmer_data_json": raw_consent_data_str if validated.selected_data is not None else None,
 		}
 
 		# Identity for the upsert is the *account*, not the Fayda identity: one profile
