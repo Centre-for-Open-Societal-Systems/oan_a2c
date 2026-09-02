@@ -56,8 +56,12 @@ pipeline {
           // All branches publish to the namespaced repo now (develop + staging_aws
           // migrated off legacy `oan-a2c`; staging_ati was already here).
           env.ECR_REPO      = 'oan/a2c'
-          env.IMMUTABLE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
-          env.MOVING_TAG    = "${env.BRANCH_NAME}-latest"
+          // staging_ati publishes under a `staging-ati-` prefix (not the branch-derived
+          // `staging_ati-`) so the immutable tag reads staging-ati-<build>, uniform across
+          // all repos. develop/staging_aws keep their branch-name tag.
+          def tagPrefix     = (env.BRANCH_NAME == 'staging_ati') ? 'staging-ati' : env.BRANCH_NAME
+          env.IMMUTABLE_TAG = "${tagPrefix}-${env.BUILD_NUMBER}"
+          env.MOVING_TAG    = "${tagPrefix}-latest"
           echo "branch=${env.BRANCH_NAME}  repo=${env.ECR_REPO}  tag=${env.IMMUTABLE_TAG}"
         }
       }
