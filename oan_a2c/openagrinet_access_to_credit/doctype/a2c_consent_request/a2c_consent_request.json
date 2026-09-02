@@ -23,7 +23,8 @@
   "otp_verified_at",
   "websub_delivered",
   "websub_delivered_at",
-  "consent_receipt"
+  "consent_receipt",
+  "raw_consent_data"
  ],
  "fields": [
   {
@@ -133,6 +134,11 @@
    "label": "Reference Name",
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fieldname": "raw_consent_data",
+   "fieldtype": "JSON",
+   "label": "Raw Consent Data"
   }
  ],
  "links": [],

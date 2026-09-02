@@ -55,6 +55,17 @@ def is_development_agent(user=None):
 	return DEVELOPMENT_AGENT_ROLE in frappe.get_roles(user)
 
 
+def can_see_onboarding_step(user=None) -> bool:
+	"""True for farmers and bank-unbound staff (Dev Agents, Platform Admins).
+
+	Bank-scoped users (Bank Admins, Bank Agents) only review submitted applications
+	and do not see the farmer's private onboarding wizard step.
+	"""
+	if not user:
+		user = frappe.session.user
+	return is_bank_unbound(user) or is_farmer(user)
+
+
 def get_user_farmer_profile(user=None):
 	"""The A2C Farmer Profile bound to `user`, or None before consent binds one.
 

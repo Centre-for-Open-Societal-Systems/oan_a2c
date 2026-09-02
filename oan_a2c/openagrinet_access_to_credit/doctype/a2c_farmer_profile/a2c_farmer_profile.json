@@ -45,7 +45,8 @@
   "moisture_levels",
   "certification_geo_section",
   "certification_id",
-  "certification_photo_url"
+  "certification_photo_url",
+  "farmer_data_json"
  ],
  "fields": [
   {
@@ -258,6 +259,11 @@
    "fieldtype": "Select",
    "label": "Application Status",
    "options": "\nDraft\nSubmitted\nUnder Review\nApproved\nRejected\nDisbursed"
+  },
+  {
+   "fieldname": "farmer_data_json",
+   "fieldtype": "JSON",
+   "label": "Farmer Data (JSON)"
   }
  ],
  "grid_page_length": 50,

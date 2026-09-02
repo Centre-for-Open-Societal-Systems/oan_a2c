@@ -65,7 +65,8 @@
   "moisture_levels",
   "certification_geo_section",
   "certification_id",
-  "certification_photo_url"
+  "certification_photo_url",
+  "farmer_data_json"
  ],
  "fields": [
   {
@@ -411,6 +412,11 @@
    "label": "Term Snapshot",
    "options": "A2C Loan Application Term Snapshot",
    "read_only": 1
+  },
+  {
+   "fieldname": "farmer_data_json",
+   "fieldtype": "JSON",
+   "label": "Farmer Data (JSON)"
   }
  ],
  "grid_page_length": 50,

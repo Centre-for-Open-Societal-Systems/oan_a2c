@@ -1,3 +1,4 @@
+import json
 from typing import Literal
 
 import frappe
@@ -6,7 +7,7 @@ from frappe.utils import cint, flt, sanitize_html
 from pydantic import BaseModel, Field, model_validator
 
 from oan_a2c.a2c_marketplace.doctype_schemas import MAX_LOAN_AMOUNT, MAX_QUERY_AMOUNT
-from oan_a2c.a2c_marketplace.permissions import get_user_farmer_profile, is_farmer
+from oan_a2c.a2c_marketplace.permissions import can_see_onboarding_step, get_user_farmer_profile, is_farmer
 from oan_a2c.a2c_marketplace.roles import ADMIN_ROLE, BANK_ADMIN_ROLE, BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
 from oan_a2c.a2c_marketplace.stages import (
 	SUCCESSFUL_ARCHETYPES,
@@ -292,6 +293,12 @@ def get_basic_profile(lead_id: str | None = None, include_consent_data: bool | N
 	if profile_name:
 		frappe.has_permission("A2C Farmer Profile", "read", doc=profile_name, throw=True)
 		profile = frappe.get_doc("A2C Farmer Profile", profile_name)
+		raw_data = profile.get("farmer_data_json")
+		if isinstance(raw_data, str):
+			try:
+				raw_data = json.loads(raw_data)
+			except Exception:
+				pass
 		data.update(
 			{
 				"first_name": profile.first_name,
@@ -301,6 +308,7 @@ def get_basic_profile(lead_id: str | None = None, include_consent_data: bool | N
 				"region": profile.region,
 				"woreda": profile.woreda,
 				"kebele": profile.kebele,
+				"farmer_data": raw_data or {},
 			}
 		)
 		consent_id = profile.consent_id or consent_id
@@ -420,7 +428,6 @@ def get_full_profile(**kwargs):
 		"sequence": status_info["sequence"],
 		"is_terminal": status_info["is_terminal"],
 		"is_successful": status_info["is_successful"],
-		"current_step": cint(doc.current_step),
 		"loan_officer": doc.loan_officer,
 		"creation": to_tz_aware_iso(doc.creation),
 		"date_of_birth": str(doc.date_of_birth) if doc.date_of_birth else None,
@@ -443,6 +450,20 @@ def get_full_profile(**kwargs):
 		"certification_id": doc.certification_id,
 		"certification_photo_url": doc.certification_photo_url,
 	}
+
+	user = frappe.session.user
+	if can_see_onboarding_step(user):
+		data["current_step"] = cint(doc.current_step)
+
+	raw_data = doc.get("farmer_data_json")
+	if not raw_data and doc.farmer_profile:
+		raw_data = frappe.db.get_value("A2C Farmer Profile", doc.farmer_profile, "farmer_data_json")
+	if isinstance(raw_data, str):
+		try:
+			raw_data = json.loads(raw_data)
+		except Exception:
+			pass
+	data["farmer_data"] = raw_data or {}
 
 	return success_response(data=data, message="Full profile retrieved successfully")
 
@@ -520,18 +541,22 @@ def get_loan_metadata():
 	"""
 	frappe.has_permission("A2C Loan Application", "read", throw=True)
 
-	# "Active" is the pre-submission archetype and has no stage behind it, so it is
-	# prepended by hand; everything after it is the caller's own pipeline.
-	status_list = [
-		{
-			"status": "Active",
-			"stage_id": None,
-			"sequence": None,
-			"is_terminal": False,
-			"is_successful": False,
-		}
-	]
-	for stage in get_visible_stages():
+	user = frappe.session.user
+	status_list = []
+	if can_see_onboarding_step(user):
+		# "Active" is the pre-submission archetype and has no stage behind it, so it is
+		# prepended for bank-unbound callers and farmers; bank users only see post-submission stages.
+		status_list.append(
+			{
+				"status": "Active",
+				"stage_id": None,
+				"sequence": None,
+				"is_terminal": False,
+				"is_successful": False,
+			}
+		)
+
+	for stage in get_visible_stages(user):
 		status_list.append(
 			{
 				"status": stage["label"],
@@ -656,30 +681,36 @@ def get_all_loans(**kwargs):
 	)
 	total_records = count_res[0].get("COUNT(*)") if count_res else 0
 
+	user = frappe.session.user
+	can_see_step = can_see_onboarding_step(user)
+
+	fields = [
+		"name as application_id",
+		"status",
+		"stage_id",
+		"stage_label",
+		"lead_id",
+		"first_name",
+		"last_name",
+		"loan_amount",
+		"loan_type",
+		"loan_product",
+		"loan_product_name",
+		"bank",
+		"region",
+		"woreda",
+		"kebele",
+		"phone_number",
+		"creation",
+	]
+	if can_see_step:
+		fields.append("current_step as step")
+
 	records = frappe.get_list(
 		"A2C Loan Application",
 		filters=filters,
 		or_filters=or_filters or None,
-		fields=[
-			"name as application_id",
-			"status",
-			"stage_id",
-			"stage_label",
-			"current_step as step",
-			"lead_id",
-			"first_name",
-			"last_name",
-			"loan_amount",
-			"loan_type",
-			"loan_product",
-			"loan_product_name",
-			"bank",
-			"region",
-			"woreda",
-			"kebele",
-			"phone_number",
-			"creation",
-		],
+		fields=fields,
 		order_by=order_by,
 		limit_start=offset,
 		page_length=page_size,
@@ -690,7 +721,8 @@ def get_all_loans(**kwargs):
 	_batch_resolve_loan_types(records)
 	for r in records:
 		r["loan_amount"] = float(r["loan_amount"]) if r.get("loan_amount") else 0.0
-		r["step"] = cint(r.get("step"))
+		if can_see_step:
+			r["step"] = cint(r.get("step"))
 		r["creation"] = to_tz_aware_iso(r["creation"])
 
 	total_pages = -(-total_records // page_size)
