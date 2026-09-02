@@ -44,8 +44,11 @@ ssh -i "${SSH_KEY}" \
 
     echo "=== Pointing .env at ${ECR_REPO}:develop-${BUILD_NUMBER} (rewrites whole line) ==="
     # Rewrite the ENTIRE ECR_IMAGE line rather than sed the tag in place: this migrates
-    # the stack from the legacy `oan-a2c` repo to `oan/a2c` on the first build, and is
+    # the stack from the legacy oan-a2c repo to oan/a2c on the first build, and is
     # robust regardless of what repo/tag the .env currently holds.
+    # NOTE: no backticks in this comment -- it lives inside the unquoted <<SSHEOF heredoc,
+    # so backticks would be command-substituted on the Jenkins agent (that broke build #23/#24:
+    # "oan-a2c: command not found" / "oan/a2c: No such file or directory").
     sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:develop-${BUILD_NUMBER}|" .env
 
     echo "=== Pulling new image ==="
