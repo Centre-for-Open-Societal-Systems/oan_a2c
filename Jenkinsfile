@@ -56,8 +56,15 @@ pipeline {
           // All branches publish to the namespaced repo now (develop + staging_aws
           // migrated off legacy `oan-a2c`; staging_ati was already here).
           env.ECR_REPO      = 'oan/a2c'
-          env.IMMUTABLE_TAG = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
-          env.MOVING_TAG    = "${env.BRANCH_NAME}-latest"
+          // staging_ati / staging_aws publish under hyphenated `staging-ati-` / `staging-aws-`
+          // prefixes (not the branch-derived `staging_ati-` / `staging_aws-`) so the immutable
+          // tags read staging-ati-<build> / staging-aws-<build>, uniform across all repos.
+          // develop keeps its branch-name tag.
+          def tagPrefix     = (env.BRANCH_NAME == 'staging_ati') ? 'staging-ati'
+                            : (env.BRANCH_NAME == 'staging_aws') ? 'staging-aws'
+                            : env.BRANCH_NAME
+          env.IMMUTABLE_TAG = "${tagPrefix}-${env.BUILD_NUMBER}"
+          env.MOVING_TAG    = "${tagPrefix}-latest"
           echo "branch=${env.BRANCH_NAME}  repo=${env.ECR_REPO}  tag=${env.IMMUTABLE_TAG}"
         }
       }
@@ -188,6 +195,11 @@ pipeline {
               docker compose exec -T backend bash -c 'test -L sites/assets' \
                 && echo "Health check passed (assets linked)" \
                 || { echo "FAIL: sites/assets is not a symlink"; exit 1; }
+
+              # Reclaim disk: each staging_aws deploy pulls a fresh image; -a drops the old
+              # tags no running container uses so the shared box doesn't fill up over deploys.
+              echo "=== Pruning unused images ==="
+              docker image prune -af || true
               docker compose ps
 SSHEOF
           '''
@@ -219,6 +231,12 @@ SSHEOF
   }
 
   post {
+    // Bound the BuildKit cache so the shared agent's disk can't fill over many builds.
+    // `docker rmi` only drops the final tag; the build cache is a SEPARATE store that
+    // otherwise grows unbounded (frappe layers are large). --max-used-space caps it at
+    // ~20GB (buildx v0.34+; replaces the deprecated --keep-storage). Scoped to the build
+    // cache only — never `docker system prune`, which wipes other jobs on a shared agent.
+    always  { sh 'docker buildx prune -f --max-used-space=20GB 2>/dev/null || true' }
     success { echo "OK  ${env.BRANCH_NAME} #${env.BUILD_NUMBER} -> ${env.IMMUTABLE_TAG}" }
     failure { echo "FAIL ${env.BRANCH_NAME} #${env.BUILD_NUMBER}" }
   }
