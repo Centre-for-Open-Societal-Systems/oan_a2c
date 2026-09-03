@@ -185,6 +185,14 @@ pipeline {
                 backend frontend websocket queue-short queue-long scheduler
               sleep 20
 
+              # OpenG2P integration config — reuse develop's values (non-secret literals,
+              # same as ci/deploy-ec2.sh). Set globally (-g -> common_site_config.json), like dev.
+              echo "=== OpenG2P config (reuse dev's values) ==="
+              docker compose exec -T backend bench set-config -g openg2p_base_url "https://socialregistry-22062026.dev.openg2p.test"
+              docker compose exec -T backend bench set-config -g openg2p_username "portal_agent"
+              docker compose exec -T backend bench set-config -g openg2p_password "portal_agent"
+              docker compose exec -T backend bench set-config -g openg2p_db "socialregistry_staging"
+
               echo "=== Migrate + clear cache (assets are baked, do NOT rebuild) ==="
               docker compose exec -T backend bench --site mysite.localhost migrate
               docker compose exec -T backend bench --site mysite.localhost clear-cache
