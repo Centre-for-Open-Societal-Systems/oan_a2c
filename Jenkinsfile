@@ -163,11 +163,18 @@ pipeline {
         withCredentials([
           string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
           sshUserPrivateKey(credentialsId: 'backend-ssh-key',
-                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
+          string(credentialsId: 'secret_key_develop', variable: 'SECRET_KEY'),
+          string(credentialsId: 'jwt_secrets_develop', variable: 'JWT_SECRETS')
         ]) {
           sh '''#!/usr/bin/env bash
             set -euo pipefail
             REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+            # JWT_SECRETS is interpolated inside single quotes in the heredoc below, so a single
+            # quote in the value would break out of them and corrupt the command (same guard as deploy-ec2.sh).
+            case "${JWT_SECRETS}" in
+              *"'"*) echo "JWT_SECRETS must not contain a single quote" >&2; exit 1 ;;
+            esac
             ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no "${SSH_USER}@${BACKEND_IP}" << SSHEOF
               set -e
               cd ${STAGING_APP_DIR}
@@ -184,6 +191,24 @@ pipeline {
               docker compose up -d --no-deps --force-recreate \
                 backend frontend websocket queue-short queue-long scheduler
               sleep 20
+
+              # OpenG2P integration config — reuse develop's values (non-secret literals,
+              # same as ci/deploy-ec2.sh). Set globally (-g -> common_site_config.json), like dev.
+              echo "=== OpenG2P config (reuse dev's values) ==="
+              docker compose exec -T backend bench set-config -g openg2p_base_url "https://socialregistry-22062026.dev.openg2p.test"
+              docker compose exec -T backend bench set-config -g openg2p_username "portal_agent"
+              docker compose exec -T backend bench set-config -g openg2p_password "portal_agent"
+              docker compose exec -T backend bench set-config -g openg2p_db "socialregistry_staging"
+
+              # App secrets — reuse develop's Jenkins credentials (staging shares dev's signing
+              # keys). \${SECRET_KEY}/\${JWT_SECRETS} expand on the AGENT into this heredoc, which is
+              # exactly why they must come from injected credentials. encryption_key is deliberately
+              # NOT set: create-site generated a stable one for this stack, and overwriting it would
+              # make already-encrypted data undecryptable (the latent bug deploy-ec2.sh warns about).
+              echo "=== App secrets (secret_key, jwt_secrets) ==="
+              docker compose exec -T backend bench set-config -g secret_key "${SECRET_KEY}"
+              docker compose exec -T backend bench --site mysite.localhost set-config jwt_secrets '${JWT_SECRETS}' --parse
+              docker compose exec -T backend bench --site mysite.localhost set-config jwt_current_kid "v1"
 
               echo "=== Migrate + clear cache (assets are baked, do NOT rebuild) ==="
               docker compose exec -T backend bench --site mysite.localhost migrate
