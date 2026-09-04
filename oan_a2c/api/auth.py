@@ -244,19 +244,13 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 	Wraps Frappe's core LoginManager to ensure standard validations apply
 	(account lock, disabled user, etc.) without creating a server-side session.
 	"""
-	# KNOWN ISSUE -- the per-IP login budget was raised from 10/min to 100/min to
-	# unblock development and load testing, and has not been lowered again.
+	# Per-IP login budget. Brought back down from 100/min (raised for dev/load
+	# testing) to 20/min to make password spraying expensive again -- one IP can no
+	# longer try dozens of different accounts a minute.
 	#
-	# The per-identifier limit added below (10/min on the resolved login id) stops
-	# one account being hammered, but it does not stop password spraying: one IP can
-	# still try 100 attempts a minute as long as they are spread across 100 different
-	# accounts. That is the attack the per-IP cap existed to make expensive.
-	#
-	# Left as-is for now, deliberately. Before this reaches production the per-IP
-	# limit needs to come back down (10-20/min), or be replaced by something that
-	# distinguishes a busy office NAT from a sprayer -- e.g. a much lower cap on
-	# *failed* attempts per IP, with successes not counted against it.
-	check_rate_limit(f"rl:login:{getattr(frappe.local, 'request_ip', 'guest')}", limit=100, window=60)
+	# The per-identifier limit below (10/min on the resolved login id) separately
+	# stops one account being hammered; the two work together, not as alternatives.
+	check_rate_limit(f"rl:login:{getattr(frappe.local, 'request_ip', 'guest')}", limit=20, window=60)
 
 	# Accept either an email or a phone number as the login id.
 	usr = _resolve_login_id(usr)
