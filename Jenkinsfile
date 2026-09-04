@@ -220,16 +220,35 @@ pipeline {
                 && echo "Health check passed (assets linked)" \
                 || { echo "FAIL: sites/assets is not a symlink"; exit 1; }
 
-              # Asset-manifest cache bust -- done LAST, after the stack is up. gunicorn caches the
-              # asset manifest in Redis; on an image bump it otherwise keeps rendering the previous
-              # build's /assets hashes (404s -> unstyled desk), and a mid-deploy clear-cache races
-              # with the container recreate. Clear cache + flush the cache Redis deterministically
-              # (redis-cache is cache-only -> safe) + restart the backend to reload the manifest.
-              echo "=== Busting asset-manifest cache ==="
-              docker compose exec -T backend bench --site mysite.localhost clear-cache || true
+              # Asset-manifest cache bust -- deterministic stop -> flush -> start.
+              # Frappe caches assets.json in the *cache* Redis under a SHARED (site-independent)
+              # key. redis-cache is NOT recreated on deploy, so the PREVIOUS build's manifest
+              # survives the image bump; new workers find it already cached (a HIT) and never
+              # re-read the new on-disk manifest -> /assets 404 -> unstyled desk. Two traps make
+              # the naive fix fail (both bit staging-aws-5/6): "bench clear-cache" is per-site and
+              # does NOT evict the shared assets_json key, and restarting only the backend lets a
+              # still-running queue/scheduler worker re-write the stale manifest right after the
+              # flush. So: stop every frappe process, flush the cache Redis while nothing can write
+              # to it, then start them so each boots and reads the CURRENT manifest from disk.
+              echo "=== Busting asset-manifest cache (stop -> flush -> start) ==="
+              docker compose stop backend websocket queue-short queue-long scheduler
               docker compose exec -T redis-cache redis-cli flushall || true
-              docker compose restart backend
-              sleep 8
+              docker compose up -d backend websocket queue-short queue-long scheduler
+              sleep 15
+
+              # Verify the served manifest matches the on-disk assets (fail the deploy on a stale
+              # regression). Variable-free (bracket-dot in the regex, cmp on files, no shell vars) so
+              # nothing needs escaping through the Groovy + heredoc layers. Fatal only when the
+              # served hash is present and differs; an empty served hash (curl hiccup) is skipped.
+              echo "=== Verifying asset manifest ==="
+              curl -s http://localhost:8090/login | grep -oE 'login[.]bundle[.][A-Z0-9]+[.]css' | head -1 > /tmp/a2c_stg_served
+              docker compose exec -T backend sh -c 'ls sites/assets/frappe/dist/css/' | grep -oE 'login[.]bundle[.][A-Z0-9]+[.]css' | head -1 > /tmp/a2c_stg_ondisk
+              echo "=== served manifest ==="; cat /tmp/a2c_stg_served
+              echo "=== on-disk manifest ==="; cat /tmp/a2c_stg_ondisk
+              if [ -s /tmp/a2c_stg_served ] && ! cmp -s /tmp/a2c_stg_served /tmp/a2c_stg_ondisk; then
+                echo "FAIL: served manifest does not match on-disk assets (stale asset cache)"; exit 1
+              fi
+              echo "Asset manifest OK"
 
               # Reclaim disk: each staging_aws deploy pulls a fresh image; -a drops the old
               # tags no running container uses so the shared box doesn't fill up over deploys.
