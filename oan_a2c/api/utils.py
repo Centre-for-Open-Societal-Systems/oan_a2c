@@ -229,6 +229,46 @@ def resolve_workflow_transition(doc, target_status: str, roles: list[str] | None
 	}
 
 
+def match_allowed_tokens(text: str, allowed: set | list | tuple, strict: bool = True) -> list[str] | None:
+	"""Split comma-separated `text`, keeping `allowed` values that contain commas intact.
+
+	Matching is greedy longest-first, so when both "a" and "a,b" are allowed, the
+	input "a,b" reads as the single value "a,b" rather than two.
+
+	`strict=True` returns None the moment a token isn't an allowed value, letting
+	the caller fall back to a plain split and raise its own error. `strict=False`
+	instead consumes up to the next comma as a literal token, so unknown values
+	pass through to be matched (or not) downstream.
+	"""
+	if not text:
+		return []
+	allowed_sorted = sorted({str(a).strip() for a in allowed if str(a).strip()}, key=len, reverse=True)
+	tokens = []
+	remaining = text.strip()
+	while remaining:
+		for item_str in allowed_sorted:
+			if remaining == item_str:
+				tokens.append(item_str)
+				remaining = ""
+				break
+			if remaining.startswith(item_str):
+				rest = remaining[len(item_str) :].lstrip()
+				if rest.startswith(","):
+					tokens.append(item_str)
+					remaining = rest[1:].lstrip()
+					break
+		else:
+			# nothing allowed matched at this position
+			if strict:
+				return None
+			token, _sep, remaining = remaining.partition(",")
+			token = token.strip()
+			if token:
+				tokens.append(token)
+			remaining = remaining.lstrip()
+	return tokens
+
+
 def parse_multi_value(value, allowed=None):
 	"""Split a single value or comma-separated string into a de-duplicated list.
 
@@ -239,15 +279,25 @@ def parse_multi_value(value, allowed=None):
 	"""
 	if value is None:
 		return []
-	if isinstance(value, (list, tuple)):
+	if isinstance(value, (list, tuple, set)):
 		requested = [str(v).strip() for v in value]
 	else:
 		v_str = str(value).strip()
+		if not v_str:
+			return []
 		if v_str.startswith("[") and v_str.endswith("]"):
 			try:
 				parsed = frappe.parse_json(v_str)
 				requested = [str(v).strip() for v in parsed] if isinstance(parsed, list) else [v_str]
 			except Exception:
+				requested = [v.strip() for v in v_str.split(",")]
+		elif allowed is not None and v_str in allowed:
+			requested = [v_str]
+		elif allowed is not None:
+			matched_tokens = match_allowed_tokens(v_str, allowed)
+			if matched_tokens is not None:
+				requested = matched_tokens
+			else:
 				requested = [v.strip() for v in v_str.split(",")]
 		else:
 			requested = [v.strip() for v in v_str.split(",")]
