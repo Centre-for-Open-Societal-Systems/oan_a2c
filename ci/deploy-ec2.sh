@@ -91,10 +91,16 @@ ssh -i "${SSH_KEY}" \
     # Everything here expands on the Jenkins agent before the heredoc is sent, which
     # is why these must come from injected credentials. A \$(...) in this block would
     # run on the agent rather than on EC2 and silently yield an empty value.
-    docker compose exec -T backend bench set-config -g secret_key "${SECRET_KEY}"
-    docker compose exec -T backend bench --site mysite.localhost set-config encryption_key "${ENCRYPTION_KEY}"
-    docker compose exec -T backend bench --site mysite.localhost set-config jwt_secrets '${JWT_SECRETS}' --parse
-    docker compose exec -T backend bench --site mysite.localhost set-config jwt_current_kid "${JWT_CURRENT_KID}"
+    # Best-effort. These are stable secrets (set once), and now that the deploy tail actually
+    # runs (see the { } < /dev/null fix), a bad value here must NOT abort the deploy before the
+    # migrate + asset cache-bust below. In particular 'set-config ... --parse' does
+    # ast.literal_eval on the value and dies with "invalid decimal literal" unless JWT_SECRETS
+    # is a real Python literal like {"v1": "..."} -- so each is non-fatal and just warns. If a
+    # WARN shows in the build log, fix the underlying Jenkins credential.
+    docker compose exec -T backend bench set-config -g secret_key "${SECRET_KEY}" || echo "WARN: secret_key set-config failed (continuing)"
+    docker compose exec -T backend bench --site mysite.localhost set-config encryption_key "${ENCRYPTION_KEY}" || echo "WARN: encryption_key set-config failed (continuing)"
+    docker compose exec -T backend bench --site mysite.localhost set-config jwt_secrets '${JWT_SECRETS}' --parse || echo "WARN: jwt_secrets set-config failed -- JWT_SECRETS not a valid literal? (continuing)"
+    docker compose exec -T backend bench --site mysite.localhost set-config jwt_current_kid "${JWT_CURRENT_KID}" || echo "WARN: jwt_current_kid set-config failed (continuing)"
 
     echo "=== Running migrations ==="
     docker compose exec -T backend bench --site mysite.localhost migrate

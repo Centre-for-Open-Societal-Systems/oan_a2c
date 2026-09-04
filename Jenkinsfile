@@ -215,10 +215,15 @@ pipeline {
               # exactly why they must come from injected credentials. encryption_key is deliberately
               # NOT set: create-site generated a stable one for this stack, and overwriting it would
               # make already-encrypted data undecryptable (the latent bug deploy-ec2.sh warns about).
+              # Best-effort: now that the deploy tail actually runs, a bad secret must NOT abort
+              # the deploy before migrate + the asset cache-bust. 'set-config ... --parse' does
+              # ast.literal_eval and dies ("invalid decimal literal") unless JWT_SECRETS is a real
+              # Python literal like {"v1": "..."} -- so each is non-fatal and warns. Fix the Jenkins
+              # credential if a WARN appears in the build log.
               echo "=== App secrets (secret_key, jwt_secrets) ==="
-              docker compose exec -T backend bench set-config -g secret_key "${SECRET_KEY}"
-              docker compose exec -T backend bench --site mysite.localhost set-config jwt_secrets '${JWT_SECRETS}' --parse
-              docker compose exec -T backend bench --site mysite.localhost set-config jwt_current_kid "v1"
+              docker compose exec -T backend bench set-config -g secret_key "${SECRET_KEY}" || echo "WARN: secret_key set-config failed (continuing)"
+              docker compose exec -T backend bench --site mysite.localhost set-config jwt_secrets '${JWT_SECRETS}' --parse || echo "WARN: jwt_secrets set-config failed -- JWT_SECRETS not a valid literal? (continuing)"
+              docker compose exec -T backend bench --site mysite.localhost set-config jwt_current_kid "v1" || echo "WARN: jwt_current_kid set-config failed (continuing)"
 
               echo "=== Migrate (assets are baked, do NOT rebuild) ==="
               docker compose exec -T backend bench --site mysite.localhost migrate
