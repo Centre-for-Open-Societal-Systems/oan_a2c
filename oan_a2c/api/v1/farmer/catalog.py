@@ -89,15 +89,13 @@ class PaginationSchema(BaseModel):
 
 
 def _known_category_ids() -> list[str]:
-	"""Every category id, cached for the life of the request.
+	"""Every category id.
 
 	Only consulted when a raw `category` string is not itself a category id and
 	has to be split on commas, which is the legacy case — ids minted by
 	`clean_slug` no longer contain commas.
 	"""
-	if getattr(frappe.local, "_a2c_category_ids", None) is None:
-		frappe.local._a2c_category_ids = frappe.get_all("A2C Term Category", pluck="name")
-	return frappe.local._a2c_category_ids
+	return frappe.get_all("A2C Term Category", pluck="name")
 
 
 def _products_in_category(category: str | list[str]) -> list[str]:
