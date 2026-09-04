@@ -223,11 +223,20 @@ def set_product_attributes(product_id: str, attributes: dict):
 
 
 def _get_or_create_term(term_name: str) -> str:
-	term_id = frappe.scrub(term_name).replace("_", "-")
+	from oan_a2c.a2c_marketplace.taxonomy import get_unique_term_id
+
+	term_id = get_unique_term_id(term_name)
 	if not frappe.db.exists("A2C Term", term_id):
 		if not frappe.has_permission("A2C Term", "create"):
 			frappe.throw(_("Not permitted to create A2C Term"), frappe.PermissionError)
-		term = frappe.get_doc({"doctype": "A2C Term", "term_id": term_id, "term_name": term_name})
+		term = frappe.get_doc(
+			{
+				"doctype": "A2C Term",
+				"term_id": term_id,
+				"term_name": term_name,
+				"slug": term_id,
+			}
+		)
 		term.insert(ignore_permissions=True)
 	return term_id
 

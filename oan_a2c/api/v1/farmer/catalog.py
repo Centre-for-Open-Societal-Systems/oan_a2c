@@ -13,6 +13,7 @@ from oan_a2c.a2c_marketplace.permissions import get_user_bank, is_platform_admin
 from oan_a2c.a2c_marketplace.roles import BANK_ROLES
 from oan_a2c.api.utils import (
 	handle_api_errors,
+	match_allowed_tokens,
 	parse_multi_value,
 	success_response,
 	to_tz_aware_iso,
@@ -87,6 +88,16 @@ class PaginationSchema(BaseModel):
 	start: int = Field(0, ge=0)
 
 
+def _known_category_ids() -> list[str]:
+	"""Every category id.
+
+	Only consulted when a raw `category` string is not itself a category id and
+	has to be split on commas, which is the legacy case — ids minted by
+	`clean_slug` no longer contain commas.
+	"""
+	return frappe.get_all("A2C Term Category", pluck="name")
+
+
 def _products_in_category(category: str | list[str]) -> list[str]:
 	"""Loan product ids carrying any of `category`.
 
@@ -100,7 +111,25 @@ def _products_in_category(category: str | list[str]) -> list[str]:
 	permission-filtered — a product the farmer may not see cannot be pulled into
 	the result by naming it here.
 	"""
-	categories = parse_multi_value(category)
+	if not category:
+		return []
+
+	if isinstance(category, (list, tuple, set)):
+		categories = [str(c).strip() for c in category if str(c).strip()]
+	else:
+		c_str = str(category).strip()
+		if not c_str:
+			return []
+		if c_str.startswith("[") and c_str.endswith("]"):
+			categories = parse_multi_value(c_str)
+		elif frappe.db.exists("A2C Term Category", c_str):
+			# whole string is one id — never split it, it may contain legacy commas
+			categories = [c_str]
+		else:
+			# lenient: an unknown category should match nothing, not raise
+			categories = match_allowed_tokens(c_str, _known_category_ids(), strict=False)
+
+	categories = list(dict.fromkeys(categories))
 	if not categories:
 		return []
 	# ids only ever narrow the permission-filtered product query below

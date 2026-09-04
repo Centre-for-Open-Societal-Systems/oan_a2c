@@ -1308,3 +1308,88 @@ class TestCatalogCategoryFilter(FarmerB2CFixtures):
 		frappe.set_user(self.farmer_a)
 
 		self.assertEqual(self._catalog(category=",,"), [])
+
+	def test_category_with_comma_in_name_filters_correctly(self):
+		"""A category ID containing commas/parentheses matches intact."""
+		import frappe
+
+		cat_comma_id = f"input-loan-(seeds,-agrochemicals)-{self.h}"
+		frappe.get_doc(
+			{
+				"doctype": "A2C Term",
+				"term_id": cat_comma_id,
+				"term_name": f"Input Loan (Seeds, Agrochemicals) {self.h}",
+				"slug": cat_comma_id,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.get_doc(
+			{
+				"doctype": "A2C Term Category",
+				"term": cat_comma_id,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+
+		frappe.get_doc(
+			{
+				"doctype": "A2C Term Relationship",
+				"loan_product": self.prod_1.name,
+				"term_type": "Category",
+				"term_category": cat_comma_id,
+				"bank": self.bank,
+			}
+		).insert(ignore_permissions=True, ignore_mandatory=True)
+		frappe.db.commit()
+
+		frappe.set_user(self.farmer_a)
+		names = [p["name"] for p in self._catalog(category=cat_comma_id)]
+		self.assertIn(self.prod_1.name, names)
+
+		# Union with another category
+		union_names = [p["name"] for p in self._catalog(category=f"{cat_comma_id},{self.cat_equipment}")]
+		self.assertIn(self.prod_1.name, union_names)
+		self.assertIn(self.prod_2.name, union_names)
+
+	def test_clean_slug_and_collision_handling(self):
+		"""clean_slug strips special characters and get_unique_term_id increments on collision."""
+		import frappe
+
+		from oan_a2c.a2c_marketplace.taxonomy import clean_slug
+		from oan_a2c.api.v1.seller.taxonomy import create_attribute_term
+
+		self.assertEqual(clean_slug("harvest_yield > 3 t/r"), "harvest-yield-3-tr")
+		self.assertEqual(clean_slug("Input Loan (Seeds, Agrochemicals)"), "input-loan-seeds-agrochemicals")
+		# non-ASCII is stripped, not transliterated; punctuation-only collapses to nothing
+		self.assertEqual(clean_slug("ማሽላ"), "")
+		self.assertEqual(clean_slug("!!!"), "")
+
+		# create_attribute_term with special characters should succeed without NameError
+		frappe.set_user("Administrator")
+		res = create_attribute_term(term_name=f"harvest_yield > 3 t/r {self.h}")
+		self.assertEqual(res["status"], "success")
+
+		# Collision handling: two different names with same base slug
+		res1 = create_attribute_term(term_name=f"Special Crop {self.h}")
+		res2 = create_attribute_term(term_name=f"Special-Crop! {self.h}")
+		tid1 = res1["data"]["term_id"]
+		tid2 = res2["data"]["term_id"]
+		self.assertNotEqual(tid1, tid2)
+		self.assertEqual(tid2, f"{tid1}-2")
+
+	def test_term_id_and_slug_derived_when_omitted(self):
+		"""Inserting an A2C Term with only a term_name derives term_id, name and slug.
+
+		A2C Term autonames `field:term_id`, and set_new_name() runs before
+		before_save, so the derivation has to happen in before_naming or the
+		insert dies with "Term ID is required".
+		"""
+		import frappe
+
+		frappe.set_user("Administrator")
+		term = frappe.get_doc({"doctype": "A2C Term", "term_name": f"Bare Term (No Id!) {self.h}"}).insert(
+			ignore_permissions=True
+		)
+
+		expected = f"bare-term-no-id-{self.h}"
+		self.assertEqual(term.term_id, expected)
+		self.assertEqual(term.name, expected)
+		self.assertEqual(term.slug, expected)
