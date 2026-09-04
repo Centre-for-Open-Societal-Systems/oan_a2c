@@ -251,11 +251,25 @@ pipeline {
               docker compose up -d backend websocket queue-short queue-long scheduler
               sleep 15
 
-              # Verify the served manifest matches the on-disk assets (fail the deploy on a stale
-              # regression). Variable-free (bracket-dot in the regex, cmp on files, no shell vars) so
-              # nothing needs escaping through the Groovy + heredoc layers. Fatal only when the
-              # served hash is present and differs; an empty served hash (curl hiccup) is skipped.
-              echo "=== Verifying asset manifest ==="
+              # The backend can come back on a NEW container IP after the stop/start, and frappe's
+              # frontend nginx resolves+CACHES the backend upstream IP at startup -- so it keeps
+              # dialing the dead old IP and EVERY request 502s (seen live: nginx "connect() failed
+              # (111: Connection refused) ... upstream 172.x:8000"). Restart the frontend last so it
+              # re-resolves the current backend.
+              echo "=== Re-pointing frontend at the restarted backend ==="
+              docker compose restart frontend
+              sleep 8
+
+              # Verify. Variable-free (bracket-dot regex, cmp/grep on files, no shell vars) so nothing
+              # needs escaping through the Groovy + heredoc layers. First confirm /login is served 200
+              # (catches the frontend->backend 502 above); then confirm the served asset hash matches
+              # disk (catches a stale asset cache). Both fatal.
+              echo "=== Verifying deploy ==="
+              curl -s -o /dev/null -w '%{http_code}' http://localhost:8090/login > /tmp/a2c_stg_login_code
+              echo "login_http:"; cat /tmp/a2c_stg_login_code; echo
+              if ! grep -q 200 /tmp/a2c_stg_login_code; then
+                echo "FAIL: /login did not return 200 (frontend cannot reach backend after cache-bust)"; exit 1
+              fi
               curl -s http://localhost:8090/login | grep -oE 'login[.]bundle[.][A-Z0-9]+[.]css' | head -1 > /tmp/a2c_stg_served
               docker compose exec -T backend sh -c 'ls sites/assets/frappe/dist/css/' | grep -oE 'login[.]bundle[.][A-Z0-9]+[.]css' | head -1 > /tmp/a2c_stg_ondisk
               echo "=== served manifest ==="; cat /tmp/a2c_stg_served
@@ -263,7 +277,7 @@ pipeline {
               if [ -s /tmp/a2c_stg_served ] && ! cmp -s /tmp/a2c_stg_served /tmp/a2c_stg_ondisk; then
                 echo "FAIL: served manifest does not match on-disk assets (stale asset cache)"; exit 1
               fi
-              echo "Asset manifest OK"
+              echo "Deploy verified (login 200, assets fresh)"
 
               # Reclaim disk: each staging_aws deploy pulls a fresh image; -a drops the old
               # tags no running container uses so the shared box doesn't fill up over deploys.

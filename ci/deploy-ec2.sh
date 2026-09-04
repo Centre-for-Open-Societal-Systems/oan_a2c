@@ -141,12 +141,25 @@ ssh -i "${SSH_KEY}" \
     docker compose up -d backend websocket queue-short queue-long scheduler
     sleep 15
 
-    # Verify the served manifest matches the on-disk assets, so a stale-asset regression
-    # is caught here instead of by a user hitting a blank desk. Written variable-free
-    # ([.] not \. in the regex, cmp on files instead of \$-captures) so nothing has to be
-    # escaped through the heredoc. Fatal only when the served hash is present and differs
-    # from disk; an empty served hash (curl hiccup) is skipped so it can't false-fail.
-    echo "=== Verifying asset manifest ==="
+    # The backend can come back on a NEW container IP after the stop/start above, and
+    # frappe's frontend nginx resolves+CACHES the backend upstream IP at startup -- so
+    # after the backend restarts it keeps dialing the dead old IP and EVERY request 502s
+    # (confirmed: nginx "connect() failed (111: Connection refused) ... upstream 172.x:8000").
+    # Restart the frontend last so it re-resolves the current backend.
+    echo "=== Re-pointing frontend at the restarted backend ==="
+    docker compose restart frontend
+    sleep 8
+
+    # Verify. Written variable-free (bracket-dot regex, cmp/grep on files, no shell vars)
+    # so nothing has to be escaped through the heredoc. First confirm /login is actually
+    # served 200 (catches the frontend->backend 502 above); then confirm the served asset
+    # hash matches disk (catches a stale asset cache). Both are fatal.
+    echo "=== Verifying deploy ==="
+    curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/login > /tmp/a2c_dev_login_code
+    echo "login_http:"; cat /tmp/a2c_dev_login_code; echo
+    if ! grep -q 200 /tmp/a2c_dev_login_code; then
+        echo "FAIL: /login did not return 200 (frontend cannot reach backend after cache-bust)"; exit 1
+    fi
     curl -s http://localhost:8080/login | grep -oE 'login[.]bundle[.][A-Z0-9]+[.]css' | head -1 > /tmp/a2c_dev_served
     docker compose exec -T backend sh -c 'ls sites/assets/frappe/dist/css/' | grep -oE 'login[.]bundle[.][A-Z0-9]+[.]css' | head -1 > /tmp/a2c_dev_ondisk
     echo "=== served manifest ==="; cat /tmp/a2c_dev_served
@@ -154,7 +167,7 @@ ssh -i "${SSH_KEY}" \
     if [ -s /tmp/a2c_dev_served ] && ! cmp -s /tmp/a2c_dev_served /tmp/a2c_dev_ondisk; then
         echo "FAIL: served manifest does not match on-disk assets (stale asset cache)"; exit 1
     fi
-    echo "Asset manifest OK"
+    echo "Deploy verified (login 200, assets fresh)"
 
     # Reclaim disk: each deploy pulls a fresh oan/a2c:develop-<n> (~3.4GB); without this the
     # box fills up over time and the next docker compose pull fails "no space left on device".
