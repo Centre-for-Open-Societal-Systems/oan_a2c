@@ -35,6 +35,19 @@ ssh -i "${SSH_KEY}" \
     "${SSH_USER}@${BACKEND_IP}" << SSHEOF
 
     set -e
+
+    # Run the whole remote body as a brace group with stdin from /dev/null.
+    # WHY THIS MATTERS: this script is delivered to ssh on STDIN (the <<SSHEOF heredoc),
+    # and the remote shell reads its commands from that same stdin. The first
+    # 'docker compose exec -T ...' below would otherwise DRAIN the rest of the heredoc as
+    # its own stdin, so every command after it -- OpenG2P config, secrets, migrate, health
+    # check, and the asset-manifest cache bust -- silently never runs, and the deploy still
+    # exits 0 ("succeeds") having done almost nothing. That is the real reason the desk kept
+    # rendering stale/unstyled assets: the cache-bust step was never reached (confirmed in the
+    # develop-30 / staging-aws-7 build logs, which jump straight from "Setting OpenG2P config"
+    # to the post-heredoc line). The shell parses the entire { ... } before executing it, so the
+    # script is fully read off stdin up front; the '< /dev/null' then applies to every exec inside.
+    {
     cd /opt/oan_a2c
 
     echo "=== Logging in to ECR ==="
@@ -146,6 +159,7 @@ ssh -i "${SSH_KEY}" \
 
     echo "=== Deployment complete ==="
     docker compose ps
+    } < /dev/null
 
 SSHEOF
 

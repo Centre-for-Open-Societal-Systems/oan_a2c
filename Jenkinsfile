@@ -177,6 +177,16 @@ pipeline {
             esac
             ssh -i "${SSH_KEY}" -o StrictHostKeyChecking=no "${SSH_USER}@${BACKEND_IP}" << SSHEOF
               set -e
+
+              # Run the whole remote body as a brace group with stdin from /dev/null. This script
+              # reaches the remote shell on STDIN (the <<SSHEOF heredoc); the first
+              # 'docker compose exec -T ...' below would otherwise DRAIN the rest of the heredoc as
+              # its own stdin, so OpenG2P config, secrets, migrate, health check and the asset
+              # cache-bust would silently never run and the deploy would still exit 0 -- exactly what
+              # the develop-30 / staging-aws-7 logs showed (they stop right after "OpenG2P config").
+              # The shell parses the entire { ... } before executing, so the script is fully read off
+              # stdin first; the '< /dev/null' then applies to every exec inside.
+              {
               cd ${STAGING_APP_DIR}
 
               echo "=== ECR login ==="
@@ -255,6 +265,7 @@ pipeline {
               echo "=== Pruning unused images ==="
               docker image prune -af || true
               docker compose ps
+              } < /dev/null
 SSHEOF
           '''
         }
