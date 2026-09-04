@@ -85,14 +85,9 @@ ssh -i "${SSH_KEY}" \
 
     echo "=== Running migrations ==="
     docker compose exec -T backend bench --site mysite.localhost migrate
-    docker compose exec -T backend bench --site mysite.localhost clear-cache
 
-    # Restart the BACKEND (not just the frontend) AFTER clear-cache: gunicorn caches the
-    # asset manifest (assets.json) in Redis, so on an image bump it keeps rendering the
-    # previous build's hashed /assets URLs -> every asset 404s and the desk loads unstyled.
-    # A fresh backend re-reads the current manifest from disk. (Frontend restart kept for nginx.)
-    echo "=== Restarting backend + frontend ==="
-    docker compose restart backend frontend
+    echo "=== Restarting frontend ==="
+    docker compose restart frontend
     sleep 10
 
     echo "=== Health check ==="
@@ -105,6 +100,18 @@ ssh -i "${SSH_KEY}" \
         || { echo "FAIL: sites/assets is not a populated symlink"; exit 1; }
 
     echo "Health check passed (assets linked)"
+
+    # Asset-manifest cache bust -- done LAST, after the stack is confirmed up. gunicorn caches
+    # the asset manifest (assets.json) in Redis; on an image bump it otherwise keeps rendering
+    # the PREVIOUS build's hashed /assets URLs (every asset 404s -> unstyled desk). A mid-deploy
+    # clear-cache races with the container recreate and doesn't stick, so do it here: clear the
+    # cache, flush the cache Redis deterministically (redis-cache holds only cache -> safe), then
+    # restart the backend so fresh workers re-read the current manifest from disk.
+    echo "=== Busting asset-manifest cache ==="
+    docker compose exec -T backend bench --site mysite.localhost clear-cache || true
+    docker compose exec -T redis-cache redis-cli flushall || true
+    docker compose restart backend
+    sleep 8
 
     # Reclaim disk: each deploy pulls a fresh oan/a2c:develop-<n> (~3.4GB); without this the
     # box fills up over time and the next docker compose pull fails "no space left on device".
