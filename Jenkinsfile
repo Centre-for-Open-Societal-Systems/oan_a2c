@@ -213,7 +213,10 @@ pipeline {
               echo "=== Migrate + clear cache (assets are baked, do NOT rebuild) ==="
               docker compose exec -T backend bench --site mysite.localhost migrate
               docker compose exec -T backend bench --site mysite.localhost clear-cache
-              docker compose restart frontend
+              # Restart the BACKEND (not just frontend) AFTER clear-cache: gunicorn caches the
+              # asset manifest in Redis, so on an image bump it keeps rendering the old build's
+              # /assets hashes -> 404s / unstyled desk. A fresh backend re-reads the manifest.
+              docker compose restart backend frontend
               sleep 10
 
               echo "=== Health check (assets symlink present) ==="

@@ -87,8 +87,12 @@ ssh -i "${SSH_KEY}" \
     docker compose exec -T backend bench --site mysite.localhost migrate
     docker compose exec -T backend bench --site mysite.localhost clear-cache
 
-    echo "=== Restarting frontend ==="
-    docker compose restart frontend
+    # Restart the BACKEND (not just the frontend) AFTER clear-cache: gunicorn caches the
+    # asset manifest (assets.json) in Redis, so on an image bump it keeps rendering the
+    # previous build's hashed /assets URLs -> every asset 404s and the desk loads unstyled.
+    # A fresh backend re-reads the current manifest from disk. (Frontend restart kept for nginx.)
+    echo "=== Restarting backend + frontend ==="
+    docker compose restart backend frontend
     sleep 10
 
     echo "=== Health check ==="
