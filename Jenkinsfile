@@ -210,19 +210,26 @@ pipeline {
               docker compose exec -T backend bench --site mysite.localhost set-config jwt_secrets '${JWT_SECRETS}' --parse
               docker compose exec -T backend bench --site mysite.localhost set-config jwt_current_kid "v1"
 
-              echo "=== Migrate + clear cache (assets are baked, do NOT rebuild) ==="
+              echo "=== Migrate (assets are baked, do NOT rebuild) ==="
               docker compose exec -T backend bench --site mysite.localhost migrate
-              docker compose exec -T backend bench --site mysite.localhost clear-cache
-              # Restart the BACKEND (not just frontend) AFTER clear-cache: gunicorn caches the
-              # asset manifest in Redis, so on an image bump it keeps rendering the old build's
-              # /assets hashes -> 404s / unstyled desk. A fresh backend re-reads the manifest.
-              docker compose restart backend frontend
+              docker compose restart frontend
               sleep 10
 
               echo "=== Health check (assets symlink present) ==="
               docker compose exec -T backend bash -c 'test -L sites/assets' \
                 && echo "Health check passed (assets linked)" \
                 || { echo "FAIL: sites/assets is not a symlink"; exit 1; }
+
+              # Asset-manifest cache bust -- done LAST, after the stack is up. gunicorn caches the
+              # asset manifest in Redis; on an image bump it otherwise keeps rendering the previous
+              # build's /assets hashes (404s -> unstyled desk), and a mid-deploy clear-cache races
+              # with the container recreate. Clear cache + flush the cache Redis deterministically
+              # (redis-cache is cache-only -> safe) + restart the backend to reload the manifest.
+              echo "=== Busting asset-manifest cache ==="
+              docker compose exec -T backend bench --site mysite.localhost clear-cache || true
+              docker compose exec -T redis-cache redis-cli flushall || true
+              docker compose restart backend
+              sleep 8
 
               # Reclaim disk: each staging_aws deploy pulls a fresh image; -a drops the old
               # tags no running container uses so the shared box doesn't fill up over deploys.
