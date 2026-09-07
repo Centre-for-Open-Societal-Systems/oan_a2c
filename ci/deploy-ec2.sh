@@ -21,6 +21,10 @@ set -e
 : "${JWT_SECRETS:?JWT_SECRETS is required - JSON map of kid to secret, e.g. {\"v1\": \"...\"}}"
 JWT_CURRENT_KID="${JWT_CURRENT_KID:-v1}"
 
+# OpenG2P portal password — a secret, injected from Jenkins (credential openg2p_password_develop).
+# base_url/username/db are non-secret and set below; only the password comes from a credential.
+: "${OPENG2P_PASSWORD:?OPENG2P_PASSWORD is required - OpenG2P portal password (Jenkins credential 'openg2p_password_develop')}"
+
 # JWT_SECRETS is interpolated inside single quotes in the heredoc below, so a
 # single quote in the value would break out of them and corrupt the command.
 case "${JWT_SECRETS}" in
@@ -82,9 +86,14 @@ ssh -i "${SSH_KEY}" \
     # restart does not recreate the link.
 
     echo "=== Setting OpenG2P config ==="
-    docker compose exec -T backend bench set-config -g openg2p_base_url "https://socialregistry-22062026.dev.openg2p.test"
+    # OpenG2P social-registry target for DEVELOP. registry-development.oanstaging.com has a
+    # real TLS cert, so VERIFY_SSL stays on. The old value (socialregistry-22062026.dev.openg2p.test)
+    # was a self-signed host AND paired with the wrong password -> CERTIFICATE_VERIFY_FAILED and,
+    # once past TLS, no uid. base_url/username/db are non-secret; the password is injected from
+    # the Jenkins 'openg2p_password_develop' credential (expands on the agent into the heredoc).
+    docker compose exec -T backend bench set-config -g openg2p_base_url "https://registry-development.oanstaging.com/"
     docker compose exec -T backend bench set-config -g openg2p_username "portal_agent"
-    docker compose exec -T backend bench set-config -g openg2p_password "portal_agent"
+    docker compose exec -T backend bench set-config -g openg2p_password "${OPENG2P_PASSWORD}"
     docker compose exec -T backend bench set-config -g openg2p_db "${OPENG2P_DB:-socialregistry}"
 
     echo "=== Setting secrets ==="
