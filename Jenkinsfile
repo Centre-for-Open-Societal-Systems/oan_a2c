@@ -134,7 +134,8 @@ pipeline {
                             keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
           string(credentialsId: 'encryption_key_develop', variable: 'ENCRYPTION_KEY'),
           string(credentialsId: 'secret_key_develop', variable: 'SECRET_KEY'),
-          string(credentialsId: 'jwt_secrets_develop', variable: 'JWT_SECRETS')
+          string(credentialsId: 'jwt_secrets_develop', variable: 'JWT_SECRETS'),
+          string(credentialsId: 'openg2p_password_develop', variable: 'OPENG2P_PASSWORD')
         ]) {
           sh '''#!/usr/bin/env bash
             set -euo pipefail
@@ -143,7 +144,7 @@ pipeline {
             BACKEND_IP=${BACKEND_IP} BUILD_NUMBER=${BUILD_NUMBER} \
             ECR_REPO=${ECR_REPO} AWS_REGION=${AWS_REGION} \
             ENCRYPTION_KEY="${ENCRYPTION_KEY}" SECRET_KEY="${SECRET_KEY}" \
-            JWT_SECRETS="${JWT_SECRETS}" \
+            JWT_SECRETS="${JWT_SECRETS}" OPENG2P_PASSWORD="${OPENG2P_PASSWORD}" \
             bash ci/deploy-ec2.sh
           '''
         }
