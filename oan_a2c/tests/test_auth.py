@@ -318,6 +318,10 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 		self.assertEqual(restore_resp.get("status"), "success")
 
 	def test_15_register_user_duplicate_email(self):
+		"""A duplicate email must get the same success envelope as a fresh
+		registration -- no `already_exists` flag, no distinguishing message -- so
+		this endpoint cannot be used to enumerate registered accounts. No new User
+		is created for the duplicate."""
 		from oan_a2c.api.v1.auth import register_user
 
 		resp = register_user(
@@ -327,10 +331,13 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 			phone_number="+251911999999",
 		)
 		self.assertEqual(resp.get("status"), "success")
-		self.assertTrue(resp.get("data", {}).get("already_exists"))
-		self.assertIn("already have an account", resp.get("data", {}).get("message", ""))
+		self.assertNotIn("already_exists", resp.get("data", {}))
+		self.assertEqual(resp.get("data", {}).get("message"), "Account created successfully.")
+		self.assertFalse(frappe.db.exists("User", {"mobile_no": "+251911999999"}))
 
 	def test_16_register_user_duplicate_phone(self):
+		"""Same indistinguishability guarantee for a duplicate phone number, and no
+		account is created for the (unique) email supplied alongside it."""
 		from oan_a2c.api.v1.auth import register_user
 
 		# Set mobile_no for test_email user
@@ -343,5 +350,6 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 			phone_number="+251911888888",
 		)
 		self.assertEqual(resp.get("status"), "success")
-		self.assertTrue(resp.get("data", {}).get("already_exists"))
-		self.assertIn("already have an account", resp.get("data", {}).get("message", ""))
+		self.assertNotIn("already_exists", resp.get("data", {}))
+		self.assertEqual(resp.get("data", {}).get("message"), "Account created successfully.")
+		self.assertFalse(frappe.db.exists("User", "new_unique_email@test.com"))
