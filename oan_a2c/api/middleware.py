@@ -21,6 +21,40 @@ class JWTUnauthorized(HTTPException):
 		)
 
 
+PUBLIC_EXEMPT_PATHS = {
+	# Legacy RPC paths
+	"/api/method/oan_a2c.api.auth.login",
+	"/api/method/oan_a2c.api.auth.forgot_password",
+	"/api/method/oan_a2c.api.auth.reset_password",
+	"/api/method/oan_a2c.api.auth.set_initial_password",
+	"/api/method/oan_a2c.api.auth.refresh",
+	"/api/method/oan_a2c.api.auth.logout",
+	"/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
+	"/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
+	"/api/method/oan_a2c.api.v1.auth.register_user",
+	# REST v1 paths
+	"/v1/auth/login",
+	"/v1/auth/register",
+	"/v1/auth/token/refresh",
+	"/v1/auth/logout",
+	"/v1/auth/password/forgot",
+	"/v1/auth/password/reset",
+	"/v1/auth/password/initial",
+	"/v1/webhooks/consent-data",
+	"/v1/webhooks/leads",
+	# REST v1 paths with /api prefix
+	"/api/v1/auth/login",
+	"/api/v1/auth/register",
+	"/api/v1/auth/token/refresh",
+	"/api/v1/auth/logout",
+	"/api/v1/auth/password/forgot",
+	"/api/v1/auth/password/reset",
+	"/api/v1/auth/password/initial",
+	"/api/v1/webhooks/consent-data",
+	"/api/v1/webhooks/leads",
+}
+
+
 def validate_jwt_request(request=None):
 	"""
 	Middleware bound to Frappe's auth_hooks.
@@ -31,26 +65,16 @@ def validate_jwt_request(request=None):
 	# and matches what test stubs patch directly.
 	path = frappe.local.request.path
 
-	# We only care about our own API boundary.
+	# We only care about our own API boundary (RPC or REST facade).
 	# Let Frappe handle desk access and standard APIs normally.
-	if not path.startswith("/api/method/oan_a2c."):
+	is_a2c_boundary = (
+		path.startswith("/api/method/oan_a2c.") or path.startswith("/v1/") or path.startswith("/api/v1/")
+	)
+	if not is_a2c_boundary:
 		return
 
 	# Whitelisted endpoints that don't require JWT validation
-	if path in [
-		"/api/method/oan_a2c.api.auth.login",
-		"/api/method/oan_a2c.api.auth.forgot_password",
-		"/api/method/oan_a2c.api.auth.reset_password",
-		"/api/method/oan_a2c.api.auth.set_initial_password",
-		"/api/method/oan_a2c.api.auth.refresh",
-		"/api/method/oan_a2c.api.auth.logout",
-		"/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
-		"/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
-		"/api/method/oan_a2c.api.v1.auth.register_user",
-		"/api/method/oan_a2c.api.openapi.get_openapi_spec",
-		"/api/method/oan_a2c.api.openapi.docs",
-		"/api/method/oan_a2c.api.openapi.redoc",
-	]:
+	if path in PUBLIC_EXEMPT_PATHS:
 		return
 
 	auth_header = frappe.get_request_header("Authorization")
