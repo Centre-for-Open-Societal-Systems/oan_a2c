@@ -71,6 +71,13 @@ To run the automated test suite for this application:
 bench --site mysite.localhost run-tests --app oan_a2c
 ```
 
+## API Contract & Gateway
+
+The A2C REST API is published as an OpenAPI 3.0.3 contract and deployed behind an API gateway (Kong).
+
+- **[`openapi/openapi_v1.public.yaml`](openapi/openapi_v1.public.yaml)** — the API contract: all 94 endpoints across 10 domains, with request/response schemas and auth requirements for every operation. Load this into Swagger UI, Postman, or any OpenAPI-compatible client generator to explore or integrate against the API.
+- **[`kong/README_kong_onboarding.md`](kong/README_kong_onboarding.md)** — how the API is deployed and secured: authentication, throttling tiers, and what's involved in onboarding a new external integration.
+
 ## Contributing
 
 Install the pre-commit hooks before your first commit — CI runs the same checks on every pull
