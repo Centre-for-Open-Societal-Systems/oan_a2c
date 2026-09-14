@@ -1,0 +1,6914 @@
+# A2C API -- OpenAPI 3.0.3 (PUBLIC / partner-facing contract)
+# Same 94 routes and schemas as openapi_v1.yaml, with internal-only vendor extensions
+# (x-legacy-rpc-method, x-schema-confidence) removed. Generated from generate_openapi_spec.py.
+openapi: 3.0.3
+info:
+  title: OpenAgriNet Access to Credit (A2C) API
+  version: 1.0.0
+  description: 'REST API for the OpenAgriNet Access to Credit platform, covering bank onboarding, loan
+    product cataloging, the farmer-facing marketplace, loan underwriting, Fayda national ID consent capture,
+    and platform notifications.
+    
+    Response schemas are typed per operation from the platform''s documented request/response examples;
+    a small number of endpoints without a documented example carry a schema inferred from the corresponding
+    request shape -- see each schema''s own `description` field for a note where that applies.'
+  contact:
+    name: OpenAgriNet Support
+    email: admin@openagrinet.org
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+servers:
+- url: https://api.a2c.oanstaging.com
+  description: Production
+- url: https://api.staging.a2c.oanstaging.com
+  description: Staging
+tags:
+- name: Identity & Access
+  description: Registration, login, token lifecycle, and the caller's own profile.
+- name: Bank Onboarding & Administration
+  description: Bank registration, KYC, organizational profile, and team management.
+- name: Bank Cataloging
+  description: Loan product authoring, marketplace taxonomy, and pipeline configuration.
+- name: Catalog Discovery
+  description: Farmer-facing marketplace browsing.
+- name: Applications (Farmer Self-Service)
+  description: The farmer's own loan application draft and submission.
+- name: CRM - Leads & Field Ops
+  description: Lead capture, qualification, and field-visit scheduling (Development Agent).
+- name: Loan Underwriting
+  description: Bank-scoped loan application review and pipeline movement.
+- name: Consent Management
+  description: Fayda national ID consent capture and the inbound registry webhook.
+- name: Notifications
+  description: In-app notifications for the signed-in user.
+- name: Inbound Webhooks
+  description: Server-to-server receivers for external systems.
+security:
+- BearerAuth: []
+paths:
+  /v1/auth/register:
+    post:
+      summary: Register a new account
+      tags:
+      - Identity & Access
+      operationId: post_v1_auth_register
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+  /v1/auth/login:
+    post:
+      summary: Log in
+      tags:
+      - Identity & Access
+      operationId: post_v1_auth_login
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LoginData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+  /v1/auth/token/refresh:
+    post:
+      summary: Refresh an access token
+      tags:
+      - Identity & Access
+      operationId: post_v1_auth_token_refresh
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/TokenPairData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+  /v1/auth/logout:
+    post:
+      summary: Log out
+      tags:
+      - Identity & Access
+      operationId: post_v1_auth_logout
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+  /v1/auth/password/forgot:
+    post:
+      summary: Request a password-recovery code
+      tags:
+      - Identity & Access
+      operationId: post_v1_auth_password_forgot
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForgotPasswordRequest'
+  /v1/auth/password/reset:
+    post:
+      summary: Reset password with a recovery code
+      tags:
+      - Identity & Access
+      operationId: post_v1_auth_password_reset
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordRequest'
+  /v1/auth/password/initial:
+    post:
+      summary: Set initial password (invited users)
+      tags:
+      - Identity & Access
+      operationId: post_v1_auth_password_initial
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitialPasswordRequest'
+  /v1/me/password:
+    patch:
+      summary: Change the current user's password
+      tags:
+      - Identity & Access
+      operationId: patch_v1_me_password
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+  /v1/me:
+    get:
+      summary: Get the current user's identity
+      tags:
+      - Identity & Access
+      operationId: get_v1_me
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/IdentityData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/me/profile:
+    get:
+      summary: Get the current user's full profile
+      tags:
+      - Identity & Access
+      operationId: get_v1_me_profile
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ProfileData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    patch:
+      summary: Update the current user's profile
+      tags:
+      - Identity & Access
+      operationId: patch_v1_me_profile
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+  /v1/banks:
+    post:
+      summary: Register a new bank
+      tags:
+      - Bank Onboarding & Administration
+      operationId: post_v1_banks
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/BankRegisteredData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterBankRequest'
+  /v1/banks/me:
+    get:
+      summary: Get the caller's bank profile
+      tags:
+      - Bank Onboarding & Administration
+      operationId: get_v1_banks_me
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/BankProfileData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    patch:
+      summary: Update the caller's bank profile
+      tags:
+      - Bank Onboarding & Administration
+      operationId: patch_v1_banks_me
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBankProfileRequest'
+  /v1/banks/me/status:
+    patch:
+      summary: Update the bank's onboarding status
+      tags:
+      - Bank Onboarding & Administration
+      operationId: patch_v1_banks_me_status
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBankStatusRequest'
+  /v1/banks/me/kyc-documents:
+    post:
+      summary: Upload the bank's KYC document
+      tags:
+      - Bank Onboarding & Administration
+      operationId: post_v1_banks_me_kyc-documents
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/FileUploadData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadKycRequest'
+  /v1/banks/me/logo:
+    post:
+      summary: Upload the bank's logo
+      tags:
+      - Bank Onboarding & Administration
+      operationId: post_v1_banks_me_logo
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/FileUploadData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadImageRequest'
+  /v1/banks/me/contacts:
+    put:
+      summary: Set GRO/OPS compliance contacts
+      tags:
+      - Bank Onboarding & Administration
+      operationId: put_v1_banks_me_contacts
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SaveOrgContactsRequest'
+  /v1/banks/me/team:
+    get:
+      summary: List the bank's team members
+      tags:
+      - Bank Onboarding & Administration
+      operationId: get_v1_banks_me_team
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/TeamListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    post:
+      summary: Invite a team member
+      tags:
+      - Bank Onboarding & Administration
+      operationId: post_v1_banks_me_team
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteTeamMemberRequest'
+  /v1/banks/me/team/{userId}:
+    patch:
+      summary: Update a team member
+      tags:
+      - Bank Onboarding & Administration
+      operationId: patch_v1_banks_me_team_userId
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Team member's email address
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTeamMemberRequest'
+  /v1/banks/me/team/{userId}/password-reset:
+    post:
+      summary: Reset a team member's password
+      tags:
+      - Bank Onboarding & Administration
+      operationId: post_v1_banks_me_team_userId_password-reset
+      parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Team member's email address
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetMemberPasswordRequest'
+  /v1/banks/me/dashboard/stats:
+    get:
+      summary: Get the bank's dashboard metrics
+      tags:
+      - Bank Onboarding & Administration
+      operationId: get_v1_banks_me_dashboard_stats
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/DashboardStatsData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/banks/me/products:
+    post:
+      summary: Create one or more loan products
+      tags:
+      - Bank Cataloging
+      operationId: post_v1_banks_me_products
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ProductCreateData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProductRequest'
+    get:
+      summary: List the bank's loan products
+      tags:
+      - Bank Cataloging
+      operationId: get_v1_banks_me_products
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: Filter by status.
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: Search product name.
+      - name: category
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: Filter by category id.
+      - name: tag
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: Filter by tag id.
+      - name: min_interest_rate
+        in: query
+        required: false
+        schema:
+          type: number
+          nullable: true
+        description: ''
+      - name: max_interest_rate
+        in: query
+        required: false
+        schema:
+          type: number
+          nullable: true
+        description: ''
+      - name: min_amount
+        in: query
+        required: false
+        schema:
+          type: number
+          nullable: true
+        description: ''
+      - name: max_amount
+        in: query
+        required: false
+        schema:
+          type: number
+          nullable: true
+        description: ''
+      - name: tenure_months
+        in: query
+        required: false
+        schema:
+          type: integer
+          nullable: true
+        description: Exact tenure match.
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Items per page.
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ProductListData'
+                    pagination:
+                      $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/banks/me/products/{id}:
+    get:
+      summary: Get a loan product
+      tags:
+      - Bank Cataloging
+      operationId: get_v1_banks_me_products_id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ProductDetailData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    patch:
+      summary: Update a loan product
+      tags:
+      - Bank Cataloging
+      operationId: patch_v1_banks_me_products_id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProductRequest'
+  /v1/banks/me/products/{id}/status:
+    patch:
+      summary: Transition a product's status
+      tags:
+      - Bank Cataloging
+      operationId: patch_v1_banks_me_products_id_status
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ProductMutationData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetProductStatusRequest'
+  /v1/banks/me/products/{id}/audit-log:
+    get:
+      summary: Get a product's status-change history
+      tags:
+      - Bank Cataloging
+      operationId: get_v1_banks_me_products_id_audit-log
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ProductAuditData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/banks/me/products/{id}/categories:
+    put:
+      summary: Set a product's categories
+      tags:
+      - Bank Cataloging
+      operationId: put_v1_banks_me_products_id_categories
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetProductCategoriesRequest'
+  /v1/banks/me/products/{id}/tags:
+    put:
+      summary: Set a product's tags
+      tags:
+      - Bank Cataloging
+      operationId: put_v1_banks_me_products_id_tags
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetProductTagsRequest'
+  /v1/banks/me/products/{id}/attributes:
+    put:
+      summary: Set a product's attributes
+      tags:
+      - Bank Cataloging
+      operationId: put_v1_banks_me_products_id_attributes
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetProductAttributesRequest'
+  /v1/taxonomy/categories:
+    get:
+      summary: List marketplace categories
+      tags:
+      - Bank Cataloging
+      operationId: get_v1_taxonomy_categories
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/CategoryListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/taxonomy/tags:
+    get:
+      summary: List marketplace tags
+      tags:
+      - Bank Cataloging
+      operationId: get_v1_taxonomy_tags
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/TagListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/taxonomy/attributes:
+    get:
+      summary: List marketplace attributes
+      tags:
+      - Bank Cataloging
+      operationId: get_v1_taxonomy_attributes
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/AttributeListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/admin/taxonomy/categories:
+    post:
+      summary: Create a marketplace category
+      tags:
+      - Bank Cataloging
+      operationId: post_v1_admin_taxonomy_categories
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/TermCreatedData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCategoryRequest'
+  /v1/admin/taxonomy/tags:
+    post:
+      summary: Create a marketplace tag
+      tags:
+      - Bank Cataloging
+      operationId: post_v1_admin_taxonomy_tags
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/TermCreatedData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTagRequest'
+  /v1/admin/taxonomy/attribute-terms:
+    post:
+      summary: Create a product attribute term
+      tags:
+      - Bank Cataloging
+      operationId: post_v1_admin_taxonomy_attribute-terms
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/TermCreatedData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAttributeTermRequest'
+  /v1/banks/me/pipeline-stages:
+    get:
+      summary: List the bank's pipeline stages
+      tags:
+      - Bank Cataloging
+      operationId: get_v1_banks_me_pipeline-stages
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/PipelineStageListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    post:
+      summary: Add a pipeline stage
+      tags:
+      - Bank Cataloging
+      operationId: post_v1_banks_me_pipeline-stages
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/PipelineStageCreateData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddPipelineStageRequest'
+    put:
+      summary: Reorder or replace the pipeline
+      tags:
+      - Bank Cataloging
+      operationId: put_v1_banks_me_pipeline-stages
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/PipelineStageListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPipelineStagesRequest'
+  /v1/catalog/products:
+    get:
+      summary: Browse the marketplace catalog
+      tags:
+      - Catalog Discovery
+      operationId: get_v1_catalog_products
+      parameters:
+      - name: search
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: bank
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: loan_product
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: min_amount
+        in: query
+        required: false
+        schema:
+          maximum: 999999.0
+          minimum: 0
+          type: number
+          nullable: true
+        description: ''
+      - name: max_amount
+        in: query
+        required: false
+        schema:
+          maximum: 999999.0
+          minimum: 0
+          type: number
+          nullable: true
+        description: ''
+      - name: limit
+        in: query
+        required: false
+        schema:
+          default: 20
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
+        description: ''
+      - name: start
+        in: query
+        required: false
+        schema:
+          default: 0
+          minimum: 0
+          title: Start
+          type: integer
+        description: ''
+      - name: category
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: tag
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: region
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: is_saved
+        in: query
+        required: false
+        schema:
+          type: boolean
+          nullable: true
+        description: ''
+      - name: min_tenure_months
+        in: query
+        required: false
+        schema:
+          maximum: 1200
+          minimum: 0
+          type: integer
+          nullable: true
+        description: ''
+      - name: max_tenure_months
+        in: query
+        required: false
+        schema:
+          maximum: 1200
+          minimum: 0
+          type: integer
+          nullable: true
+        description: ''
+      - name: max_interest_rate
+        in: query
+        required: false
+        schema:
+          maximum: 20.0
+          minimum: 0
+          type: number
+          nullable: true
+        description: ''
+      - name: sort_by
+        in: query
+        required: false
+        schema:
+          default: product_name
+          enum:
+          - product_name
+          - interest_low_high
+          - interest_high_low
+          - amount_low_high
+          - amount_high_low
+          - tenure_low_high
+          - newest
+          title: Sort By
+          type: string
+        description: ''
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/CatalogListData'
+                    pagination:
+                      $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/catalog/banks/{bankId}:
+    get:
+      summary: Get a bank's storefront detail
+      tags:
+      - Catalog Discovery
+      operationId: get_v1_catalog_banks_bankId
+      parameters:
+      - name: bankId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Bank document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/BankStorefrontData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/catalog/facets:
+    get:
+      summary: Get catalog filter options
+      tags:
+      - Catalog Discovery
+      operationId: get_v1_catalog_facets
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/CatalogFacetsData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/catalog/saved-products:
+    get:
+      summary: List the caller's saved products
+      tags:
+      - Catalog Discovery
+      operationId: get_v1_catalog_saved-products
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/SavedProductsData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/catalog/saved-products/{productId}:
+    put:
+      summary: Save a product
+      tags:
+      - Catalog Discovery
+      operationId: put_v1_catalog_saved-products_productId
+      parameters:
+      - name: productId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    delete:
+      summary: Remove a saved product
+      tags:
+      - Catalog Discovery
+      operationId: delete_v1_catalog_saved-products_productId
+      parameters:
+      - name: productId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Product document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/me/dashboard:
+    get:
+      summary: Get the farmer's dashboard summary
+      tags:
+      - Catalog Discovery
+      operationId: get_v1_me_dashboard
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/FarmerDashboardData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/applications:
+    post:
+      summary: Create a draft application
+      tags:
+      - Applications (Farmer Self-Service)
+      operationId: post_v1_applications
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/FarmerApplicationCreatedData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApplicationRequest'
+    get:
+      summary: List the farmer's applications
+      tags:
+      - Applications (Farmer Self-Service)
+      operationId: get_v1_applications
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/FarmerApplicationListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/applications/{id}:
+    get:
+      summary: Get an application
+      tags:
+      - Applications (Farmer Self-Service)
+      operationId: get_v1_applications_id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/FarmerApplicationData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    patch:
+      summary: Update a draft application
+      tags:
+      - Applications (Farmer Self-Service)
+      operationId: patch_v1_applications_id
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateApplicationRequest'
+  /v1/applications/{id}/submit:
+    post:
+      summary: Submit an application to the bank
+      tags:
+      - Applications (Farmer Self-Service)
+      operationId: post_v1_applications_id_submit
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/leads:
+    post:
+      summary: Create a lead
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: post_v1_leads
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLeadRequest'
+    get:
+      summary: List and search leads
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: get_v1_leads
+      parameters:
+      - name: start
+        in: query
+        required: false
+        schema:
+          minimum: 0
+          type: integer
+          nullable: true
+        description: ''
+      - name: page_length
+        in: query
+        required: false
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          nullable: true
+        description: ''
+      - name: search_query
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: status
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: lead_source
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: loan_type
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: assigned_to
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: start_date
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: ''
+      - name: end_date
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: ''
+      - name: min_loan_amount
+        in: query
+        required: false
+        schema:
+          maximum: 999999999999.0
+          minimum: 0
+          type: number
+          nullable: true
+        description: ''
+      - name: max_loan_amount
+        in: query
+        required: false
+        schema:
+          maximum: 999999999999.0
+          minimum: 0
+          type: number
+          nullable: true
+        description: ''
+      - name: sort_by
+        in: query
+        required: false
+        schema:
+          enum:
+          - loan_amount
+          - creation
+          type: string
+          nullable: true
+        description: ''
+      - name: sort_order
+        in: query
+        required: false
+        schema:
+          enum:
+          - asc
+          - desc
+          type: string
+          nullable: true
+        description: ''
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LeadListData'
+                    pagination:
+                      $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/leads/summary:
+    get:
+      summary: Get lead counts by status
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: get_v1_leads_summary
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LeadSummaryData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/leads/metadata:
+    get:
+      summary: Get lead form dropdown options
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: get_v1_leads_metadata
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LeadMetadataData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/leads/assignable-users:
+    get:
+      summary: List assignable agents
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: get_v1_leads_assignable-users
+      parameters:
+      - name: search_query
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: start
+        in: query
+        required: false
+        schema:
+          minimum: 0
+          type: integer
+          nullable: true
+        description: ''
+      - name: page_length
+        in: query
+        required: false
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          nullable: true
+        description: ''
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/AssignableUsersData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/leads/{id}/status:
+    patch:
+      summary: Update a lead's status
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: patch_v1_leads_id_status
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Lead document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLeadStatusRequest'
+  /v1/leads/{id}/assignment:
+    patch:
+      summary: Assign a lead to an agent
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: patch_v1_leads_id_assignment
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Lead document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignLeadRequest'
+  /v1/leads/{id}/comments:
+    post:
+      summary: Add a comment to a lead
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: post_v1_leads_id_comments
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Lead document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LeadCommentData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddLeadCommentRequest'
+  /v1/leads/{id}/timeline:
+    get:
+      summary: Get a lead's activity timeline
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: get_v1_leads_id_timeline
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Lead document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LeadTimelineData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/leads/{id}/call-logs:
+    get:
+      summary: Get a lead's call history
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: get_v1_leads_id_call-logs
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Lead document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LeadCallLogsData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/leads/{id}/credit-info:
+    get:
+      summary: List credit information for a lead
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: get_v1_leads_id_credit-info
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Lead document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LeadCreditInfoListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    post:
+      summary: Add credit information for a lead
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: post_v1_leads_id_credit-info
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Lead document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LeadCreditInfoCreatedData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddLeadCreditInfoRequest'
+  /v1/visit-schedules:
+    get:
+      summary: List scheduled visits
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: get_v1_visit-schedules
+      parameters:
+      - name: lead_id
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: ''
+      - name: start_date
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: ''
+      - name: end_date
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: ''
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: ''
+      - name: start
+        in: query
+        required: false
+        schema:
+          minimum: 0
+          type: integer
+          nullable: true
+        description: ''
+      - name: page_length
+        in: query
+        required: false
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          nullable: true
+        description: ''
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/VisitScheduleListData'
+                    pagination:
+                      $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    post:
+      summary: Schedule a field visit
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: post_v1_visit-schedules
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/VisitScheduleCreatedData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleVisitRequest'
+  /v1/visit-schedules/{id}/status:
+    patch:
+      summary: Update a visit's status
+      tags:
+      - CRM - Leads & Field Ops
+      operationId: patch_v1_visit-schedules_id_status
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Visit schedule document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVisitStatusRequest'
+  /v1/loan-applications:
+    post:
+      summary: Convert a lead into a loan application
+      tags:
+      - Loan Underwriting
+      operationId: post_v1_loan-applications
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LoanApplicationCreatedData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLoanApplicationRequest'
+    get:
+      summary: List loan applications
+      tags:
+      - Loan Underwriting
+      operationId: get_v1_loan-applications
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: loan_amount
+        in: query
+        required: false
+        schema:
+          maximum: 999999999999.0
+          minimum: 0
+          type: number
+          nullable: true
+        description: ''
+      - name: min_loan_amount
+        in: query
+        required: false
+        schema:
+          maximum: 999999999999.0
+          minimum: 0
+          type: number
+          nullable: true
+        description: ''
+      - name: max_loan_amount
+        in: query
+        required: false
+        schema:
+          maximum: 999999999999.0
+          minimum: 0
+          type: number
+          nullable: true
+        description: ''
+      - name: loan_type
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: location
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: phone_number
+        in: query
+        required: false
+        schema:
+          maxLength: 50
+          type: string
+          nullable: true
+        description: ''
+      - name: loan_officer
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: from_date
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: ''
+      - name: to_date
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: ''
+      - name: page
+        in: query
+        required: false
+        schema:
+          minimum: 1
+          type: integer
+          nullable: true
+        description: ''
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          maximum: 100
+          minimum: 1
+          type: integer
+          nullable: true
+        description: ''
+      - name: lead_id
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: search_query
+        in: query
+        required: false
+        schema:
+          maxLength: 140
+          type: string
+          nullable: true
+        description: ''
+      - name: sort_by
+        in: query
+        required: false
+        schema:
+          enum:
+          - loan_amount
+          - creation
+          type: string
+          nullable: true
+        description: ''
+      - name: sort_order
+        in: query
+        required: false
+        schema:
+          enum:
+          - asc
+          - desc
+          type: string
+          nullable: true
+        description: ''
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LoanApplicationListData'
+                    pagination:
+                      $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/loan-applications/summary:
+    get:
+      summary: Get loan totals by pipeline status
+      tags:
+      - Loan Underwriting
+      operationId: get_v1_loan-applications_summary
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LoanSummaryData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/loan-applications/metadata:
+    get:
+      summary: Get loan status dropdown options
+      tags:
+      - Loan Underwriting
+      operationId: get_v1_loan-applications_metadata
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LoanMetadataData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/loan-applications/{id}/full-profile:
+    get:
+      summary: Get the full underwriting profile
+      tags:
+      - Loan Underwriting
+      operationId: get_v1_loan-applications_id_full-profile
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LoanApplicationFullProfileData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/loan-applications/{id}/basic-profile:
+    get:
+      summary: Get the applicant's basic profile
+      tags:
+      - Loan Underwriting
+      operationId: get_v1_loan-applications_id_basic-profile
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LoanApplicationBasicProfileData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    patch:
+      summary: Update the applicant's basic profile
+      tags:
+      - Loan Underwriting
+      operationId: patch_v1_loan-applications_id_basic-profile
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBasicProfileRequest'
+  /v1/loan-applications/{id}/status:
+    patch:
+      summary: Move an application to a new pipeline stage
+      tags:
+      - Loan Underwriting
+      operationId: patch_v1_loan-applications_id_status
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLoanStatusRequest'
+  /v1/loan-applications/{id}/step:
+    patch:
+      summary: Advance an application's processing step
+      tags:
+      - Loan Underwriting
+      operationId: patch_v1_loan-applications_id_step
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLoanStepRequest'
+  /v1/loan-applications/{id}/officer:
+    patch:
+      summary: Assign a loan officer
+      tags:
+      - Loan Underwriting
+      operationId: patch_v1_loan-applications_id_officer
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignLoanOfficerRequest'
+  /v1/loan-applications/{id}/documents:
+    get:
+      summary: List supporting documents
+      tags:
+      - Loan Underwriting
+      operationId: get_v1_loan-applications_id_documents
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/SupportingDocumentListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    post:
+      summary: Upload a supporting document
+      tags:
+      - Loan Underwriting
+      operationId: post_v1_loan-applications_id_documents
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/SupportingDocumentUploadData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadSupportingDocumentsRequest'
+  /v1/loan-applications/{id}/documents/{docId}/content:
+    get:
+      summary: Download a supporting document
+      tags:
+      - Loan Underwriting
+      operationId: get_v1_loan-applications_id_documents_docId_content
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      - name: docId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Document file id
+      responses:
+        '200':
+          description: The raw file content.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/loan-applications/{id}/documents/{docId}:
+    delete:
+      summary: Delete a supporting document
+      tags:
+      - Loan Underwriting
+      operationId: delete_v1_loan-applications_id_documents_docId
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Application document id
+      - name: docId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Document file id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/consent/farmers:
+    get:
+      summary: Search for a farmer by national ID
+      tags:
+      - Consent Management
+      operationId: get_v1_consent_farmers
+      parameters:
+      - name: fayda_id
+        in: query
+        required: true
+        schema:
+          type: string
+        description: Fayda / national ID to search by.
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/FarmerSearchData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/consent/reasons:
+    get:
+      summary: List approved consent reasons
+      tags:
+      - Consent Management
+      operationId: get_v1_consent_reasons
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ConsentReasonListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/consent/allowed-fields:
+    get:
+      summary: List the partner's allowed data fields
+      tags:
+      - Consent Management
+      operationId: get_v1_consent_allowed-fields
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/AllowedFieldListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/consent/partners/me/allowed-field-ids:
+    get:
+      summary: Get allowed field ids
+      tags:
+      - Consent Management
+      operationId: get_v1_consent_partners_me_allowed-field-ids
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/AllowedFieldListData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+  /v1/consent/otp:
+    post:
+      summary: Request a verification code
+      tags:
+      - Consent Management
+      operationId: post_v1_consent_otp
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/OtpRequestData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestOtpRequest'
+  /v1/consent/otp/verify:
+    post:
+      summary: Verify a one-time code
+      tags:
+      - Consent Management
+      operationId: post_v1_consent_otp_verify
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/OtpVerifyData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyOtpRequest'
+  /v1/consent/requests:
+    post:
+      summary: Submit a signed consent request
+      tags:
+      - Consent Management
+      operationId: post_v1_consent_requests
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ConsentSubmitData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitConsentRequest'
+  /v1/webhooks/consent-data:
+    post:
+      summary: Receive a consent decision
+      tags:
+      - Consent Management
+      operationId: post_v1_webhooks_consent-data
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/ConsentWebhookAckData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - PartnerApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiveConsentDataRequest'
+  /v1/notifications:
+    get:
+      summary: List notifications
+      tags:
+      - Notifications
+      operationId: get_v1_notifications
+      parameters:
+      - name: read_status
+        in: query
+        required: false
+        schema:
+          default: all
+          pattern: ^(unread|read|all)$
+          title: Read Status
+          type: string
+        description: ''
+      - name: limit
+        in: query
+        required: false
+        schema:
+          default: 20
+          maximum: 100
+          minimum: 1
+          title: Limit
+          type: integer
+        description: ''
+      - name: start
+        in: query
+        required: false
+        schema:
+          default: 0
+          minimum: 0
+          title: Start
+          type: integer
+        description: ''
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/NotificationListData'
+                    pagination:
+                      $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    delete:
+      summary: Delete notifications
+      tags:
+      - Notifications
+      operationId: delete_v1_notifications
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/NotificationDeleteData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearNotificationsRequest'
+  /v1/notifications/read:
+    patch:
+      summary: Mark notifications read
+      tags:
+      - Notifications
+      operationId: patch_v1_notifications_read
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/NotificationUpdateData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkNotificationsReadRequest'
+  /v1/webhooks/leads:
+    post:
+      summary: Receive a lead referral
+      tags:
+      - Inbound Webhooks
+      operationId: post_v1_webhooks_leads
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LeadInboundData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - PartnerApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadInboundRequest'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token issued by /v1/auth/login. The gateway validates signature and expiry
+        only; role and bank-scope authorization are enforced by the platform.
+    PartnerApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'Format: `token <api_key>:<api_secret>`. Used only by the two inbound webhook receivers;
+        issued per partner and paired with IP allowlisting at the gateway.'
+  schemas:
+    StandardSuccessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+          example: Success
+        data:
+          type: object
+          properties: {}
+          description: Overridden per-operation via allOf; see the operation's response schema.
+        meta:
+          type: object
+          properties: {}
+          description: Auxiliary metadata.
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        request_id:
+          type: string
+          format: uuid
+      required:
+      - status
+      - message
+    StandardErrorResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: error
+        message:
+          type: string
+          example: Validation failed
+        code:
+          type: string
+          enum:
+          - VALIDATION_ERROR
+          - AUTHENTICATION_ERROR
+          - PERMISSION_DENIED
+          - BANK_NOT_ACTIVE
+          - BANK_NOT_ONBOARDED
+          - PASSWORD_CHANGE_REQUIRED
+          - NOT_FOUND
+          - RATE_LIMITED
+          - INTERNAL_ERROR
+          - GENERIC_ERROR
+        details:
+          type: object
+          properties: {}
+          description: Field-level validation errors or context.
+        request_id:
+          type: string
+          format: uuid
+      required:
+      - status
+      - message
+      - code
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        page_size:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 100
+        total_pages:
+          type: integer
+          example: 5
+        has_next:
+          type: boolean
+          example: true
+      description: Present on paginated list responses; null otherwise.
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          nullable: true
+        full_name:
+          minLength: 2
+          title: Full Name
+          type: string
+        password:
+          maxLength: 64
+          minLength: 8
+          title: Password
+          type: string
+        phone_number:
+          title: Phone Number
+          type: string
+        role:
+          default: A2C Bank Admin
+          maxLength: 140
+          minLength: 2
+          title: Role
+          type: string
+      required:
+      - full_name
+      - password
+      - phone_number
+    LoginRequest:
+      type: object
+      properties:
+        usr:
+          minLength: 1
+          title: Usr
+          type: string
+        pwd:
+          minLength: 1
+          title: Pwd
+          type: string
+        remember_me:
+          default: false
+          title: Remember Me
+          type: boolean
+      required:
+      - usr
+      - pwd
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh_token:
+          minLength: 1
+          title: Refresh Token
+          type: string
+      required:
+      - refresh_token
+    LogoutRequest:
+      type: object
+      properties:
+        refresh_token:
+          minLength: 1
+          title: Refresh Token
+          type: string
+      required:
+      - refresh_token
+    ForgotPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          nullable: true
+    ResetPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          nullable: true
+        key:
+          minLength: 1
+          title: Key
+          type: string
+        new_password:
+          minLength: 1
+          title: New Password
+          type: string
+      required:
+      - key
+      - new_password
+    InitialPasswordRequest:
+      type: object
+      properties:
+        usr:
+          minLength: 1
+          title: Usr
+          type: string
+        current_password:
+          minLength: 1
+          title: Current Password
+          type: string
+        new_password:
+          maxLength: 64
+          minLength: 8
+          title: New Password
+          type: string
+      required:
+      - usr
+      - current_password
+      - new_password
+    ChangePasswordRequest:
+      type: object
+      properties:
+        current_password:
+          minLength: 1
+          title: Current Password
+          type: string
+        new_password:
+          maxLength: 64
+          minLength: 8
+          title: New Password
+          type: string
+      required:
+      - current_password
+      - new_password
+    UpdateProfileRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+          nullable: true
+        phone_number:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        user_image:
+          type: string
+          nullable: true
+        gender:
+          enum:
+          - Male
+          - Female
+          - Other
+          - Transgender
+          - Genderqueer
+          - Non-Conforming
+          - Prefer not to say
+          type: string
+          nullable: true
+    RegisterBankRequest:
+      type: object
+      properties:
+        bank_name:
+          maxLength: 140
+          minLength: 2
+          title: Bank Name
+          type: string
+        bank_code:
+          maxLength: 140
+          minLength: 2
+          title: Bank Code
+          type: string
+        entity_type:
+          maxLength: 140
+          minLength: 2
+          title: Entity Type
+          type: string
+        registered_street:
+          maxLength: 255
+          minLength: 2
+          title: Registered Street
+          type: string
+        registered_kebele_village:
+          maxLength: 140
+          type: string
+          nullable: true
+        registered_woreda_district:
+          maxLength: 140
+          type: string
+          nullable: true
+        registered_zone:
+          maxLength: 140
+          type: string
+          nullable: true
+        registered_region:
+          maxLength: 140
+          minLength: 2
+          title: Registered Region
+          type: string
+        registered_country:
+          maxLength: 140
+          minLength: 2
+          title: Registered Country
+          type: string
+        registered_postal_code:
+          maxLength: 6
+          minLength: 4
+          pattern: ^\d{4,6}$
+          title: Registered Postal Code
+          type: string
+        registered_email:
+          type: string
+          nullable: true
+        registered_phone:
+          title: Registered Phone
+          type: string
+        website:
+          maxLength: 255
+          pattern: ^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$
+          type: string
+          nullable: true
+      required:
+      - bank_name
+      - bank_code
+      - entity_type
+      - registered_street
+      - registered_region
+      - registered_country
+      - registered_postal_code
+      - registered_email
+      - registered_phone
+    UpdateBankProfileRequest:
+      type: object
+      properties:
+        bank_name:
+          maxLength: 140
+          type: string
+          nullable: true
+        brand_name:
+          maxLength: 140
+          type: string
+          nullable: true
+        website:
+          maxLength: 255
+          pattern: ^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{2,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)$
+          type: string
+          nullable: true
+        registered_street:
+          maxLength: 255
+          type: string
+          nullable: true
+        registered_kebele_village:
+          maxLength: 140
+          type: string
+          nullable: true
+        registered_woreda_district:
+          maxLength: 140
+          type: string
+          nullable: true
+        registered_zone:
+          maxLength: 140
+          type: string
+          nullable: true
+        registered_region:
+          maxLength: 140
+          type: string
+          nullable: true
+        registered_country:
+          maxLength: 140
+          type: string
+          nullable: true
+        registered_postal_code:
+          maxLength: 6
+          minLength: 4
+          pattern: ^\d{4,6}$
+          type: string
+          nullable: true
+        registered_email:
+          type: string
+          nullable: true
+        registered_phone:
+          type: string
+          nullable: true
+        logo:
+          maxLength: 255
+          type: string
+          nullable: true
+    UpdateBankStatusRequest:
+      type: object
+      properties:
+        new_status:
+          pattern: ^(In Review|Active|Suspended)$
+          title: New Status
+          type: string
+      required:
+      - new_status
+    UploadKycRequest:
+      type: object
+      properties:
+        filename:
+          maxLength: 255
+          minLength: 4
+          pattern: ^.+\.pdf$
+          title: Filename
+          type: string
+        filedata:
+          maxLength: 15000000
+          minLength: 10
+          title: Filedata
+          type: string
+      required:
+      - filename
+      - filedata
+    UploadImageRequest:
+      type: object
+      properties:
+        filename:
+          maxLength: 100
+          minLength: 4
+          pattern: ^.+\.([pP][nN][gG]|[jJ][pP][eE]?[gG]|[wW][eE][bB][pP])$
+          title: Filename
+          type: string
+        filedata:
+          maxLength: 7000000
+          minLength: 10
+          title: Filedata
+          type: string
+      required:
+      - filename
+      - filedata
+    SaveOrgContactsRequest:
+      type: object
+      properties:
+        gro_name:
+          maxLength: 140
+          minLength: 1
+          title: Gro Name
+          type: string
+        gro_mobile:
+          title: Gro Mobile
+          type: string
+        ops_name:
+          maxLength: 140
+          minLength: 1
+          title: Ops Name
+          type: string
+        ops_mobile:
+          title: Ops Mobile
+          type: string
+      required:
+      - gro_name
+      - gro_mobile
+      - ops_name
+      - ops_mobile
+    InviteTeamMemberRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          nullable: true
+        full_name:
+          maxLength: 140
+          minLength: 2
+          title: Full Name
+          type: string
+        role:
+          default: A2C Bank Agent
+          maxLength: 140
+          minLength: 2
+          title: Role
+          type: string
+        password:
+          maxLength: 64
+          minLength: 8
+          title: Password
+          type: string
+      required:
+      - email
+      - full_name
+      - password
+    UpdateTeamMemberRequest:
+      type: object
+      properties:
+        full_name:
+          maxLength: 140
+          type: string
+          nullable: true
+        role:
+          maxLength: 140
+          type: string
+          nullable: true
+        enabled:
+          type: boolean
+          nullable: true
+    ResetMemberPasswordRequest:
+      type: object
+      properties:
+        password:
+          maxLength: 64
+          minLength: 8
+          title: Password
+          type: string
+      required:
+      - password
+    CreateProductRequest:
+      type: object
+      properties:
+        product_name:
+          maxLength: 140
+          minLength: 1
+          type: string
+          nullable: true
+        min_interest_rate:
+          maximum: 20.0
+          minimum: 0
+          type: number
+          nullable: true
+        max_interest_rate:
+          maximum: 20.0
+          minimum: 0
+          type: number
+          nullable: true
+        min_amount:
+          maximum: 999999.0
+          minimum: 0
+          type: integer
+          nullable: true
+        max_amount:
+          maximum: 999999.0
+          minimum: 0
+          type: integer
+          nullable: true
+        tenure_months:
+          maximum: 1200
+          minimum: 1
+          type: integer
+          nullable: true
+        description:
+          maxLength: 2000
+          type: string
+          nullable: true
+        image:
+          maxLength: 500
+          type: string
+          nullable: true
+        product_meta:
+          items:
+            $ref: '#/components/schemas/ProductMetaSchema'
+          type: array
+          nullable: true
+        products:
+          items:
+            $ref: '#/components/schemas/SingleProductSchema'
+          type: array
+          nullable: true
+    UpdateProductRequest:
+      type: object
+      properties:
+        product_name:
+          maxLength: 140
+          type: string
+          nullable: true
+        min_interest_rate:
+          maximum: 20.0
+          minimum: 0
+          type: number
+          nullable: true
+        max_interest_rate:
+          maximum: 20.0
+          minimum: 0
+          type: number
+          nullable: true
+        min_amount:
+          maximum: 999999.0
+          minimum: 0
+          type: integer
+          nullable: true
+        max_amount:
+          maximum: 999999.0
+          minimum: 0
+          type: integer
+          nullable: true
+        tenure_months:
+          maximum: 1200
+          minimum: 1
+          type: integer
+          nullable: true
+        description:
+          maxLength: 2000
+          type: string
+          nullable: true
+        image:
+          maxLength: 500
+          type: string
+          nullable: true
+        product_meta:
+          items:
+            $ref: '#/components/schemas/ProductMetaSchema'
+          type: array
+          nullable: true
+    SetProductStatusRequest:
+      type: object
+      properties:
+        status:
+          pattern: ^(Pending Approval|Active|Rejected|Archived)$
+          title: Status
+          type: string
+        reason:
+          maxLength: 2000
+          type: string
+          nullable: true
+      required:
+      - status
+    SetProductCategoriesRequest:
+      type: object
+      properties:
+        term_ids:
+          items:
+            type: string
+          title: Term Ids
+          type: array
+      required:
+      - term_ids
+    SetProductTagsRequest:
+      type: object
+      properties:
+        term_ids:
+          items:
+            type: string
+          title: Term Ids
+          type: array
+      required:
+      - term_ids
+    SetProductAttributesRequest:
+      type: object
+      properties:
+        attributes:
+          additionalProperties:
+            items:
+              type: string
+            type: array
+          title: Attributes
+          type: object
+      required:
+      - attributes
+    CreateCategoryRequest:
+      type: object
+      properties:
+        term_name:
+          maxLength: 140
+          minLength: 1
+          title: Term Name
+          type: string
+        description:
+          maxLength: 2000
+          type: string
+          nullable: true
+        parent_category:
+          maxLength: 140
+          type: string
+          nullable: true
+      required:
+      - term_name
+    CreateTagRequest:
+      type: object
+      properties:
+        term_name:
+          maxLength: 140
+          minLength: 1
+          title: Term Name
+          type: string
+        description:
+          maxLength: 2000
+          type: string
+          nullable: true
+      required:
+      - term_name
+    CreateAttributeTermRequest:
+      type: object
+      properties:
+        term_name:
+          maxLength: 140
+          minLength: 1
+          title: Term Name
+          type: string
+      required:
+      - term_name
+    AddPipelineStageRequest:
+      type: object
+      properties:
+        label:
+          type: string
+        archetype_state:
+          type: string
+          enum:
+          - In Transition
+          - Completed
+          - Rejected
+        sequence:
+          type: integer
+          nullable: true
+        external_code:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+      required:
+      - label
+      - archetype_state
+    SyncPipelineStagesRequest:
+      type: object
+      properties:
+        stages:
+          type: array
+          items:
+            type: object
+            properties:
+              stage_id:
+                type: string
+                nullable: true
+                description: Omit when adding a new stage
+              label:
+                type: string
+              archetype_state:
+                type: string
+                enum:
+                - In Transition
+                - Completed
+                - Rejected
+              sequence:
+                type: integer
+            required:
+            - label
+            - archetype_state
+            - sequence
+      required:
+      - stages
+    CreateApplicationRequest:
+      type: object
+      properties:
+        loan_product:
+          maxLength: 140
+          minLength: 1
+          title: Loan Product
+          type: string
+        requested_amount:
+          minimum: 1
+          title: Requested Amount
+          type: number
+        loan_reason:
+          maxLength: 2000
+          type: string
+          nullable: true
+        consent_request:
+          maxLength: 140
+          type: string
+          nullable: true
+      required:
+      - loan_product
+      - requested_amount
+    UpdateApplicationRequest:
+      type: object
+      properties:
+        requested_amount:
+          minimum: 1
+          type: number
+          nullable: true
+        loan_reason:
+          maxLength: 2000
+          type: string
+          nullable: true
+    CreateLeadRequest:
+      type: object
+      properties:
+        phone_number:
+          title: Phone Number
+          type: string
+        first_name:
+          maxLength: 140
+          type: string
+          nullable: true
+        last_name:
+          maxLength: 140
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        lead_source:
+          enum:
+          - Missed Call
+          - IVR
+          - SMS
+          - Agent Entry
+          type: string
+          nullable: true
+        external_id:
+          maxLength: 140
+          type: string
+          nullable: true
+      required:
+      - phone_number
+    UpdateLeadStatusRequest:
+      type: object
+      properties:
+        status:
+          enum:
+          - Active
+          - Verified
+          - Processed
+          - Granted
+          - Rejected
+          - Dormant
+          title: Status
+          type: string
+        reason:
+          maxLength: 2000
+          type: string
+          nullable: true
+      required:
+      - status
+    AssignLeadRequest:
+      type: object
+      properties:
+        assigned_to:
+          maxLength: 140
+          minLength: 1
+          title: Assigned To
+          type: string
+      required:
+      - assigned_to
+    AddLeadCommentRequest:
+      type: object
+      properties:
+        content:
+          maxLength: 2000
+          minLength: 1
+          title: Content
+          type: string
+      required:
+      - content
+    AddLeadCreditInfoRequest:
+      type: object
+      properties:
+        loan_type:
+          maxLength: 140
+          type: string
+          nullable: true
+        loan_amount:
+          maximum: 999999999999.0
+          title: Loan Amount
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        purpose_message:
+          maxLength: 2000
+          minLength: 1
+          title: Purpose Message
+          type: string
+        loan_product:
+          maxLength: 140
+          minLength: 1
+          title: Loan Product
+          type: string
+      required:
+      - loan_amount
+      - purpose_message
+      - loan_product
+    ScheduleVisitRequest:
+      type: object
+      properties:
+        lead_id:
+          maxLength: 140
+          minLength: 1
+          title: Lead Id
+          type: string
+        visit_date:
+          maxLength: 50
+          minLength: 1
+          title: Visit Date
+          type: string
+        visit_time:
+          maxLength: 50
+          minLength: 1
+          title: Visit Time
+          type: string
+        region:
+          maxLength: 140
+          minLength: 1
+          title: Region
+          type: string
+        zone:
+          maxLength: 140
+          minLength: 1
+          title: Zone
+          type: string
+        woreda:
+          maxLength: 140
+          minLength: 1
+          title: Woreda
+          type: string
+        kebele:
+          maxLength: 140
+          minLength: 1
+          title: Kebele
+          type: string
+        meeting_location:
+          maxLength: 255
+          type: string
+          nullable: true
+        notes:
+          maxLength: 2000
+          type: string
+          nullable: true
+      required:
+      - lead_id
+      - visit_date
+      - visit_time
+      - region
+      - zone
+      - woreda
+      - kebele
+    UpdateVisitStatusRequest:
+      type: object
+      properties:
+        status:
+          enum:
+          - Scheduled
+          - Completed
+          - Cancelled
+          - Missed
+          title: Status
+          type: string
+      required:
+      - status
+    CreateLoanApplicationRequest:
+      type: object
+      properties:
+        lead_id:
+          type: string
+        bank:
+          type: string
+      required:
+      - lead_id
+      - bank
+      description: Converts a qualified lead into a bank-scoped loan application.
+    UpdateBasicProfileRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          nullable: true
+        region:
+          maxLength: 140
+          type: string
+          nullable: true
+        woreda:
+          maxLength: 140
+          type: string
+          nullable: true
+        kebele:
+          maxLength: 140
+          type: string
+          nullable: true
+    UpdateLoanStatusRequest:
+      type: object
+      properties:
+        status:
+          maxLength: 140
+          minLength: 1
+          title: Status
+          type: string
+        reason:
+          maxLength: 2000
+          type: string
+          nullable: true
+      required:
+      - status
+    UpdateLoanStepRequest:
+      type: object
+      properties:
+        step:
+          maximum: 4
+          minimum: 1
+          title: Step
+          type: integer
+      required:
+      - step
+    AssignLoanOfficerRequest:
+      type: object
+      properties:
+        loan_officer:
+          maxLength: 140
+          minLength: 1
+          title: Loan Officer
+          type: string
+      required:
+      - loan_officer
+    UploadSupportingDocumentsRequest:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              filename:
+                type: string
+              filedata:
+                type: string
+                description: Base64-encoded file content
+            required:
+            - filename
+            - filedata
+      required:
+      - files
+    RequestOtpRequest:
+      type: object
+      properties:
+        fayda_id:
+          minLength: 1
+          title: Fayda Id
+          type: string
+        lead_id:
+          type: string
+          nullable: true
+        idempotency_key:
+          type: string
+          nullable: true
+      required:
+      - fayda_id
+    VerifyOtpRequest:
+      type: object
+      properties:
+        lead_id:
+          type: string
+          nullable: true
+        otp_code:
+          minLength: 1
+          title: Otp Code
+          type: string
+        transaction_id:
+          type: string
+          nullable: true
+        consent_request:
+          minLength: 1
+          title: Consent Request
+          type: string
+      required:
+      - otp_code
+      - consent_request
+    SubmitConsentRequest:
+      type: object
+      properties:
+        lead_id:
+          type: string
+          nullable: true
+        consent_request:
+          minLength: 1
+          title: Consent Request
+          type: string
+        consent_type:
+          type: string
+          nullable: true
+        consent_reason_id:
+          type: integer
+          nullable: true
+        validity_months:
+          type: integer
+          nullable: true
+        consent_form_filename:
+          minLength: 1
+          title: Consent Form Filename
+          type: string
+        consent_form_base64:
+          minLength: 1
+          title: Consent Form Base64
+          type: string
+        allowed_data_field_ids:
+          items:
+            type: integer
+          type: array
+          nullable: true
+      required:
+      - consent_request
+      - consent_form_filename
+      - consent_form_base64
+    ReceiveConsentDataRequest:
+      type: object
+      properties:
+        source:
+          type: string
+          nullable: true
+        event_type:
+          type: string
+          nullable: true
+        published_at:
+          type: string
+          nullable: true
+        consent:
+          $ref: '#/components/schemas/ConsentInfoSchema'
+        farmer:
+          $ref: '#/components/schemas/FarmerInfoSchema'
+        selected_data:
+          additionalProperties: true
+          type: object
+          nullable: true
+      required:
+      - consent
+      - farmer
+    MarkNotificationsReadRequest:
+      type: object
+      properties:
+        notification_ids:
+          items:
+            type: string
+          type: array
+          nullable: true
+        mark_all:
+          default: false
+          title: Mark All
+          type: boolean
+    ClearNotificationsRequest:
+      type: object
+      properties:
+        notification_ids:
+          items:
+            type: string
+          type: array
+          nullable: true
+        clear_all:
+          default: false
+          title: Clear All
+          type: boolean
+    LeadInboundRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+        external_id:
+          type: string
+          nullable: true
+        source:
+          type: string
+          nullable: true
+          enum:
+          - Missed Call
+          - IVR
+      required:
+      - phone_number
+      description: Not documented with a request example; inferred from the endpoint's idempotency contract
+        (dedupe by external_id, then by phone_number).
+    MessageData:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+      - message
+    UserSummary:
+      type: object
+      properties:
+        email:
+          type: string
+        full_name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        user_type:
+          type: string
+          nullable: true
+        bank:
+          type: string
+          nullable: true
+        bank_id:
+          type: string
+          nullable: true
+        bank_code:
+          type: string
+          nullable: true
+        bank_name:
+          type: string
+          nullable: true
+        bank_status:
+          type: string
+          nullable: true
+    LoginData:
+      type: object
+      properties:
+        token:
+          type: string
+          description: Short-lived JWT access token
+        refresh_token:
+          type: string
+          description: Long-lived refresh token; 1 day, or 30 with remember_me
+        user:
+          $ref: '#/components/schemas/UserSummary'
+      required:
+      - token
+      - refresh_token
+      - user
+    TokenPairData:
+      type: object
+      properties:
+        token:
+          type: string
+        refresh_token:
+          type: string
+      required:
+      - token
+      - refresh_token
+    IdentityData:
+      type: object
+      properties:
+        email:
+          type: string
+        full_name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        user_type:
+          type: string
+          nullable: true
+        bank:
+          type: string
+          nullable: true
+        bank_id:
+          type: string
+          nullable: true
+        bank_code:
+          type: string
+          nullable: true
+        bank_name:
+          type: string
+          nullable: true
+        bank_status:
+          type: string
+          nullable: true
+    ProfileData:
+      type: object
+      properties:
+        email:
+          type: string
+        full_name:
+          type: string
+        phone_number:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+          enum:
+          - en
+          - am
+          - om
+        user_image:
+          type: string
+          nullable: true
+        gender:
+          type: string
+          nullable: true
+    BankRegisteredData:
+      type: object
+      properties:
+        message:
+          type: string
+        bank_code:
+          type: string
+        bank_id:
+          type: string
+      required:
+      - message
+      - bank_code
+      - bank_id
+    BankProfileData:
+      type: object
+      properties:
+        bank_id:
+          type: string
+        bank_code:
+          type: string
+        bank_name:
+          type: string
+        brand_name:
+          type: string
+          nullable: true
+        entity_type:
+          type: string
+        status:
+          type: string
+        website:
+          type: string
+          nullable: true
+        logo:
+          type: string
+          nullable: true
+        registered_street:
+          type: string
+        registered_region:
+          type: string
+        registered_country:
+          type: string
+        registered_postal_code:
+          type: string
+        registered_email:
+          type: string
+        registered_phone:
+          type: string
+        registered_kebele_village:
+          type: string
+          nullable: true
+        registered_woreda_district:
+          type: string
+          nullable: true
+        registered_zone:
+          type: string
+          nullable: true
+      description: Fields drawn from the register/update request schemas; the workflow guide does not
+        show a get_bank_profile example response.
+    FileUploadData:
+      type: object
+      properties:
+        message:
+          type: string
+        file_url:
+          type: string
+      required:
+      - message
+      - file_url
+    TeamMember:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Email, used as the user's document name
+        email:
+          type: string
+        first_name:
+          type: string
+        enabled:
+          type: integer
+          enum:
+          - 0
+          - 1
+        last_active:
+          type: string
+          format: date-time
+          nullable: true
+        role:
+          type: string
+        must_change_password:
+          type: boolean
+    TeamListData:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/TeamMember'
+      required:
+      - users
+    DashboardStatsData:
+      type: object
+      properties:
+        stats:
+          type: object
+          properties:
+            total_products:
+              type: integer
+            active_products:
+              type: integer
+            total_applications:
+              type: integer
+            pending_applications:
+              type: integer
+            approved_applications:
+              type: integer
+            total_approved_amount:
+              type: number
+      required:
+      - stats
+    ProductMeta:
+      type: object
+      properties:
+        meta_key:
+          type: string
+        meta_value:
+          type: string
+      required:
+      - meta_key
+      - meta_value
+    ProductSummary:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Product document id, e.g. PROD-2026-0001
+        product_name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+          enum:
+          - Pending Approval
+          - Active
+          - Rejected
+          - Archived
+        bank:
+          type: string
+        bank_name:
+          type: string
+          nullable: true
+        min_interest_rate:
+          type: number
+        max_interest_rate:
+          type: number
+          nullable: true
+        min_amount:
+          type: number
+          nullable: true
+        max_amount:
+          type: number
+        tenure_months:
+          type: integer
+        image:
+          type: string
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        applications_count:
+          type: integer
+        creation:
+          type: string
+          format: date-time
+    ProductDetail:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Product document id, e.g. PROD-2026-0001
+        product_name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+          enum:
+          - Pending Approval
+          - Active
+          - Rejected
+          - Archived
+        bank:
+          type: string
+        bank_name:
+          type: string
+          nullable: true
+        min_interest_rate:
+          type: number
+        max_interest_rate:
+          type: number
+          nullable: true
+        min_amount:
+          type: number
+          nullable: true
+        max_amount:
+          type: number
+        tenure_months:
+          type: integer
+        image:
+          type: string
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        applications_count:
+          type: integer
+        creation:
+          type: string
+          format: date-time
+        description:
+          type: string
+          nullable: true
+        modified:
+          type: string
+          format: date-time
+        is_saved:
+          type: boolean
+        product_meta:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductMeta'
+        tags:
+          type: array
+          items:
+            type: string
+        attributes:
+          type: object
+          properties: {}
+          description: 'Map of attribute code to selected term values, e.g. crop_type: [wheat, maize]'
+    ProductListData:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductSummary'
+      required:
+      - products
+    ProductDetailData:
+      type: object
+      properties:
+        product:
+          $ref: '#/components/schemas/ProductDetail'
+      required:
+      - product
+    ProductCreateData:
+      type: object
+      properties:
+        message:
+          type: string
+        product_ids:
+          type: array
+          items:
+            type: string
+      required:
+      - message
+      - product_ids
+    ProductMutationData:
+      type: object
+      properties:
+        message:
+          type: string
+        product_id:
+          type: string
+        status:
+          type: string
+          nullable: true
+      required:
+      - message
+      - product_id
+    ProductAuditEvent:
+      type: object
+      properties:
+        name:
+          type: string
+        creation:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+        from_status:
+          type: string
+          nullable: true
+        to_status:
+          type: string
+          nullable: true
+        event_title:
+          type: string
+        event_description:
+          type: string
+        reason:
+          type: string
+          nullable: true
+        performed_by:
+          type: string
+    ProductAuditData:
+      type: object
+      properties:
+        comment:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductAuditEvent'
+      required:
+      - comment
+    TaxonomyTerm:
+      type: object
+      properties:
+        term_id:
+          type: string
+        term_name:
+          type: string
+        parent_category:
+          type: string
+          nullable: true
+      required:
+      - term_id
+      - term_name
+    TagTerm:
+      type: object
+      properties:
+        term_id:
+          type: string
+        term_name:
+          type: string
+        description:
+          type: string
+          nullable: true
+      required:
+      - term_id
+      - term_name
+    AttributeTerm:
+      type: object
+      properties:
+        term_id:
+          type: string
+        term_name:
+          type: string
+        values:
+          type: array
+          items:
+            type: string
+      required:
+      - term_id
+      - term_name
+    CategoryListData:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxonomyTerm'
+      required:
+      - categories
+    TagListData:
+      type: object
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/TagTerm'
+      required:
+      - tags
+    AttributeListData:
+      type: object
+      properties:
+        attributes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AttributeTerm'
+      required:
+      - attributes
+      description: Attribute term example values not shown in source docs; array wrapper inferred to match
+        categories/tags.
+    TermCreatedData:
+      type: object
+      properties:
+        message:
+          type: string
+        term_id:
+          type: string
+      required:
+      - message
+      - term_id
+      description: create_category/create_tag/create_attribute_term response not shown in source docs;
+        modeled on the create_product pattern.
+    PipelineStage:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Stage document id, e.g. STG-0001
+        bank:
+          type: string
+        stage_id:
+          type: string
+        label:
+          type: string
+        archetype_state:
+          type: string
+          enum:
+          - In Transition
+          - Completed
+          - Rejected
+        sequence:
+          type: integer
+        external_code:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        application_count:
+          type: integer
+        creation:
+          type: string
+          format: date-time
+        modified:
+          type: string
+          format: date-time
+    PipelineStageListData:
+      type: object
+      properties:
+        stages:
+          type: array
+          items:
+            $ref: '#/components/schemas/PipelineStage'
+        bank:
+          type: string
+      required:
+      - stages
+      - bank
+    PipelineStageCreateData:
+      type: object
+      properties:
+        name:
+          type: string
+        stage_id:
+          type: string
+        label:
+          type: string
+        archetype_state:
+          type: string
+        sequence:
+          type: integer
+        external_code:
+          type: string
+          nullable: true
+      required:
+      - name
+      - stage_id
+      - label
+      - archetype_state
+      - sequence
+    CatalogProduct:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Product document id, e.g. PROD-2026-0001
+        product_name:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+          enum:
+          - Pending Approval
+          - Active
+          - Rejected
+          - Archived
+        bank:
+          type: string
+        bank_name:
+          type: string
+          nullable: true
+        min_interest_rate:
+          type: number
+        max_interest_rate:
+          type: number
+          nullable: true
+        min_amount:
+          type: number
+          nullable: true
+        max_amount:
+          type: number
+        tenure_months:
+          type: integer
+        image:
+          type: string
+          nullable: true
+        categories:
+          type: array
+          items:
+            type: string
+        applications_count:
+          type: integer
+        creation:
+          type: string
+          format: date-time
+      description: Public storefront view of a loan product; assumed to mirror ProductSummary.
+    CatalogListData:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogProduct'
+      required:
+      - products
+    BankStorefrontData:
+      type: object
+      properties:
+        bank_id:
+          type: string
+        bank_name:
+          type: string
+        brand_name:
+          type: string
+          nullable: true
+        logo:
+          type: string
+          nullable: true
+        website:
+          type: string
+          nullable: true
+        region:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        active_products_count:
+          type: integer
+          nullable: true
+      required:
+      - bank_id
+      - bank_name
+      description: Not documented with a response example; inferred from bank profile fields.
+    CatalogFacetsData:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        regions:
+          type: array
+          items:
+            type: string
+        interest_rate_range:
+          type: object
+          properties:
+            min:
+              type: number
+            max:
+              type: number
+        amount_range:
+          type: object
+          properties:
+            min:
+              type: number
+            max:
+              type: number
+      description: Not documented with a response example; inferred from FarmerCatalogSchema's filter
+        fields.
+    SavedProductsData:
+      type: object
+      properties:
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/CatalogProduct'
+      required:
+      - products
+    FarmerDashboardData:
+      type: object
+      properties:
+        applications_count:
+          type: integer
+        active_applications:
+          type: integer
+        saved_products_count:
+          type: integer
+        unread_notifications:
+          type: integer
+      description: Not documented with a response example; a reasonable projection of what a dashboard
+        summary would surface.
+    FarmerApplication:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Application document id
+        loan_product:
+          type: string
+        loan_product_name:
+          type: string
+          nullable: true
+        requested_amount:
+          type: number
+        loan_reason:
+          type: string
+          nullable: true
+        consent_request:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+          - Active
+          - In Transition
+        creation:
+          type: string
+          format: date-time
+    FarmerApplicationListData:
+      type: object
+      properties:
+        applications:
+          type: array
+          items:
+            $ref: '#/components/schemas/FarmerApplication'
+      required:
+      - applications
+    FarmerApplicationData:
+      type: object
+      properties:
+        application:
+          $ref: '#/components/schemas/FarmerApplication'
+      required:
+      - application
+    FarmerApplicationCreatedData:
+      type: object
+      properties:
+        message:
+          type: string
+        application_id:
+          type: string
+      required:
+      - message
+      - application_id
+    Lead:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Lead document id
+        phone_number:
+          type: string
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        lead_source:
+          type: string
+          nullable: true
+          enum:
+          - Missed Call
+          - IVR
+          - SMS
+          - Agent Entry
+        external_id:
+          type: string
+          nullable: true
+        status:
+          type: string
+        assigned_to:
+          type: string
+          nullable: true
+        creation:
+          type: string
+          format: date-time
+    LeadListData:
+      type: object
+      properties:
+        leads:
+          type: array
+          items:
+            $ref: '#/components/schemas/Lead'
+      required:
+      - leads
+    LeadSummaryData:
+      type: object
+      properties:
+        total:
+          type: integer
+        by_status:
+          type: object
+          properties: {}
+          description: Status label -> count
+    LeadMetadataData:
+      type: object
+      properties:
+        statuses:
+          type: array
+          items:
+            type: string
+        lead_sources:
+          type: array
+          items:
+            type: string
+        loan_types:
+          type: array
+          items:
+            type: string
+    AssignableUser:
+      type: object
+      properties:
+        email:
+          type: string
+        full_name:
+          type: string
+        role:
+          type: string
+    AssignableUsersData:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/AssignableUser'
+      required:
+      - users
+    LeadCommentData:
+      type: object
+      properties:
+        message:
+          type: string
+        comment_id:
+          type: string
+          nullable: true
+      required:
+      - message
+    LeadTimelineEvent:
+      type: object
+      properties:
+        event_type:
+          type: string
+        content:
+          type: string
+          nullable: true
+        performed_by:
+          type: string
+          nullable: true
+        creation:
+          type: string
+          format: date-time
+    LeadTimelineData:
+      type: object
+      properties:
+        timeline:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeadTimelineEvent'
+      required:
+      - timeline
+    LeadCallLog:
+      type: object
+      properties:
+        call_id:
+          type: string
+        direction:
+          type: string
+          nullable: true
+        duration_seconds:
+          type: integer
+          nullable: true
+        creation:
+          type: string
+          format: date-time
+    LeadCallLogsData:
+      type: object
+      properties:
+        call_logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeadCallLog'
+      required:
+      - call_logs
+    CreditInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        lead_id:
+          type: string
+        loan_type:
+          type: string
+          nullable: true
+        loan_amount:
+          type: number
+        purpose_message:
+          type: string
+        loan_product:
+          type: string
+    LeadCreditInfoListData:
+      type: object
+      properties:
+        credit_info:
+          type: array
+          items:
+            $ref: '#/components/schemas/CreditInfo'
+      required:
+      - credit_info
+    LeadCreditInfoCreatedData:
+      type: object
+      properties:
+        message:
+          type: string
+        name:
+          type: string
+      required:
+      - message
+      - name
+    VisitSchedule:
+      type: object
+      properties:
+        name:
+          type: string
+        lead_id:
+          type: string
+        visit_date:
+          type: string
+          format: date
+        visit_time:
+          type: string
+        region:
+          type: string
+        zone:
+          type: string
+        woreda:
+          type: string
+        kebele:
+          type: string
+        meeting_location:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+          - Scheduled
+          - Completed
+          - Cancelled
+          - Missed
+    VisitScheduleListData:
+      type: object
+      properties:
+        visits:
+          type: array
+          items:
+            $ref: '#/components/schemas/VisitSchedule'
+      required:
+      - visits
+    VisitScheduleCreatedData:
+      type: object
+      properties:
+        message:
+          type: string
+        name:
+          type: string
+      required:
+      - message
+      - name
+    LoanApplicationSummary:
+      type: object
+      properties:
+        name:
+          type: string
+        farmer_name:
+          type: string
+        phone_number:
+          type: string
+        loan_product:
+          type: string
+        loan_amount:
+          type: number
+        status:
+          type: string
+        stage_id:
+          type: string
+        stage_label:
+          type: string
+        current_step:
+          type: integer
+        assigned_loan_officer:
+          type: string
+          nullable: true
+        region:
+          type: string
+          nullable: true
+        woreda:
+          type: string
+          nullable: true
+        kebele:
+          type: string
+          nullable: true
+        creation:
+          type: string
+          format: date-time
+    LoanApplicationListData:
+      type: object
+      properties:
+        loans:
+          type: array
+          items:
+            $ref: '#/components/schemas/LoanApplicationSummary'
+      required:
+      - loans
+    LoanSummaryData:
+      type: object
+      properties:
+        total_applications:
+          type: integer
+        in_transition:
+          type: integer
+        completed:
+          type: integer
+        rejected:
+          type: integer
+        total_disbursed_amount:
+          type: number
+      required:
+      - total_applications
+      - in_transition
+      - completed
+      - rejected
+      - total_disbursed_amount
+    LoanMetadataData:
+      type: object
+      properties:
+        statuses:
+          type: array
+          items:
+            type: string
+      description: Dropdown status options; exact field name not shown in source docs.
+    LoanApplicationCreatedData:
+      type: object
+      properties:
+        message:
+          type: string
+        application_id:
+          type: string
+      required:
+      - message
+      - application_id
+    LoanApplicationFullProfileData:
+      type: object
+      properties:
+        application_id:
+          type: string
+        lead_id:
+          type: string
+        first_name:
+          type: string
+        last_name:
+          type: string
+        region:
+          type: string
+          nullable: true
+        woreda:
+          type: string
+          nullable: true
+        kebele:
+          type: string
+          nullable: true
+        language:
+          type: string
+          nullable: true
+        phone_number:
+          type: string
+        id_type:
+          type: string
+          nullable: true
+        id_number:
+          type: string
+          nullable: true
+        farmer_id:
+          type: string
+          nullable: true
+        consent_id:
+          type: string
+          nullable: true
+        loan_type:
+          type: string
+          nullable: true
+        loan_product:
+          type: string
+        loan_product_name:
+          type: string
+          nullable: true
+        loan_amount:
+          type: number
+        loan_reason:
+          type: string
+          nullable: true
+        status:
+          type: string
+        stage_id:
+          type: string
+        sequence:
+          type: integer
+        is_terminal:
+          type: boolean
+        is_successful:
+          type: boolean
+        current_step:
+          type: integer
+        loan_officer:
+          type: string
+          nullable: true
+        creation:
+          type: string
+          format: date-time
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+        gender:
+          type: string
+          nullable: true
+        marital_status:
+          type: string
+          nullable: true
+        size_of_family:
+          type: integer
+          nullable: true
+        number_of_children:
+          type: integer
+          nullable: true
+        no_of_females_family:
+          type: integer
+          nullable: true
+        no_of_males_family:
+          type: integer
+          nullable: true
+        source_of_income:
+          type: string
+          nullable: true
+        education_level:
+          type: string
+          nullable: true
+        family_member_owns_land_independently:
+          type: boolean
+          nullable: true
+        total_farmland_size_as_landowner:
+          type: number
+          nullable: true
+        total_farmland_size_as_crop_sharing:
+          type: number
+          nullable: true
+        total_farmland_size_as_rented:
+          type: number
+          nullable: true
+        farmland_size_hectares:
+          type: number
+          nullable: true
+        land_ownership_status:
+          type: string
+          nullable: true
+        soil_fertility_minerals:
+          type: string
+          nullable: true
+        moisture_levels:
+          type: string
+          nullable: true
+        certification_id:
+          type: string
+          nullable: true
+        certification_photo_url:
+          type: string
+          nullable: true
+      description: Flat object -- there are no nested personal/farm_details/crops groupings.
+    LoanApplicationBasicProfileData:
+      type: object
+      properties:
+        lead_id:
+          type: string
+        email:
+          type: string
+          nullable: true
+        region:
+          type: string
+          nullable: true
+        woreda:
+          type: string
+          nullable: true
+        kebele:
+          type: string
+          nullable: true
+      required:
+      - lead_id
+      description: Not documented with a response example; mirrors update_basic_profile's request fields.
+    SupportingDocument:
+      type: object
+      properties:
+        file_id:
+          type: string
+        filename:
+          type: string
+        file_url:
+          type: string
+          nullable: true
+        uploaded_at:
+          type: string
+          format: date-time
+    SupportingDocumentListData:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/SupportingDocument'
+      required:
+      - documents
+    SupportingDocumentUploadData:
+      type: object
+      properties:
+        message:
+          type: string
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/SupportingDocument'
+      required:
+      - message
+      - files
+    ConsentFarmerRecord:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        farmer_id:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        reg_ids:
+          type: array
+          items:
+            type: string
+        profile_image_url:
+          type: string
+          nullable: true
+        otp_identifier:
+          type: string
+          nullable: true
+        otp_identifier_type:
+          type: string
+          nullable: true
+        otp_identifier_source:
+          type: string
+          nullable: true
+        otp_available:
+          type: boolean
+      required:
+      - id
+      - name
+    FarmerSearchData:
+      type: object
+      properties:
+        farmers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentFarmerRecord'
+      required:
+      - farmers
+    ConsentReason:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+      required:
+      - id
+      - name
+    AllowedField:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        code:
+          type: string
+      required:
+      - id
+      - name
+      - code
+    OtpRequestData:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        masked_mobile:
+          type: string
+          nullable: true
+        masked_email:
+          type: string
+          nullable: true
+        identifier_type:
+          type: string
+          nullable: true
+        identifier_source:
+          type: string
+          nullable: true
+      required:
+      - transaction_id
+    OtpVerifyData:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+        masked_mobile:
+          type: string
+          nullable: true
+        verified_at:
+          type: string
+          format: date-time
+      required:
+      - transaction_id
+      - verified_at
+    ConsentSubmitData:
+      type: object
+      properties:
+        consent_id:
+          type: integer
+        status:
+          type: string
+        auto_approved:
+          type: boolean
+        auto_approval_failed:
+          type: boolean
+        auto_approve_method:
+          type: string
+          nullable: true
+        error_details:
+          type: string
+          nullable: true
+      required:
+      - consent_id
+      - status
+    ConsentWebhookAckData:
+      type: object
+      properties:
+        message:
+          type: string
+      required:
+      - message
+    NotificationItem:
+      type: object
+      properties:
+        id:
+          type: string
+        subject:
+          type: string
+        email_content:
+          type: string
+          nullable: true
+        document_type:
+          type: string
+          nullable: true
+        document_name:
+          type: string
+          nullable: true
+        read:
+          type: integer
+          enum:
+          - 0
+          - 1
+        creation:
+          type: string
+          format: date-time
+    NotificationListData:
+      type: object
+      properties:
+        unread_count:
+          type: integer
+        notifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/NotificationItem'
+      required:
+      - unread_count
+      - notifications
+    NotificationUpdateData:
+      type: object
+      properties:
+        updated:
+          type: integer
+      required:
+      - updated
+    NotificationDeleteData:
+      type: object
+      properties:
+        deleted:
+          type: integer
+      required:
+      - deleted
+    LeadInboundData:
+      type: object
+      properties:
+        message:
+          type: string
+        lead_id:
+          type: string
+      required:
+      - message
+      - lead_id
+    ConsentReasonListData:
+      type: object
+      properties:
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentReason'
+      required:
+      - reasons
+      description: The source examples show `data` as a bare array of reasons; wrapped here in a named
+        object for a cleaner generated client. See x-legacy-response-shape.
+      x-legacy-response-shape: 'data is a bare JSON array in the current backend, not {reasons: [...]}'
+    AllowedFieldListData:
+      type: object
+      properties:
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/AllowedField'
+      required:
+      - fields
+      x-legacy-response-shape: 'data is a bare JSON array in the current backend, not {fields: [...]}'
+    FarmerInfoSchema:
+      type: object
+      properties:
+        id:
+          minimum: 1
+          title: Id
+          type: integer
+        farmer_id:
+          nullable: true
+        name:
+          type: string
+          nullable: true
+      required:
+      - id
+    ConsentInfoSchema:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        consent_creation_request_id:
+          minLength: 1
+          title: Consent Creation Request Id
+          type: string
+        consent_type:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        approved_at:
+          type: string
+          nullable: true
+        validity_from:
+          type: string
+          nullable: true
+        validity_to:
+          type: string
+          nullable: true
+      required:
+      - consent_creation_request_id
+    ProductMetaSchema:
+      type: object
+      properties:
+        meta_key:
+          maxLength: 140
+          minLength: 1
+          title: Meta Key
+          type: string
+        meta_value:
+          maxLength: 2000
+          minLength: 1
+          title: Meta Value
+          type: string
+      required:
+      - meta_key
+      - meta_value
+    SingleProductSchema:
+      type: object
+      properties:
+        product_name:
+          maxLength: 140
+          minLength: 1
+          title: Product Name
+          type: string
+        min_interest_rate:
+          maximum: 20.0
+          minimum: 0
+          title: Min Interest Rate
+          type: number
+        max_interest_rate:
+          maximum: 20.0
+          minimum: 0
+          type: number
+          nullable: true
+        min_amount:
+          maximum: 999999.0
+          minimum: 0
+          type: integer
+          nullable: true
+        max_amount:
+          maximum: 999999.0
+          minimum: 0
+          title: Max Amount
+          type: integer
+        tenure_months:
+          maximum: 1200
+          minimum: 1
+          title: Tenure Months
+          type: integer
+        description:
+          maxLength: 2000
+          type: string
+          nullable: true
+        image:
+          maxLength: 500
+          type: string
+          nullable: true
+        product_meta:
+          items:
+            $ref: '#/components/schemas/ProductMetaSchema'
+          type: array
+          nullable: true
+      required:
+      - product_name
+      - min_interest_rate
+      - max_amount
+      - tenure_months
+  responses:
+    400ValidationError:
+      description: Request failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StandardErrorResponse'
+    401Unauthorized:
+      description: Missing or invalid credential.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StandardErrorResponse'
+    403Forbidden:
+      description: Access denied, insufficient permissions, or bank not active.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StandardErrorResponse'
+    404NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StandardErrorResponse'
+    429RateLimited:
+      description: Rate limit exceeded.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StandardErrorResponse'
+    500InternalError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/StandardErrorResponse'
