@@ -3,6 +3,7 @@ from frappe import _
 from pydantic import BaseModel, Field, field_validator
 
 from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE
+from oan_a2c.api.router import prefixed
 from oan_a2c.api.utils import (
 	RequiredPhone,
 	SafeEmail,
@@ -12,6 +13,8 @@ from oan_a2c.api.utils import (
 	validate_password_complexity,
 	validate_request,
 )
+
+route = prefixed("/api/v1/auth")
 
 SELF_REGISTERABLE_ROLES = {BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE}
 
@@ -85,6 +88,7 @@ def create_user_account(
 
 
 # nosemgrep: guest-whitelisted-method -- reviewed: public registration endpoint, role allowlisted + rate-limited
+@route("/register", allow_guest=True, summary="Register user")
 @frappe.whitelist(allow_guest=True)
 @validate_request(RegisterUserSchema)
 @handle_api_errors

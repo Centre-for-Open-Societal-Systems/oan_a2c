@@ -24,7 +24,11 @@ That fallback is permanent rather than a migration shim — it means auth surviv
 either value going missing, and it lets this land with no config coordination.
 """
 
+import os
+
 import frappe
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 FALLBACK_KID = "v1"
 
@@ -95,3 +99,87 @@ def get_verification_key(kid: str | None) -> str | None:
 		return None
 
 	return keys.get(kid)
+
+
+def _resolve_key_content(secret: str) -> str:
+	"""Return PEM key content if secret is a file path or direct PEM string."""
+	if not secret:
+		return secret
+	if "\n" not in secret and (secret.endswith(".pem") or secret.endswith(".key")):
+		try:
+			site_path = frappe.get_site_path(secret) if hasattr(frappe, "get_site_path") else None
+			if site_path and os.path.isfile(site_path):
+				with open(site_path, encoding="utf-8") as f:
+					return f.read().strip()
+		except Exception:
+			pass
+		if os.path.isfile(secret):
+			with open(secret, encoding="utf-8") as f:
+				return f.read().strip()
+	return secret
+
+
+def is_rsa_key(key_material: str) -> bool:
+	"""Return True if the key material is a PEM-formatted RSA key."""
+	return bool(key_material and ("-----BEGIN" in key_material))
+
+
+_public_key_cache: dict[str, str] = {}
+
+
+def get_public_key_pem(key_material: str) -> str:
+	"""Extract RSA public key PEM from private key PEM, with caching."""
+	key_material = _resolve_key_content(key_material)
+	if key_material in _public_key_cache:
+		return _public_key_cache[key_material]
+
+	if "-----BEGIN PUBLIC KEY" in key_material:
+		return key_material
+
+	priv_key = load_pem_private_key(key_material.encode("utf-8"), password=None)
+	pub_pem = (
+		priv_key.public_key()
+		.public_bytes(
+			encoding=serialization.Encoding.PEM,
+			format=serialization.PublicFormat.SubjectPublicKeyInfo,
+		)
+		.decode("utf-8")
+	)
+	_public_key_cache[key_material] = pub_pem
+	return pub_pem
+
+
+def get_signing_material() -> tuple[str, str, str]:
+	"""Return (kid, signing_key, algorithm).
+
+	TEMPORARY: Auto-detects RS256 vs HS256 to allow backward-compatibility with
+	existing deployments using legacy HMAC keys. Once all environments are migrated
+	to RS256 / Kong Gateway, HS256 fallback will be removed.
+	"""
+	kid, raw_secret = get_signing_key()
+	secret = _resolve_key_content(raw_secret)
+	if is_rsa_key(secret):
+		return kid, secret, "RS256"
+
+	# TEMPORARY FALLBACK: Legacy HMAC secret (will be removed when all deployments migrate to RS256)
+	return kid, secret, "HS256"
+
+
+def get_verification_material(kid: str | None) -> tuple[str, str] | None:
+	"""Return (verification_key, expected_algorithm) strictly derived from server config.
+
+	TEMPORARY: Auto-detects RS256 vs HS256 to allow backward-compatibility with
+	existing deployments using legacy HMAC keys. Once all environments are migrated
+	to RS256 / Kong Gateway, HS256 fallback will be removed.
+	"""
+	raw_secret = get_verification_key(kid)
+	if not raw_secret:
+		return None
+
+	secret = _resolve_key_content(raw_secret)
+	if is_rsa_key(secret):
+		pub_key = get_public_key_pem(secret)
+		return pub_key, "RS256"
+
+	# TEMPORARY FALLBACK: Legacy HMAC secret (will be removed when all deployments migrate to RS256)
+	return secret, "HS256"

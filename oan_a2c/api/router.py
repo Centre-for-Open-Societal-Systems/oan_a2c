@@ -1,25 +1,199 @@
-"""
-REST API Router for OpenAgriNet Access to Credit (OAN A2C).
+"""Expose plain Python functions as REST routes on Frappe's own URL map.
 
-This module implements a pure REST facade mapping the 94 endpoints specified in
-openapi_v1.yaml to their corresponding Frappe backend controller functions.
-It handles path variables ({id}, {userId}, etc.), HTTP verbs (GET, POST, PATCH,
-PUT, DELETE), parameter extraction/normalization, and standardized JSON envelopes.
+Frappe does nearly all of this already, so this module only fills the gaps it
+leaves. `frappe/api/__init__.py` matches the request against `API_URL_MAP` and
+calls `endpoint(**path_args)`; `frappe/app.py::process_response` adds CORS,
+Cache-Control, request-id and any headers left in `frappe.local.response_headers`;
+`frappe/app.py::handle_exception` maps a raised exception's `http_status_code`
+onto the response. None of that is repeated here.
+
+Three things Frappe does *not* do for a custom rule, which is all this module is:
+
+1. Pass anything but path parameters. Body and query live in `frappe.form_dict`,
+   which Frappe has already parsed correctly — for a JSON request it holds the
+   body alone, for a form request the query and form merged
+   (`frappe/app.py::make_form_dict`).
+2. Leave a returned dict alone. Frappe nests it under `frappe.response["data"]`,
+   which would double-wrap the envelope `handle_api_errors` builds. Returning a
+   Response avoids that.
+3. Tell the JWT middleware which paths are reachable without a token. Routes
+   declared `allow_guest=True` are registered as exempt paths, so the two can
+   never drift apart.
+
+TLS, HSTS and transport security headers belong to nginx. 404/405 belong to
+Frappe's matcher. Neither appears here.
 """
 
 import json
 import os
 import re
-from functools import lru_cache
+from collections.abc import Callable
+from functools import lru_cache, wraps
 from typing import Any
 
 import frappe
-from frappe import _
 from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound
 from werkzeug.routing import Map, Rule
 from werkzeug.wrappers import Request, Response
 
-from oan_a2c.api.utils import error_response, success_response
+from oan_a2c.api.middleware import register_namespace
+
+# The namespace this app owns. Registered with the middleware, which matches
+# incoming paths by longest prefix.
+NAMESPACE = "/api/v1"
+
+_rules: list[Rule] = []
+_exempt_paths: set[str] = set()
+
+
+def expand_path_param_aliases(values: dict[str, Any]) -> dict[str, Any]:
+	"""Inject standard domain-specific keyword aliases for path variables.
+
+	This ensures compatibility with controllers expecting either generic {id}
+	or domain-specific {product_id}, {lead_id}, {application_id}, {email}, etc.
+	"""
+	expanded = dict(values)
+	if "id" in values:
+		val = values["id"]
+		expanded.setdefault("product_id", val)
+		expanded.setdefault("lead_id", val)
+		expanded.setdefault("application_id", val)
+		expanded.setdefault("loan_application_id", val)
+		expanded.setdefault("schedule_id", val)
+		expanded.setdefault("visit_schedule_id", val)
+
+	if "userId" in values:
+		val = values["userId"]
+		expanded.setdefault("email", val)
+		expanded.setdefault("user_id", val)
+
+	if "user_id" in values:
+		val = values["user_id"]
+		expanded.setdefault("email", val)
+		expanded.setdefault("userId", val)
+
+	if "productId" in values:
+		val = values["productId"]
+		expanded.setdefault("loan_product", val)
+		expanded.setdefault("product_id", val)
+
+	if "product_id" in values:
+		val = values["product_id"]
+		expanded.setdefault("loan_product", val)
+		expanded.setdefault("productId", val)
+		expanded.setdefault("id", val)
+
+	if "bankId" in values:
+		val = values["bankId"]
+		expanded.setdefault("bank", val)
+		expanded.setdefault("bank_id", val)
+
+	if "bank_id" in values:
+		val = values["bank_id"]
+		expanded.setdefault("bank", val)
+		expanded.setdefault("bankId", val)
+
+	if "docId" in values:
+		val = values["docId"]
+		expanded.setdefault("doc_id", val)
+		expanded.setdefault("document_id", val)
+		expanded.setdefault("docname", val)
+		expanded.setdefault("file_id", val)
+
+	if "doc_id" in values:
+		val = values["doc_id"]
+		expanded.setdefault("docId", val)
+		expanded.setdefault("document_id", val)
+		expanded.setdefault("docname", val)
+		expanded.setdefault("file_id", val)
+
+	return expanded
+
+
+def create_endpoint_wrapper(
+	fn: Callable,
+	allow_guest: bool = False,
+	status: int = 200,
+	summary: str | None = None,
+	path: str = "",
+) -> Callable:
+	"""Wrap a controller function to handle params, invoke via frappe.call, and return a clean Response."""
+
+	@wraps(fn)
+	def endpoint(**path_args):
+		params = expand_path_param_aliases(path_args)
+		params.update(frappe.form_dict)
+		params.pop("cmd", None)
+		result = frappe.call(fn, **params)
+
+		if isinstance(result, Response):
+			return result
+
+		code = status
+		response = getattr(frappe.local, "response", None)
+		if response and response.get("http_status_code"):
+			code = response.pop("http_status_code")
+
+		res = Response(
+			frappe.as_json(result, indent=None),
+			status=code,
+			content_type="application/json",
+		)
+		if req_id := getattr(frappe.local, "request_id", None):
+			res.headers["X-Request-Id"] = req_id
+		return res
+
+	endpoint._route = {
+		"path": path,
+		"summary": summary,
+		"allow_guest": allow_guest,
+	}
+	return endpoint
+
+
+def rest(
+	path: str,
+	methods: tuple[str, ...] = ("POST",),
+	allow_guest: bool = False,
+	status: int = 200,
+	summary: str | None = None,
+) -> Callable:
+	"""Expose `fn` at `path`, and return `fn` unchanged.
+
+	The wrapper is registered as the rule's endpoint; the module-level name stays
+	bound to the original function, so the RPC surface (`@frappe.whitelist`) and
+	any direct caller are unaffected by the function also being routed.
+
+	Exceptions are deliberately not caught. Endpoints carry `@handle_api_errors`,
+	which turns them into envelopes already, and anything escaping that is better
+	served by Frappe's `handle_exception` than by a second copy of it here.
+	"""
+
+	def decorator(fn: Callable) -> Callable:
+		endpoint = create_endpoint_wrapper(
+			fn, allow_guest=allow_guest, status=status, summary=summary, path=path
+		)
+		endpoint._route["methods"] = tuple(m.upper() for m in methods)
+		_rules.append(Rule(path, endpoint=endpoint, methods=[m.upper() for m in methods]))
+		if allow_guest:
+			_exempt_paths.add(path)
+		return fn
+
+	return decorator
+
+
+def prefixed(prefix: str) -> Callable:
+	"""Return a `rest` bound to a path prefix, so routes group without repetition."""
+
+	def bound(path: str, **kwargs) -> Callable:
+		return rest(prefix + path, **kwargs)
+
+	return bound
+
+
+def registered_routes() -> list[dict]:
+	"""Metadata for every declared route. For diagnostics and spec generation."""
+	return [rule.endpoint._route for rule in _rules]
 
 
 def get_spec_path() -> str:
@@ -56,15 +230,103 @@ def get_routes_spec() -> list[tuple[str, str, str]]:
 	return routes
 
 
+def _register_spec_routes():
+	"""Register all OpenAPI 3.0 spec routes in _rules."""
+	spec_file = get_spec_path()
+	routes = get_routes_spec()
+	guest_paths = set()
+
+	if spec_file and os.path.exists(spec_file):
+		try:
+			import yaml
+
+			with open(spec_file, encoding="utf-8") as f:
+				spec = yaml.safe_load(f)
+			paths = spec.get("paths", {})
+			for path, methods in paths.items():
+				for _method, details in methods.items():
+					if isinstance(details, dict):
+						sec = details.get("security")
+						if sec is not None and len(sec) == 0:
+							guest_paths.add(path)
+		except Exception:
+			pass
+
+	# Guest endpoints fallback
+	for g_path in (
+		"/v1/auth/login",
+		"/v1/auth/register",
+		"/v1/auth/token/refresh",
+		"/v1/auth/logout",
+		"/v1/auth/password/forgot",
+		"/v1/auth/password/reset",
+		"/v1/auth/password/initial",
+		"/v1/webhooks/consent-data",
+		"/v1/webhooks/leads",
+	):
+		guest_paths.add(g_path)
+
+	for method, path, endpoint_str in routes:
+		try:
+			fn = frappe.get_attr(endpoint_str)
+		except Exception as e:
+			frappe.logger("oan_a2c").warning(f"Could not resolve route endpoint {endpoint_str}: {e}")
+			continue
+
+		is_guest = path in guest_paths
+		# Convert OpenAPI {param} syntax to Werkzeug <param> syntax
+		wz_path = re.sub(r"\{([^}]+)\}", r"<\1>", path)
+
+		# Register /api/v1/... (Frappe standard)
+		api_path = f"/api{wz_path}" if not wz_path.startswith("/api/") else wz_path
+		endpoint = create_endpoint_wrapper(fn, allow_guest=is_guest, path=api_path)
+		endpoint._route["methods"] = (method,)
+		_rules.append(Rule(api_path, endpoint=endpoint, methods=[method]))
+
+		# Also register /v1/...
+		if not wz_path.startswith("/api/"):
+			endpoint_v1 = create_endpoint_wrapper(fn, allow_guest=is_guest, path=wz_path)
+			endpoint_v1._route["methods"] = (method,)
+			_rules.append(Rule(wz_path, endpoint=endpoint_v1, methods=[method]))
+
+		if is_guest:
+			_exempt_paths.add(api_path)
+			_exempt_paths.add(wz_path)
+
+
+_REGISTERED = False
+
+
+def ensure_routes_registered() -> None:
+	"""Add every declared rule to Frappe's URL map and claim the namespace.
+
+	Wired as a `before_request` hook. The rule list and the middleware registry
+	are per-process in-memory state, so this has to run in each worker rather
+	than once at install time.
+	"""
+	global _REGISTERED
+	if _REGISTERED:
+		return
+
+	import frappe.api
+
+	_register_spec_routes()
+
+	for rule in _rules:
+		if rule not in frappe.api.API_URL_MAP._rules:
+			frappe.api.API_URL_MAP.add(rule)
+
+	register_namespace(prefix=NAMESPACE, exempt_paths=sorted(_exempt_paths))
+	_REGISTERED = True
+
+
 def build_url_map() -> Map:
 	"""Compile all REST routes into a Werkzeug URL Map."""
 	rules: list[Rule] = []
 	routes = get_routes_spec()
 
 	for method, path, endpoint in routes:
-		# Convert OpenAPI {param} syntax to Werkzeug <param> syntax
 		wz_path = re.sub(r"\{([^}]+)\}", r"<\1>", path)
-		# Support both /v1/... and /api/v1/...
 		rules.append(Rule(wz_path, endpoint=endpoint, methods=[method]))
 		if not wz_path.startswith("/api/"):
 			rules.append(Rule(f"/api{wz_path}", endpoint=endpoint, methods=[method]))
@@ -72,48 +334,7 @@ def build_url_map() -> Map:
 	return Map(rules, strict_slashes=False)
 
 
-# Pre-compiled URL Map
 API_URL_MAP = build_url_map()
-
-
-def expand_path_param_aliases(values: dict[str, Any]) -> dict[str, Any]:
-	"""Inject standard domain-specific keyword aliases for path variables.
-
-	This ensures compatibility with controllers expecting either generic {id}
-	or domain-specific {product_id}, {lead_id}, {application_id}, {email}, etc.
-	"""
-	expanded = dict(values)
-	if "id" in values:
-		val = values["id"]
-		expanded.setdefault("product_id", val)
-		expanded.setdefault("lead_id", val)
-		expanded.setdefault("application_id", val)
-		expanded.setdefault("loan_application_id", val)
-		expanded.setdefault("schedule_id", val)
-		expanded.setdefault("visit_schedule_id", val)
-
-	if "userId" in values:
-		val = values["userId"]
-		expanded.setdefault("email", val)
-		expanded.setdefault("user_id", val)
-
-	if "productId" in values:
-		val = values["productId"]
-		expanded.setdefault("loan_product", val)
-		expanded.setdefault("product_id", val)
-
-	if "bankId" in values:
-		val = values["bankId"]
-		expanded.setdefault("bank", val)
-		expanded.setdefault("bank_id", val)
-
-	if "docId" in values:
-		val = values["docId"]
-		expanded.setdefault("doc_id", val)
-		expanded.setdefault("document_id", val)
-		expanded.setdefault("docname", val)
-
-	return expanded
 
 
 def parse_request_data(request: Request) -> dict[str, Any]:
@@ -177,35 +398,13 @@ def dispatch_rest_request(request: Request) -> Response:
 			mimetype="application/json",
 		)
 
-	# Merge path params and request body/query into a unified argument dictionary
-	params = parse_request_data(request)
-	expanded_path_args = expand_path_param_aliases(path_args)
-	params.update(expanded_path_args)
-
-	# Update frappe.local.form_dict so standard Frappe methods access inputs
+	params = expand_path_param_aliases(path_args)
+	params.update(parse_request_data(request))
 	if not hasattr(frappe.local, "form_dict") or frappe.local.form_dict is None:
 		frappe.local.form_dict = frappe._dict()
 	frappe.local.form_dict.update(params)
 
-	# Resolve controller method
-	try:
-		fn = frappe.get_attr(endpoint)
-	except Exception as e:
-		frappe.logger("oan_a2c").error(f"Failed to resolve endpoint {endpoint}: {e}")
-		return Response(
-			json.dumps(
-				{
-					"status": "error",
-					"message": f"Handler resolution error for {endpoint}",
-					"code": "INTERNAL_ERROR",
-					"details": {},
-				}
-			),
-			status=500,
-			mimetype="application/json",
-		)
-
-	# Execute target function
+	fn = frappe.get_attr(endpoint)
 	try:
 		result = frappe.call(fn, **params)
 	except Exception as e:
@@ -216,11 +415,9 @@ def dispatch_rest_request(request: Request) -> Response:
 	if isinstance(result, Response):
 		return result
 
-	# Set HTTP response code if set in frappe.response or frappe.local.response
 	status_code = (
 		frappe.local.response.get("http_status_code") or frappe.response.get("http_status_code") or 200
 	)
-
 	return Response(
 		json.dumps(result, default=str),
 		status=status_code,
@@ -328,7 +525,6 @@ _FALLBACK_ROUTES = [
 	),
 	("PATCH", "/v1/loan-applications/{id}/status", "oan_a2c.api.v1.loan_applications.update_loan_status"),
 	("PATCH", "/v1/loan-applications/{id}/step", "oan_a2c.api.v1.loan_applications.update_loan_step"),
-	("PATCH", "/v1/loan-applications/{id}/officer", "oan_a2c.api.v1.loan_applications.assign_loan_officer"),
 	(
 		"GET",
 		"/v1/loan-applications/{id}/documents",

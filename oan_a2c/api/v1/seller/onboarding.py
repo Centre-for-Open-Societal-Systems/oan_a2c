@@ -18,6 +18,7 @@ from oan_a2c.a2c_marketplace.roles import (
 	DEVELOPMENT_AGENT_ROLE,
 	FARMER_ROLE,
 )
+from oan_a2c.api.router import prefixed
 from oan_a2c.api.utils import (
 	RequiredPhone,
 	SafeEmail,
@@ -27,6 +28,8 @@ from oan_a2c.api.utils import (
 	validate_request,
 )
 from oan_a2c.api.v1.auth import create_user_account
+
+bank_route = prefixed("/api/v1/banks")
 
 ROLE_LEVELS: dict[str, int] = {
 	ADMIN_ROLE: 1,
@@ -301,6 +304,7 @@ def register_bank(**kwargs):
 # -----------------
 # 3. save_org_contacts
 # -----------------
+@bank_route("/me/contacts", methods=("PUT",), summary="Save bank contacts")
 @frappe.whitelist()
 @validate_request(SaveOrgContactsSchema)
 @handle_api_errors
@@ -328,6 +332,7 @@ def save_org_contacts(**kwargs):
 # -----------------
 # 3b. upload_kyc_document
 # -----------------
+@bank_route("/me/kyc-documents", methods=("POST",), summary="Upload KYC document")
 @frappe.whitelist()
 @validate_request(UploadKycSchema)
 @handle_api_errors
@@ -378,6 +383,7 @@ def upload_kyc_document(**kwargs):
 # -----------------
 # 3d. upload_image
 # -----------------
+@bank_route("/me/logo", methods=("POST",), summary="Upload bank logo")
 @frappe.whitelist()
 @handle_api_errors
 @validate_request(UploadImageSchema)
@@ -408,6 +414,7 @@ def upload_image(**kwargs):
 # -----------------
 # 3c. get_bank_profile
 # -----------------
+@bank_route("/me", methods=("GET",), summary="Get bank profile")
 @frappe.whitelist()
 @handle_api_errors
 def get_bank_profile():
@@ -476,6 +483,7 @@ def _bank_owned_file(file_url: str | None, bank: str) -> str | None:
 # -----------------
 # 3c-2. update_bank_profile
 # -----------------
+@bank_route("/me", methods=("PATCH",), summary="Update bank profile")
 @frappe.whitelist()
 @validate_request(UpdateBankProfileSchema)
 @handle_api_errors
@@ -531,6 +539,7 @@ def update_bank_profile(**kwargs):
 # -----------------
 # 4. update_bank_status
 # -----------------
+@bank_route("/me/status", methods=("PATCH",), summary="Update bank status")
 @frappe.whitelist()
 @handle_api_errors
 @validate_request(UpdateBankStatusSchema)
@@ -584,6 +593,7 @@ def update_bank_status(**kwargs):
 # -----------------
 # 5. invite_team_member
 # -----------------
+@bank_route("/me/team", methods=("POST",), summary="Invite team member")
 @frappe.whitelist()
 @validate_request(InviteTeamMemberSchema)
 @handle_api_errors
@@ -663,6 +673,7 @@ def invite_team_member(email: str, full_name: str, password: str, role: str = BA
 # -----------------
 # 6. list_users
 # -----------------
+@bank_route("/me/team", methods=("GET",), summary="List team members")
 @frappe.whitelist()
 @handle_api_errors
 @require_bank_role(BANK_ADMIN_ROLE)
@@ -773,6 +784,7 @@ def _assert_can_manage_member(email: str) -> tuple[int, bool, bool]:
 	return caller_level, is_platform_admin, is_bank_admin
 
 
+@bank_route("/me/team/<user_id>", methods=("PATCH",), summary="Update team member")
 @frappe.whitelist()
 @validate_request(UpdateUserSchema)
 @handle_api_errors
@@ -814,6 +826,7 @@ def update_user(
 # -----------------
 # 8. reset_member_password
 # -----------------
+@bank_route("/me/team/<user_id>/password-reset", methods=("POST",), summary="Reset member password")
 @frappe.whitelist()
 @validate_request(ResetMemberPasswordSchema)
 @handle_api_errors
