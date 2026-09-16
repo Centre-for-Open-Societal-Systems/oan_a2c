@@ -109,13 +109,18 @@ def _resolve_key_content(secret: str) -> str:
 		try:
 			site_path = frappe.get_site_path(secret) if hasattr(frappe, "get_site_path") else None
 			if site_path and os.path.isfile(site_path):
-				with open(site_path, encoding="utf-8") as f:
-					return f.read().strip()
+				content = frappe.read_file(site_path)
+				if content:
+					return content.strip()
 		except Exception:
 			pass
-		if os.path.isfile(secret):
-			with open(secret, encoding="utf-8") as f:
-				return f.read().strip()
+		try:
+			if os.path.isfile(secret):
+				content = frappe.read_file(secret)
+				if content:
+					return content.strip()
+		except Exception:
+			pass
 	return secret
 
 
