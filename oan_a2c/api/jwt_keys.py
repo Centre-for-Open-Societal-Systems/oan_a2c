@@ -25,6 +25,7 @@ either value going missing, and it lets this land with no config coordination.
 """
 
 import os
+from functools import lru_cache
 
 import frappe
 from cryptography.hazmat.primitives import serialization
@@ -101,8 +102,20 @@ def get_verification_key(kid: str | None) -> str | None:
 	return keys.get(kid)
 
 
+@lru_cache(maxsize=8)
 def _resolve_key_content(secret: str) -> str:
-	"""Return PEM key content if secret is a file path or direct PEM string."""
+	"""Return PEM key content if secret is a file path or direct PEM string.
+
+	Cached: this sits on the hot path of every authenticated request via
+	`get_verification_material`, and `_public_key_cache` cannot cover it because
+	that cache is keyed on the already-resolved content. Rotating a key already
+	requires a worker restart (`frappe.conf` is process-cached), so the cache adds
+	no operational constraint.
+
+	A file that exists but is empty resolves to "" rather than falling back to the
+	path string — callers guard on falsiness and raise, which keeps a truncated key
+	file a loud configuration error instead of a garbage signing secret.
+	"""
 	if not secret:
 		return secret
 	if "\n" not in secret and (secret.endswith(".pem") or secret.endswith(".key")):
@@ -110,14 +123,14 @@ def _resolve_key_content(secret: str) -> str:
 			site_path = frappe.get_site_path(secret) if hasattr(frappe, "get_site_path") else None
 			if site_path and os.path.isfile(site_path):
 				content = frappe.read_file(site_path)
-				if content:
+				if content is not None:
 					return content.strip()
 		except Exception:
 			pass
 		try:
 			if os.path.isfile(secret):
 				content = frappe.read_file(secret)
-				if content:
+				if content is not None:
 					return content.strip()
 		except Exception:
 			pass
@@ -163,6 +176,10 @@ def get_signing_material() -> tuple[str, str, str]:
 	"""
 	kid, raw_secret = get_signing_key()
 	secret = _resolve_key_content(raw_secret)
+	if not secret:
+		# Reached when the configured value names a key file that exists but is
+		# empty. Signing with "" would mint tokens that verify against nothing.
+		raise JWTKeyConfigurationError(f"JWT key '{kid}' resolved to empty key material")
 	if is_rsa_key(secret):
 		return kid, secret, "RS256"
 
@@ -182,6 +199,10 @@ def get_verification_material(kid: str | None) -> tuple[str, str] | None:
 		return None
 
 	secret = _resolve_key_content(raw_secret)
+	if not secret:
+		# Empty key file: a server misconfiguration, not a bad token. Callers map
+		# JWTKeyConfigurationError to "key missing" rather than "invalid kid".
+		raise JWTKeyConfigurationError(f"JWT key '{kid}' resolved to empty key material")
 	if is_rsa_key(secret):
 		pub_key = get_public_key_pem(secret)
 		return pub_key, "RS256"

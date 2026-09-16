@@ -6775,6 +6775,7 @@ components:
           title: Id
           type: integer
         farmer_id:
+          type: string
           nullable: true
         name:
           type: string

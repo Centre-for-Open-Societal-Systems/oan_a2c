@@ -123,10 +123,12 @@ def create_endpoint_wrapper(
 	def endpoint(**path_args):
 		params = expand_path_param_aliases(path_args)
 		params.update(frappe.form_dict)
-		# Dispatch to controller with Frappe kwarg filtering; fn is audited
-		result = frappe.call(  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-codeinjection-eval, frappe-codeinjection-eval
-			fn, **params
-		)
+		# frappe.call forwards every kwarg verbatim to a target taking **kwargs, which
+		# every api/v1 controller does, so Frappe's own dispatch key must not ride along.
+		params.pop("cmd", None)
+		# Dispatch to controller with Frappe kwarg filtering; fn is audited.
+		# nosemgrep: frappe-semgrep-rules.rules.security.frappe-codeinjection-eval, frappe-codeinjection-eval
+		result = frappe.call(fn, **params)
 
 		if isinstance(result, Response):
 			return result
@@ -402,16 +404,16 @@ def dispatch_rest_request(request: Request) -> Response:
 
 	params = expand_path_param_aliases(path_args)
 	params.update(parse_request_data(request))
+	params.pop("cmd", None)
 	if not hasattr(frappe.local, "form_dict") or frappe.local.form_dict is None:
 		frappe.local.form_dict = frappe._dict()
 	frappe.local.form_dict.update(params)
 
 	fn = frappe.get_attr(endpoint)
 	try:
-		# Dispatch matched endpoint with Frappe kwarg filtering; endpoint is strictly from spec URL map
-		result = frappe.call(  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-codeinjection-eval, frappe-codeinjection-eval
-			fn, **params
-		)
+		# Dispatch matched endpoint with Frappe kwarg filtering; endpoint is strictly from spec URL map.
+		# nosemgrep: frappe-semgrep-rules.rules.security.frappe-codeinjection-eval, frappe-codeinjection-eval
+		result = frappe.call(fn, **params)
 	except Exception as e:
 		if isinstance(e, HTTPException):
 			return e.get_response(request.environ)
