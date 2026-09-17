@@ -1,4 +1,5 @@
-# A2C API -- OpenAPI 3.0.3
+# A2C API -- OpenAPI 3.0.3 (INTERNAL / engineering build artifact)
+# Carries x-legacy-rpc-method + x-schema-confidence for the Kong/BFF build-out.
 # Generated from generate_openapi_spec.py -- do not hand-edit; change the generator and re-run.
 openapi: 3.0.3
 info:
@@ -6252,8 +6253,8 @@ components:
           title: Id
           type: integer
         farmer_id:
-          type: string
           nullable: true
+          type: string
         name:
           type: string
           nullable: true

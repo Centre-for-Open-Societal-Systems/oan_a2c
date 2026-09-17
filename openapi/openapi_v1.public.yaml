@@ -8,7 +8,13 @@ info:
   description: 'REST API for the OpenAgriNet Access to Credit platform, covering bank onboarding, loan
     product cataloging, the farmer-facing marketplace, loan underwriting, Fayda national ID consent capture,
     and platform notifications.
-    
+
+
+    This document supersedes the team''s original RPC-bridge specification (`POST /api/method/<dotted.path>`
+    for every operation). Routes, verbs, and per-operation response schemas here reflect the REST facade
+    design in `A2C_API_REST_Routing_Map.md`.
+
+
     Response schemas are typed per operation from the platform''s documented request/response examples;
     a small number of endpoints without a documented example carry a schema inferred from the corresponding
     request shape -- see each schema''s own `description` field for a note where that applies.'
@@ -19,9 +25,9 @@ info:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
 servers:
-- url: https://api.a2c.oanstaging.com
+- url: https://api.a2c.openagrinet.org
   description: Production
-- url: https://api.staging.a2c.oanstaging.com
+- url: https://api.staging.a2c.openagrinet.org
   description: Staging
 tags:
 - name: Identity & Access
@@ -6775,8 +6781,8 @@ components:
           title: Id
           type: integer
         farmer_id:
-          type: string
           nullable: true
+          type: string
         name:
           type: string
           nullable: true
