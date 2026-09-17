@@ -35,6 +35,10 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 			user.email = cls.test_email
 			user.first_name = "Test Agent"
 			user.insert(ignore_permissions=True)
+		else:
+			user = frappe.get_doc("User", cls.test_email)
+			user.first_name = "Test Agent"
+			user.save(ignore_permissions=True)
 
 		from frappe.utils.password import update_password
 
@@ -62,10 +66,17 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 		self.assertIn("token", response.get("data", {}))
 
 		token = response["data"]["token"]
+		header = jwt.get_unverified_header(token)
+		kid = header.get("kid") if header else None
+
+		from oan_a2c.api.jwt_keys import get_verification_material
+
+		material = get_verification_material(kid)
+		verif_key, expected_alg = material if material else (signing_secret(), "HS256")
 		payload = jwt.decode(
 			token,
-			signing_secret(),
-			algorithms=["HS256"],
+			verif_key,
+			algorithms=[expected_alg],
 			audience="oan_a2c_client",
 			issuer="oan_a2c_identity_gateway",
 		)

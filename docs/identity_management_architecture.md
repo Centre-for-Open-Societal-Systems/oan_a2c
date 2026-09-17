@@ -1,6 +1,5 @@
 # OAN Access to Credit (A2C) Identity Management Architecture
 
-
 ## Overview
 
 This document outlines the architectural approach for integrating Keycloak as the Identity and Access Management (IAM) provider for the OpenAgriNet (OAN) Frappe application, using a strictly stateless JWT (Bearer token) architecture to support both Mobile and Web headess clients.

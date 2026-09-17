@@ -3245,7 +3245,7 @@
            "// Flow: list the otp/ prefix -> pick the newest object (filenames are timestamp-",
            "// prefixed, so the lexicographically-greatest key is the latest) -> GET it ->",
            "// set otp_code. Postman waits for these async calls before sending Verify OTP.",
-           "const base = pm.variables.get(\"webhook_base_url\") || pm.variables.get(\"otp_s3_base_url\");",
+           "const base = pm.variables.get(\"webhook_base_url\");",
            "if (!base) {",
            "    console.warn(\"webhook_base_url is not set; skipping OTP auto-fetch. Enter the OTP manually.\");",
            "} else {",

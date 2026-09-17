@@ -244,7 +244,7 @@ before_tests = "oan_a2c.tests.before_tests"
 
 # Request Events
 # ----------------
-# before_request = ["oan_a2c.utils.before_request"]
+before_request = ["oan_a2c.api.router.ensure_routes_registered"]
 # after_request = ["oan_a2c.utils.after_request"]
 
 # Job Events

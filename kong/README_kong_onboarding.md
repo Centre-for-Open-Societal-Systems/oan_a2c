@@ -43,21 +43,22 @@ That's the boundary to get right: **fine-grained authorization stays in the plat
 
 Starting points below — review against real traffic before go-live, then revisit quarterly.
 
-| Tier | Keyed by | Limit | Applies to |
-|---|---|---|---|
-| `public-auth` | IP | 5/min, 30/hr | Login, register, password recovery — pre-auth, so IP is the only handle available. |
-| `authenticated-core` | Consumer | 120/min, 4,000/hr | `/v1/me/*`, notifications — cheap, high-frequency calls any signed-in caller makes constantly. |
-| `farmer-app` | Consumer | 90/min, 3,000/hr | Catalog browse, farmer applications, farmer dashboard. |
-| `bank-partner-standard` | Consumer | 300/min, 15,000/hr | Bank onboarding/admin, cataloging, underwriting reads, consent. Override per-partner for plan tiers (below). |
-| `crm-internal` | Consumer | 600/min, 30,000/hr | Development Agent / lead & underwriting-mutation traffic — internal, trusted, still capped. |
-| `webhooks-inbound` | Consumer | 3,000/min, 120,000/hr | The two inbound receivers — high headroom since these are automated systems; IP-restriction is the real control. |
-| `uploads` | Consumer | 10/min, 200/hr | KYC and supporting-document uploads — deliberately tight, paired with a request-size cap. |
+| Tier                    | Keyed by | Limit                 | Applies to                                                                                                       |
+| ----------------------- | -------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `public-auth`           | IP       | 5/min, 30/hr          | Login, register, password recovery — pre-auth, so IP is the only handle available.                               |
+| `authenticated-core`    | Consumer | 120/min, 4,000/hr     | `/v1/me/*`, notifications — cheap, high-frequency calls any signed-in caller makes constantly.                   |
+| `farmer-app`            | Consumer | 90/min, 3,000/hr      | Catalog browse, farmer applications, farmer dashboard.                                                           |
+| `bank-partner-standard` | Consumer | 300/min, 15,000/hr    | Bank onboarding/admin, cataloging, underwriting reads, consent. Override per-partner for plan tiers (below).     |
+| `crm-internal`          | Consumer | 600/min, 30,000/hr    | Development Agent / lead & underwriting-mutation traffic — internal, trusted, still capped.                      |
+| `webhooks-inbound`      | Consumer | 3,000/min, 120,000/hr | The two inbound receivers — high headroom since these are automated systems; IP-restriction is the real control. |
+| `uploads`               | Consumer | 10/min, 200/hr        | KYC and supporting-document uploads — deliberately tight, paired with a request-size cap.                        |
 
 **Per-partner plan overrides.** Attach a second `rate-limiting` plugin instance directly to a partner's Consumer — Kong applies the more specific consumer-level config over the route default. `kong.yml` includes a worked example (`partner-bank-example-gold`, 3,000/min).
 
 **Redis, not local memory, for the counters.** With `policy: redis` set throughout, rate-limit counts are correct across every Kong node. On the default `local` policy, each node counts independently — at scale that means a partner can get roughly `(limit × node count)` requests through before any node notices. Point `policy: redis` at a Redis Cluster or Sentinel reachable from every node, with connection details sourced from your secrets manager, not committed to `kong.yml`.
 
 **Test a tier before trusting it:**
+
 ```bash
 for i in $(seq 1 8); do
   curl -s -o /dev/null -w "%{http_code}\n" \
@@ -76,6 +77,7 @@ KYC and supporting-document uploads carry base64 file payloads today — 15MB do
 This is the one that bites teams eighteen months in, not on launch day. Once `/v1/*` is live on Kong with auth and throttling enforced, **the platform's original RPC-style endpoints must stop being reachable from the public internet.** If they're still directly exposed — an old load-balancer rule, an "internal-only" assumption that isn't actually enforced at the network layer, or a partner who bookmarked an old collection instead of migrating — every rate limit, every JWT check, every IP allowlist configured above is optional: anyone who still knows the old paths routes straight past the entire gateway layer.
 
 Two things have to both be true before this is actually enforced, not just published:
+
 1. The platform's public ingress is firewalled to accept traffic **only** from Kong's egress IPs — verified with a `curl` from outside that network, not assumed.
 2. The old endpoints return `404`/`403` at the network edge — undocumented-but-reachable is not the same as closed.
 

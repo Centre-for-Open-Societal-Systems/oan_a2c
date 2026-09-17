@@ -20,7 +20,8 @@ from oan_a2c.a2c_marketplace.roles import (
 	DEVELOPMENT_AGENT_ROLE,
 	FARMER_ROLE,
 )
-from oan_a2c.api.jwt_keys import JWTKeyConfigurationError, get_signing_key
+from oan_a2c.api.jwt_keys import JWTKeyConfigurationError, get_signing_key, get_signing_material
+from oan_a2c.api.router import prefixed
 from oan_a2c.api.utils import (
 	PasswordChangeRequired,
 	SafeEmail,
@@ -31,6 +32,9 @@ from oan_a2c.api.utils import (
 	validate_phone_string,
 	validate_request,
 )
+
+route = prefixed("/api/v1/auth")
+me_route = prefixed("/api/v1/me")
 
 
 def _resolve_login_id(usr: str) -> str:
@@ -152,7 +156,8 @@ def _classify_user_type(roles: list[str]) -> str:
 
 def generate_access_token(usr: str, roles: list) -> str:
 	try:
-		kid, secret = get_signing_key()
+		# Signs with RS256 if RSA key is configured; temporary HS256 fallback for legacy HMAC keys
+		kid, secret, alg = get_signing_material()
 	except JWTKeyConfigurationError:
 		frappe.throw(_("System configuration error: no JWT signing key"))
 
@@ -166,7 +171,7 @@ def generate_access_token(usr: str, roles: list) -> str:
 		"roles": roles,
 		"user_type": _classify_user_type(roles),
 	}
-	return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": kid})
+	return jwt.encode(payload, secret, algorithm=alg, headers={"kid": kid})
 
 
 def generate_refresh_token(usr: str, remember_me: bool = False) -> str:
@@ -235,6 +240,7 @@ def _get_user_bank_context(user_id: str) -> dict[str, str | None]:
 
 
 # nosemgrep: guest-whitelisted-method -- reviewed: public auth endpoint, validated + rate-limited
+@route("/login", allow_guest=True, summary="Login and obtain token pair")
 @frappe.whitelist(allow_guest=True)
 @validate_request(LoginSchema)
 @handle_api_errors
@@ -315,6 +321,7 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 
 
 # nosemgrep: guest-whitelisted-method -- reviewed: public password-recovery endpoint, enumeration-safe
+@route("/password/forgot", allow_guest=True, summary="Initiate password recovery")
 @frappe.whitelist(allow_guest=True)
 @validate_request(ForgotPasswordSchema)
 @handle_api_errors
@@ -348,6 +355,7 @@ def forgot_password(email: str):
 
 
 # nosemgrep: guest-whitelisted-method -- reviewed: public reset endpoint, gated on emailed OTP key
+@route("/password/reset", allow_guest=True, summary="Complete password reset")
 @frappe.whitelist(allow_guest=True)
 @validate_request(ResetPasswordSchema)
 @handle_api_errors
@@ -397,6 +405,7 @@ def reset_password(email: str, key: str, new_password: str):
 
 # reviewed: gated on the temporary password itself plus the must-change flag, rate-limited, enumeration-safe
 # nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
+@route("/password/initial", allow_guest=True, summary="Set initial password")
 @frappe.whitelist(allow_guest=True)
 @validate_request(SetInitialPasswordSchema)
 @handle_api_errors
@@ -448,6 +457,7 @@ def set_initial_password(usr: str, current_password: str, new_password: str):
 
 
 # nosemgrep: guest-whitelisted-method -- reviewed: public token-rotation endpoint, gated on refresh token
+@route("/token/refresh", allow_guest=True, summary="Exchange refresh token")
 @frappe.whitelist(allow_guest=True)
 @validate_request(RefreshTokenSchema)
 @handle_api_errors
@@ -513,6 +523,7 @@ def refresh(refresh_token: str):
 
 
 # nosemgrep: guest-whitelisted-method -- reviewed: public logout/revoke endpoint, gated on refresh token
+@route("/logout", allow_guest=True, summary="Revoke refresh token")
 @frappe.whitelist(allow_guest=True)
 @validate_request(LogoutSchema)
 @handle_api_errors
@@ -532,6 +543,7 @@ def logout(refresh_token: str):
 	return success_response(message=_("Logged out successfully."))
 
 
+@me_route("", methods=("GET",), summary="Get current user info")
 @frappe.whitelist()
 @handle_api_errors
 def get_me():
@@ -566,6 +578,7 @@ def get_me():
 	)
 
 
+@me_route("/profile", methods=("GET",), summary="Get user profile")
 @frappe.whitelist()
 @handle_api_errors
 def get_user_profile():
@@ -679,6 +692,7 @@ def _resolve_language(value):
 	)
 
 
+@me_route("/profile", methods=("PATCH",), summary="Update user profile")
 @frappe.whitelist()
 @validate_request(UpdateProfileSchema)
 @handle_api_errors
@@ -726,6 +740,7 @@ def update_profile(
 	return get_user_profile()
 
 
+@me_route("/password", methods=("PATCH",), summary="Change password")
 @frappe.whitelist()
 @validate_request(ChangePasswordSchema)
 @handle_api_errors
