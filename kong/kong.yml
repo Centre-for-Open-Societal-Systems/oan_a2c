@@ -2790,6 +2790,28 @@ services:
         add:
           headers:
           - Authorization:token ${{ env "DECK_FRAPPE_WEBHOOK_API_KEY" }}:${{ env "DECK_FRAPPE_WEBHOOK_API_SECRET" }}
+  - name: get-v1-charts-chart_id
+    methods:
+    - GET
+    paths:
+    - ~/v1/charts/(?<chart_id>[^/]+)$
+    strip_path: false
+    regex_priority: 3
+    tags:
+    - a2c
+    - v1
+    - d11
+    - public-dashboards
+    - public
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 600
+        hour: 20000
+        limit_by: ip
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
   - name: static-public-files
     methods:
     - GET
