@@ -1,0 +1,1050 @@
+{
+  "info": {
+    "_postman_id": "a2c-programme-dashboards-public",
+    "name": "OAN A2C — Programme Dashboards (Public)",
+    "description": "Aggregate chart data for the OAN programme dashboards: GET /api/v1/charts/{chart_id}.\n\nPublic: no Authorization header is sent. Rows are counts and sums only, never a farmer name, phone, ID or record id. Responses are cached for 15 minutes per chart and filter set, so a record change can take that long to show. Calls are rate limited per IP.\n\nFilters (all optional, `all` means none): `provider` (bank id), `region` and `woreda` (comma-separated names, case-insensitive).\n\nSet `base_url` to the A2C site, e.g. http://localhost:8000 locally. This collection needs no credentials and contains none.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. KPIs (whole programme)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cKpis",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cKpis"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"providers_onboarded\", \"providers_onboarding\", \"providers_total\", \"consent_requests\", \"consents_approved\", \"consents_pending\", \"consents_declined\", \"applications_total\", \"applications_in_progress\", \"loans_approved\", \"loans_declined\", \"loans_pending\", \"data_shares_total\", \"data_shares_delivered\", \"data_shares_failed\", \"data_shares_pending\", \"records_shared\", \"loan_value_approved\", \"loan_value_requested\", \"farmers_enrolled\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Providers (banks)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cProviders",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cProviders"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"short_name\", \"name\", \"provider_type\", \"status\", \"integration\", \"onboarded_on\", \"consent_requests\", \"consents_approved\", \"applications\", \"loans_approved\", \"loan_value\", \"share_faults\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Approved loan value by region (map)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cLoansByRegion",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cLoansByRegion"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"region\", \"farmers\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Approved loan value by woreda (map)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cLoansByWoreda",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cLoansByWoreda"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"region\", \"woreda\", \"farmers\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Location summary",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cLocationSummary",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cLocationSummary"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"region\", \"woreda\", \"farmers\", \"applications\", \"loans_approved\", \"applications_in_progress\", \"loans_pending\", \"loans_declined\", \"loan_value\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Application status buckets",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cApplicationStatus",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cApplicationStatus"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"status\", \"applications\", \"requested_value\", \"approved_value\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Consent status buckets",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cConsentStatus",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cConsentStatus"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"status\", \"requests\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Loan products",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cLoanProducts",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cLoanProducts"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"product\", \"applications\", \"loans_approved\", \"loan_value\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. Monthly trend",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cLoanTrend",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cLoanTrend"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"month\", \"month_start\", \"applications\", \"loans_approved\", \"loan_value\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Registry data shares",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cDataShares",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cDataShares"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"dataset\", \"shares\", \"delivered\", \"failed\", \"pending\", \"records\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Data share faults",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cDataShareFaults",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cDataShareFaults"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"fault\", \"provider\", \"dataset\", \"records\", \"last_seen\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Decline reasons",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cDeclineReasons",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cDeclineReasons"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"reason\", \"applications\", \"requested_value\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Filter options: providers",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cFilterProviders",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cFilterProviders"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"id\", \"short_name\", \"name\", \"status\", \"applications\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Filter options: locations",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cFilterLocations",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cFilterLocations"
+          ]
+        }
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"region_name\", \"woreda_name\", \"farmers\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. KPIs narrowed to one provider",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cKpis?provider={{dashboard_provider}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cKpis"
+          ],
+          "query": [
+            {
+              "key": "provider",
+              "value": "{{dashboard_provider}}"
+            }
+          ]
+        },
+        "description": "Every figure narrowed to one participating bank (its id, e.g. PB-2815). `all`, or leaving it out, means the whole programme."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"providers_onboarded\", \"providers_onboarding\", \"providers_total\", \"consent_requests\", \"consents_approved\", \"consents_pending\", \"consents_declined\", \"applications_total\", \"applications_in_progress\", \"loans_approved\", \"loans_declined\", \"loans_pending\", \"data_shares_total\", \"data_shares_delivered\", \"data_shares_failed\", \"data_shares_pending\", \"records_shared\", \"loan_value_approved\", \"loan_value_requested\", \"farmers_enrolled\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. KPIs narrowed to one region",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cKpis?region={{dashboard_region}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cKpis"
+          ],
+          "query": [
+            {
+              "key": "region",
+              "value": "{{dashboard_region}}"
+            }
+          ]
+        },
+        "description": "Region names as the farmer registry reports them, case-insensitive. Comma-separate several spellings."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"providers_onboarded\", \"providers_onboarding\", \"providers_total\", \"consent_requests\", \"consents_approved\", \"consents_pending\", \"consents_declined\", \"applications_total\", \"applications_in_progress\", \"loans_approved\", \"loans_declined\", \"loans_pending\", \"data_shares_total\", \"data_shares_delivered\", \"data_shares_failed\", \"data_shares_pending\", \"records_shared\", \"loan_value_approved\", \"loan_value_requested\", \"farmers_enrolled\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "17. Location summary for a set of woredas",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cLocationSummary?region={{dashboard_region}}&woreda={{dashboard_woredas}}",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cLocationSummary"
+          ],
+          "query": [
+            {
+              "key": "region",
+              "value": "{{dashboard_region}}"
+            },
+            {
+              "key": "woreda",
+              "value": "{{dashboard_woredas}}"
+            }
+          ]
+        },
+        "description": "Comma-separated woreda names. The dashboards send a zone selection this way, as its woredas."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "var jsonData = pm.response.json();",
+              "",
+              "pm.test(\"Envelope is success with a data array\", function () {",
+              "    pm.expect(jsonData.status).to.eql(\"success\");",
+              "    pm.expect(jsonData.data).to.be.an(\"array\");",
+              "});",
+              "",
+              "var expectedColumns = [\"region\", \"woreda\", \"farmers\", \"applications\", \"loans_approved\", \"applications_in_progress\", \"loans_pending\", \"loans_declined\", \"loan_value\"];",
+              "pm.test(\"Rows carry the columns the dashboard reads\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.include.all.keys(expectedColumns);",
+              "    });",
+              "});",
+              "",
+              "var personalFields = [\"first_name\", \"last_name\", \"phone_number\", \"email\", \"farmer_fayda_id\", \"id_number\", \"field_value\", \"farmer_profile\", \"consent_id\", \"application_id\"];",
+              "pm.test(\"No row carries personal data or record ids\", function () {",
+              "    jsonData.data.forEach(function (row) {",
+              "        pm.expect(row).to.not.have.any.keys(personalFields);",
+              "    });",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "18. Unknown chart returns 404",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/notAChart",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "notAChart"
+          ]
+        },
+        "description": "An id not in the chart registry is a 404 with the standard error envelope."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 404\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});",
+              "",
+              "pm.test(\"Error envelope with NOT_FOUND\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.status).to.eql(\"error\");",
+              "    pm.expect(jsonData.code).to.eql(\"NOT_FOUND\");",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "19. Paths below a chart are not public",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/v1/charts/a2cKpis/extra",
+          "host": [
+            "{{base_url}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "charts",
+            "a2cKpis",
+            "extra"
+          ]
+        },
+        "description": "The guest exemption covers exactly one path segment after /charts/. Anything deeper still needs a token."
+      },
+      "response": [],
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401 without a token\", function () {",
+              "    pm.response.to.have.status(401);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "dashboard_provider",
+      "value": "PB-2815",
+      "type": "string"
+    },
+    {
+      "key": "dashboard_region",
+      "value": "Sidama",
+      "type": "string"
+    },
+    {
+      "key": "dashboard_woredas",
+      "value": "Dale,Aleta Wendo",
+      "type": "string"
+    }
+  ]
+}
