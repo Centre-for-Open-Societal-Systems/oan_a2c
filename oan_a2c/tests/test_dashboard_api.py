@@ -1,5 +1,6 @@
 import json
 import unittest
+from unittest.mock import patch
 
 import frappe
 from werkzeug.test import EnvironBuilder
@@ -218,8 +219,18 @@ class TestDashboardApi(unittest.TestCase):
 		self.assertEqual(woredas, {self.woreda_a: 800.0, self.woreda_b: 0.0})
 
 	def test_decline_reason_read_from_audit_trail(self):
-		rows = self._chart("a2cDeclineReasons")
+		with patch.object(dashboard, "_MIN_REASON_APPLICATIONS", 1):
+			rows = self._chart("a2cDeclineReasons")
 		self.assertEqual(rows, [{"reason": self.reason, "applications": 1, "requested_value": 500.0}])
+
+	def test_rare_decline_reason_is_not_published_verbatim(self):
+		"""Free text about one application could identify the farmer."""
+		rows = self._chart("a2cDeclineReasons")
+		self.assertEqual(rows, [{"reason": "Other reasons", "applications": 1, "requested_value": 500.0}])
+
+	def test_cache_key_length_is_bounded(self):
+		scope = dashboard.Scope(None, "r" * 2000, ",".join(f"w{i}" for i in range(400)))
+		self.assertLess(len(scope.cache_key("a2cKpis")), 120)
 
 	def test_data_shares_by_requested_field(self):
 		shares = {r["dataset"]: r for r in self._chart("a2cDataShares")}
@@ -233,7 +244,13 @@ class TestDashboardApi(unittest.TestCase):
 
 	def test_no_chart_returns_personal_data(self):
 		payload = json.dumps({chart: self._chart(chart) for chart in dashboard.CHARTS}, default=str)
-		for secret in (self.pii_first_name, self.pii_phone, self.pii_field_value, f"FAYDA{self.suffix}"):
+		for secret in (
+			self.pii_first_name,
+			self.pii_phone,
+			self.pii_field_value,
+			f"FAYDA{self.suffix}",
+			self.reason,
+		):
 			self.assertNotIn(secret, payload)
 		for record in (self.app_completed, self.profile_a, self.consent_delivered):
 			self.assertNotIn(record, payload)

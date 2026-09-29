@@ -25,6 +25,7 @@ them onto their boundary codes. Filters are names too, and both `region` and
 spellings, and a zone selection is sent as its woredas.
 """
 
+import hashlib
 import re
 from collections import defaultdict
 
@@ -49,7 +50,13 @@ _CACHE_PREFIX = "a2c_dashboard_chart"
 _MAX_NAMES = 500
 _UNSPECIFIED = "Unspecified"
 _REASON_NOT_RECORDED = "Reason not recorded"
+_OTHER_REASONS = "Other reasons"
 _MAX_REASON_LENGTH = 120
+# A decline reason is free text a bank officer typed, and can name the farmer or
+# their circumstances. It is published only once that many applications share it
+# word for word, which a reason about one person never reaches; rarer reasons are
+# counted under _OTHER_REASONS.
+_MIN_REASON_APPLICATIONS = 5
 
 # The dashboards bucket applications into four outcomes. They are derived from
 # the archetype state, never from a stage label (tenant-defined free text; see
@@ -122,9 +129,9 @@ class Scope:
 		self.woredas = _names(woreda)
 
 	def cache_key(self, chart_id: str) -> str:
-		return ":".join(
-			(_CACHE_PREFIX, chart_id, self.provider or "", ",".join(self.regions), ",".join(self.woredas))
-		)
+		# Hashed so a caller-supplied filter cannot make an arbitrarily long key.
+		selection = "|".join((self.provider or "", ",".join(self.regions), ",".join(self.woredas)))
+		return f"{_CACHE_PREFIX}:{chart_id}:{hashlib.sha256(selection.encode()).hexdigest()}"
 
 
 def _names(value: str | None) -> list[str]:
@@ -656,7 +663,8 @@ def chart_data_share_faults(scope: Scope) -> list[dict]:
 
 def chart_decline_reasons(scope: Scope) -> list[dict]:
 	"""Reasons come from the audit trail: update_loan_status writes the reason a bank
-	gave into the Rejected transition's event ("...\\nReason: <text>")."""
+	gave into the Rejected transition's event ("...\\nReason: <text>"). Only a reason
+	shared by _MIN_REASON_APPLICATIONS applications is published verbatim."""
 	query, _region, _woreda = _application_base(scope)
 	declined = (
 		query.select(
@@ -686,9 +694,15 @@ def chart_decline_reasons(scope: Scope) -> list[dict]:
 				# Latest rejection wins; events are read oldest first.
 				reason_by_app[event.loan_application] = match.group(1).strip()[:_MAX_REASON_LENGTH]
 
+	shared_by: dict[str, int] = defaultdict(int)
+	for reason in reason_by_app.values():
+		shared_by[reason] += 1
+
 	reasons: dict[str, dict] = {}
 	for app in declined:
 		reason = reason_by_app.get(app.name) or _REASON_NOT_RECORDED
+		if reason != _REASON_NOT_RECORDED and shared_by[reason] < _MIN_REASON_APPLICATIONS:
+			reason = _OTHER_REASONS
 		r = reasons.setdefault(reason, {"reason": reason, "applications": 0, "requested_value": 0.0})
 		r["applications"] += 1
 		r["requested_value"] += _num(app.requested)
