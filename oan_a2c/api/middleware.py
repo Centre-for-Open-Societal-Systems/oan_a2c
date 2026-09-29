@@ -1,4 +1,6 @@
 import json
+import re
+from functools import lru_cache
 
 import frappe
 import jwt
@@ -85,6 +87,7 @@ PUBLIC_EXEMPT_PATHS = {
 	"/v1/auth/password/initial",
 	"/v1/webhooks/consent-data",
 	"/v1/webhooks/leads",
+	"/v1/charts/<chart_id>",
 	# REST v1 paths with /api prefix
 	"/api/v1/auth/login",
 	"/api/v1/auth/register",
@@ -95,7 +98,25 @@ PUBLIC_EXEMPT_PATHS = {
 	"/api/v1/auth/password/initial",
 	"/api/v1/webhooks/consent-data",
 	"/api/v1/webhooks/leads",
+	"/api/v1/charts/<chart_id>",
 }
+
+_PATH_PARAM = re.compile(r"<[^<>/]+>")
+
+
+@lru_cache(maxsize=256)
+def _template_pattern(template: str) -> re.Pattern:
+	"""`/v1/charts/<chart_id>` -> a pattern where each parameter is exactly one path
+	segment, so an exempt template can never reach a deeper or different route."""
+	parts = _PATH_PARAM.split(template)
+	return re.compile("[^/]+".join(re.escape(part) for part in parts))
+
+
+def _is_exempt(path: str, exempt_paths) -> bool:
+	candidates = (path, path.rstrip("/"))
+	if any(c in exempt_paths for c in candidates):
+		return True
+	return any(_template_pattern(t).fullmatch(c) for t in exempt_paths if "<" in t for c in candidates)
 
 
 def validate_jwt_request(request=None):
@@ -115,7 +136,7 @@ def validate_jwt_request(request=None):
 	# 1. Match against registered namespaces if present
 	config = _match_namespace(path)
 	if config is not None:
-		if path in config["exempt_paths"] or path.rstrip("/") in config["exempt_paths"]:
+		if _is_exempt(path, config["exempt_paths"]):
 			return
 	else:
 		# Fallback to static check for backward compatibility
@@ -125,7 +146,7 @@ def validate_jwt_request(request=None):
 		if not is_a2c_boundary:
 			return
 
-		if path in PUBLIC_EXEMPT_PATHS or path.rstrip("/") in PUBLIC_EXEMPT_PATHS:
+		if _is_exempt(path, PUBLIC_EXEMPT_PATHS):
 			return
 
 	auth_header = frappe.get_request_header("Authorization")
