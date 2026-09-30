@@ -2,7 +2,7 @@ import frappe
 from frappe import _
 from pydantic import BaseModel, Field, field_validator
 
-from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE
+from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, FARMER_ROLE
 from oan_a2c.api.router import prefixed
 from oan_a2c.api.utils import (
 	RequiredPhone,
@@ -16,7 +16,8 @@ from oan_a2c.api.utils import (
 
 route = prefixed("/api/v1/auth")
 
-SELF_REGISTERABLE_ROLES = {BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE}
+# Development Agents are platform staff; an A2C Administrator provisions them.
+SELF_REGISTERABLE_ROLES = {BANK_ADMIN_ROLE, FARMER_ROLE}
 
 
 class RegisterUserSchema(BaseModel):

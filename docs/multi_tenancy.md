@@ -1,61 +1,55 @@
-# Loan Marketplace: Multi-Tenancy Security Architecture
+# Multi-Tenancy
 
-## Overview
+How A2C keeps each Participating Bank's data separate inside one Frappe site. For why it is built this way, see `design_decisions.md` §5.
 
-The OAN Access-To-Credit (A2C) system is a multi-tenant platform designed to handle multiple Participating Banks within a single Frappe application instance. To maintain strict data isolation and privacy, a robust, centralized multi-tenancy architecture is implemented.
+## The two facts
 
-This document describes how multi-tenancy is enforced securely for all `BANK_SCOPED` DocTypes across both modern API modules and legacy modules.
+1. **Which bank a user works for.** A Frappe User Permission record: `allow = A2C Participating Bank`, value = the bank. Created in the same transaction as the user, when a bank is registered or a member is invited.
+2. **Which bank owns a record.** A `bank` field on every bank-scoped record, copied from the product or the creator's bank. Never taken from the client.
 
-## Architecture
+Scoping compares the two.
 
-Multi-tenancy in the A2C application is **App-scoped**, not Module-scoped. This means security rules apply uniformly to all relevant data, regardless of which API endpoint or module initiates the request.
+## Who is bound to a bank
 
-The security architecture uses a two-pronged approach implemented via standard Frappe hooks:
+| Role                              | Sees                                                             |
+| --------------------------------- | ---------------------------------------------------------------- |
+| A2C Administrator, System Manager | Every bank                                                       |
+| A2C Development Agent             | Every bank (agent-sourced applications only, live products only) |
+| A2C Bank Admin, A2C Bank Agent    | Their own bank only                                              |
+| A2C Farmer                        | Their own applications and profile; every bank's live products   |
 
-1. **Query-level Isolation** (Database filtering)
-2. **Document-level Isolation** (Python object evaluation)
+One function (`is_bank_unbound`) decides whether a user sees every bank. Do not repeat role lists elsewhere.
 
-### 1. Query-Level Isolation (`bank_scope_query`)
+## Bank-scoped doctypes
 
-For any list-based data retrieval (e.g., `frappe.get_list`, `frappe.get_all`, `frappe.db.count`), Frappe allows injecting dynamic SQL `WHERE` conditions.
+Listed in `BANK_SCOPED` in `hooks.py`: loan products, term relationships, product lookups, attribute lookups, loan applications, application audit events and loan status stages.
 
-The `bank_scope_query` function (in `oan_a2c.a2c_marketplace.permissions`) intercepts these queries and dynamically injects `` `bank` = '{user_bank}' ``.
-This ensures that at the database layer, a user can only ever select rows corresponding to their assigned "A2C Participating Bank".
+## How it is enforced
 
-### 2. Document-Level Isolation (`bank_scope_doc`)
+Two Frappe hooks are registered for every bank-scoped doctype:
 
-For single-document operations (e.g., `frappe.get_doc()`, `doc.save()`), standard SQL query conditions don't always apply, especially if the document is being created or updated.
+- **List filter** (`permission_query_conditions`). Adds `bank = <user's bank>` to every `frappe.get_list` query. Loan applications and loan products have their own variants that also handle farmers, Development Agents and the hidden draft stage.
+- **Single-record check** (`has_permission`). Denies `get_doc` and saves on another bank's record.
 
-The `bank_scope_doc` function runs as a `has_permission` hook. It compares the `bank` field of the current document in memory against the user's bound bank context. If they do not match, a `PermissionError` is raised by the framework.
+## Fail closed
 
-## Enforcement Mechanism
+A bank user with no bank binding sees nothing: the list filter returns `1=0` and the record check denies. A missing binding must never mean "sees everything".
 
-Both security prongs are registered globally in `oan_a2c/hooks.py`.
+## Reads that skip the hooks
 
-```python
-# Bank Scoped DocTypes
-BANK_SCOPED = [
-	"A2C Loan Product",
-	"A2C Loan Application",
-	# ... other bank-specific doctypes
-]
+`frappe.get_all`, `frappe.db.get_all` and `frappe.db.get_list` **do not** run the list filter. On a bank-scoped doctype, every such call must either:
 
-permission_query_conditions = {}
-has_permission = {}
+- pass `bank_filters(base=...)` to add the bank filter explicitly, or
+- carry a `# bank-scope-exempt: <reason>` comment, for example when the result only narrows a query that is itself scoped.
 
-for doctype in BANK_SCOPED:
-	permission_query_conditions[doctype] = "oan_a2c.a2c_marketplace.permissions.bank_scope_query"
-	has_permission[doctype] = "oan_a2c.a2c_marketplace.permissions.bank_scope_doc"
-```
+`tests/test_bank_scope_enforcement.py` scans the code in CI and fails the build on any unmarked call. Raw `frappe.db.sql` is not covered by the scan: avoid it on bank-scoped data, or apply the filter yourself.
 
-Because these hooks are applied centrally, they guard both the newly structured `api/v1/seller/` APIs and the legacy `api/v1/loan_applications.py` APIs.
+## Adding a bank-scoped doctype
 
-## Exception: System Managers
+1. Give it a `bank` field, stamped on write from the parent record.
+2. Add it to `BANK_SCOPED` in `hooks.py`.
+3. Check any `get_all` reads on it pass the CI scan.
 
-Users with the `System Manager` role are unbound. The permission hooks explicitly bypass the bank context checks for these users, allowing them to see and manage all data across all tenants.
+## Legacy records
 
-## Best Practices for Developers
-
-1. **Never bypass `frappe.get_all` / `frappe.get_list`**: Do not use raw `frappe.db.sql` for selecting bank-scoped data unless you manually apply the bank filter, as raw SQL bypasses `permission_query_conditions`.
-2. **Register New DocTypes**: If you create a new DocType that belongs to a specific bank, you must add it to the `BANK_SCOPED` list in `hooks.py`.
-3. **Legacy Data Note**: Legacy documents (like older `A2C Loan Application` records) that were created without a `bank` field populated will be completely hidden from Bank Agents (failing the `bank = ...` check). Only System Managers will be able to see them.
+A record with no `bank` value is invisible to bank users, because it matches no bank. Only unbound roles can see it.

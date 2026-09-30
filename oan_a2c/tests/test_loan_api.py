@@ -84,7 +84,11 @@ class TestLoansV1API(unittest.TestCase):
 			frappe.db.sql("UPDATE `tabA2C Lead` SET name='TEST_LEAD_999' WHERE name=%s", lead.name)
 			frappe.db.commit()
 		else:
-			frappe.db.set_value("A2C Lead", "TEST_LEAD_999", "status", "Verified")
+			# Reset workflow_state too: a Completed/Rejected loan moves the lead through the
+			# workflow, and the next transition reads workflow_state first.
+			frappe.db.set_value(
+				"A2C Lead", "TEST_LEAD_999", {"status": "Verified", "workflow_state": "Verified"}
+			)
 			frappe.db.commit()
 
 		# Create Farmer Profile and link to Lead
@@ -599,6 +603,55 @@ class TestLoansV1API(unittest.TestCase):
 		# The submitted record is frozen: a direct edit + save is blocked by docstatus.
 		doc.status = "In Transition"
 		self.assertRaises(frappe.ValidationError, doc.save)
+
+	def _lead_state(self):
+		return frappe.db.get_value("A2C Lead", "TEST_LEAD_999", ["status", "workflow_state"])
+
+	def _lead_sync_events(self):
+		return frappe.get_all(
+			"A2C Lead Audit Event",
+			filters={"lead": "TEST_LEAD_999", "event_description": ["like", f"%{self.app_id}%"]},
+			pluck="event_description",
+		)
+
+	def test_7c_completed_loan_grants_lead(self):
+		# The lead starts Verified, so the sync walks Verified -> Processed -> Granted.
+		update_loan_status(application_id=self.app_id, status="In Transition")
+		res = update_loan_status(application_id=self.app_id, status="Completed")
+		self.assertEqual(res["status"], "success")
+
+		self.assertEqual(self._lead_state(), ("Granted", "Granted"))
+		events = self._lead_sync_events()
+		self.assertEqual(len(events), 1)
+		self.assertIn("Changed to Granted", events[0])
+
+	def test_7d_rejected_loan_rejects_lead(self):
+		update_loan_status(application_id=self.app_id, status="In Transition")
+		res = update_loan_status(application_id=self.app_id, status="Rejected", reason="Low score.")
+		self.assertEqual(res["status"], "success")
+
+		self.assertEqual(self._lead_state(), ("Rejected", "Rejected"))
+		self.assertIn("Changed to Rejected", self._lead_sync_events()[0])
+
+	def test_7e_processed_lead_is_granted(self):
+		# Processed is a locked status for plain saves; the workflow Grant must still land.
+		frappe.db.set_value(
+			"A2C Lead", "TEST_LEAD_999", {"status": "Processed", "workflow_state": "Processed"}
+		)
+		update_loan_status(application_id=self.app_id, status="In Transition")
+		update_loan_status(application_id=self.app_id, status="Completed")
+
+		self.assertEqual(self._lead_state(), ("Granted", "Granted"))
+
+	def test_7f_dormant_lead_is_left_alone(self):
+		frappe.db.set_value("A2C Lead", "TEST_LEAD_999", {"status": "Dormant", "workflow_state": "Dormant"})
+		update_loan_status(application_id=self.app_id, status="In Transition")
+		res = update_loan_status(application_id=self.app_id, status="Completed")
+
+		self.assertEqual(res["status"], "success")
+		self.assertEqual(frappe.db.get_value("A2C Loan Application", self.app_id, "status"), "Completed")
+		self.assertEqual(self._lead_state(), ("Dormant", "Dormant"))
+		self.assertEqual(self._lead_sync_events(), [])
 
 	def test_7b_invalid_status_rejected_by_validator(self):
 		res = update_loan_status(application_id=self.app_id, status="NotARealState")

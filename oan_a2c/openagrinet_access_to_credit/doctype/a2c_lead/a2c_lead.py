@@ -13,7 +13,10 @@ class A2CLead(Document):
 	def before_save(self):
 		if not self.is_new():
 			db_status = self.get_db_value("status")
-			if db_status in self.LOCKED_STATUSES:
+			# apply_workflow saves the doc for draft -> draft moves (Processed -> Granted /
+			# Rejected), so the transition itself lands here. apply_status_transition flags
+			# it after the workflow has already checked legality and role.
+			if db_status in self.LOCKED_STATUSES and not self.flags.in_workflow_transition:
 				frappe.throw(
 					_("Lead cannot be edited because it is {0}.").format(_(db_status)),
 					frappe.ValidationError,

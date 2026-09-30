@@ -17,13 +17,14 @@ from oan_a2c.a2c_marketplace.roles import (
 )
 
 # App roles and their desk_access requirements.
-# desk_access = 0 for FARMER_ROLE ensures farmer accounts remain Website Users
-# without consuming Desk seats or accessing /app desk navigation.
+# Only the platform admin works in the Frappe Desk. Everyone else uses the JWT API
+# through their own portal, so their roles have desk_access = 0: holders stay Website
+# Users, never see /app, and do not consume Desk seats.
 APP_ROLES = [
 	{"role_name": ADMIN_ROLE, "desk_access": 1},
-	{"role_name": BANK_ADMIN_ROLE, "desk_access": 1},
-	{"role_name": BANK_AGENT_ROLE, "desk_access": 1},
-	{"role_name": DEVELOPMENT_AGENT_ROLE, "desk_access": 1},
+	{"role_name": BANK_ADMIN_ROLE, "desk_access": 0},
+	{"role_name": BANK_AGENT_ROLE, "desk_access": 0},
+	{"role_name": DEVELOPMENT_AGENT_ROLE, "desk_access": 0},
 	{"role_name": FARMER_ROLE, "desk_access": 0},
 ]
 
@@ -34,9 +35,12 @@ def setup_roles():
 		role_name = role["role_name"]
 		desk_access = role["desk_access"]
 		if frappe.db.exists("Role", role_name):
-			current_desk_access = frappe.db.get_value("Role", role_name, "desk_access")
-			if current_desk_access != desk_access:
-				frappe.db.set_value("Role", role_name, "desk_access", desk_access)
+			role_doc = frappe.get_doc("Role", role_name)
+			if role_doc.desk_access != desk_access:
+				# Save the document, not db.set_value: Role.on_update re-evaluates every
+				# holder's user_type (System vs Website User) when desk_access changes.
+				role_doc.desk_access = desk_access
+				role_doc.save(ignore_permissions=True)
 		else:
 			frappe.get_doc(
 				{
