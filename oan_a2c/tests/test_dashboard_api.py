@@ -6,6 +6,7 @@ import frappe
 from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Request
 
+from oan_a2c.a2c_marketplace import dashboard_rollup
 from oan_a2c.a2c_marketplace.stages import get_stage_map
 from oan_a2c.api.router import _load_openapi_spec, dispatch_rest_request
 from oan_a2c.api.v1 import dashboard
@@ -80,6 +81,8 @@ class TestDashboardApi(unittest.TestCase):
 				"event_description": f"Changed to Rejected (Rejected)\nReason: {cls.reason}\nUpdated by: x@test.com",
 			}
 		)
+		# The charts read only the snapshot; build it from the fixtures above.
+		cls.refreshed = dashboard_rollup.refresh()
 
 	@classmethod
 	def tearDownClass(cls):
@@ -90,6 +93,7 @@ class TestDashboardApi(unittest.TestCase):
 				frappe.db.delete("A2C Consent Data", {"parent": name})
 		frappe.db.delete("A2C Loan Status Stage", {"bank": cls.bank})
 		frappe.cache().delete_keys("a2c_dashboard_chart")
+		dashboard_rollup.refresh()
 
 	def setUp(self):
 		frappe.cache().delete_keys("a2c_dashboard_chart")
@@ -260,13 +264,92 @@ class TestDashboardApi(unittest.TestCase):
 		self.assertEqual(res["status"], "error")
 		self.assertEqual(res["code"], "NOT_FOUND")
 
-	def test_results_are_cached_per_filter_set(self):
+	def test_charts_move_only_when_the_snapshot_is_refreshed(self):
 		first = self._chart("a2cKpis")[0]["applications_total"]
 		frappe.db.set_value("A2C Loan Application", self.app_private, "status", "In Transition")
 		try:
 			self.assertEqual(self._chart("a2cKpis")[0]["applications_total"], first)
+			dashboard_rollup.refresh()
+			self.assertEqual(self._chart("a2cKpis")[0]["applications_total"], first + 1)
 		finally:
 			frappe.db.set_value("A2C Loan Application", self.app_private, "status", "Active")
+			dashboard_rollup.refresh()
+
+	def test_response_reports_the_snapshot_time(self):
+		frappe.local.response = frappe._dict()
+		res = dashboard.get_chart(chart_id="a2cKpis", provider=self.bank)
+		self.assertEqual(res["meta"]["as_of"], str(dashboard_rollup.as_of()))
+
+	def test_no_chart_reads_a_transactional_table(self):
+		"""Building a chart touches the snapshot only; the refresh is the only reader."""
+		executed = []
+		real_sql = frappe.db.sql
+
+		def recording_sql(query, *args, **kwargs):
+			executed.append(str(query))
+			return real_sql(query, *args, **kwargs)
+
+		with (
+			patch.object(frappe.db, "sql", side_effect=recording_sql),
+			patch.object(frappe, "get_all", side_effect=AssertionError("get_all during a chart build")),
+		):
+			for chart in dashboard.CHARTS:
+				self._chart(chart)
+		for table in (
+			"tabA2C Loan Application",
+			"tabA2C Farmer Profile",
+			"tabA2C Consent",
+			"tabA2C Participating Bank",
+		):
+			self.assertFalse([q for q in executed if table in q], table)
+
+	def test_refresh_is_idempotent(self):
+		def totals():
+			return frappe.db.sql(
+				"""SELECT family, SUM(total), SUM(records), SUM(requested_value), SUM(approved_value)
+				FROM `tabA2C Dashboard Snapshot` WHERE snapshot_date = CURDATE()
+				GROUP BY family ORDER BY family"""
+			)
+
+		dashboard_rollup.refresh()
+		first = totals()
+		dashboard_rollup.refresh()
+		self.assertEqual(totals(), first)
+
+	def test_overlapping_refresh_is_skipped(self):
+		import pymysql
+
+		lock = f"{frappe.local.site}:{dashboard_rollup.LOCK_KEY}"
+		other = pymysql.connect(
+			host=frappe.conf.db_host or "localhost",
+			port=int(frappe.conf.db_port or 3306),
+			user=frappe.conf.db_user or frappe.conf.db_name,
+			password=frappe.conf.db_password,
+			database=frappe.conf.db_name,
+		)
+		try:
+			with other.cursor() as cursor:
+				cursor.execute("SELECT GET_LOCK(%s, 0)", (lock,))
+			self.assertIsNone(dashboard_rollup.refresh())
+		finally:
+			other.close()
+
+	def test_past_snapshots_are_kept(self):
+		yesterday = frappe.utils.add_days(frappe.utils.getdate(), -1)
+		doc = frappe.get_doc(
+			{
+				"doctype": "A2C Dashboard Snapshot",
+				"snapshot_date": yesterday,
+				"family": "provider",
+				"bank": self.bank,
+			}
+		)
+		doc.db_insert()
+		try:
+			dashboard_rollup.refresh()
+			self.assertTrue(frappe.db.exists("A2C Dashboard Snapshot", doc.name))
+		finally:
+			frappe.db.delete("A2C Dashboard Snapshot", {"name": doc.name})
 
 	def test_guest_can_call_the_rest_route(self):
 		builder = EnvironBuilder(
