@@ -363,11 +363,40 @@ class TestDashboardApi(unittest.TestCase):
 		self.assertEqual(body["status"], "success")
 		self.assertEqual(body["data"][0]["applications_total"], 4)
 
-	def test_route_is_public_in_the_spec(self):
-		"""`security: []` is what exempts the path from the JWT middleware."""
+	def test_route_needs_the_dashboard_key_at_the_gateway_only(self):
+		"""The spec asks the gateway for the dashboards' key; the platform treats the route as public."""
+		from oan_a2c.api.router import is_guest_operation
+
 		operation = _load_openapi_spec()["paths"]["/v1/charts/{chart_id}"]["get"]
-		self.assertEqual(operation["security"], [])
+		self.assertEqual(operation["security"], [{"DashboardKeyAuth": []}])
 		self.assertEqual(operation["x-legacy-rpc-method"], "oan_a2c.api.v1.dashboard.get_chart")
+		self.assertTrue(is_guest_operation(operation))
+		self.assertFalse(is_guest_operation({"security": [{"BearerAuth": []}]}))
+		self.assertFalse(is_guest_operation({"security": [{"DashboardKeyAuth": [], "BearerAuth": []}]}))
+
+	def test_gateway_protects_the_charts_with_the_dashboard_key(self):
+		"""Kong: key-auth plus an ACL that admits only the dashboards' consumer."""
+		import importlib.util
+		import os
+
+		path = os.path.join(frappe.get_app_path("oan_a2c"), "..", "kong", "generate_kong_config_from_spec.py")
+		spec = importlib.util.spec_from_file_location("a2c_kong_generator", path)
+		generator = importlib.util.module_from_spec(spec)
+		spec.loader.exec_module(generator)
+
+		config = generator.build_config(
+			generator.reconcile(generator.spec_routes(generator.load_spec(generator.SPEC_PATH)))
+		)
+		route = next(r for r in config["services"][0]["routes"] if "charts" in r["paths"][0])
+		plugins = {p["name"]: p["config"] for p in route["plugins"]}
+		self.assertEqual(plugins["key-auth"]["key_names"], ["apikey"])
+		self.assertTrue(plugins["key-auth"]["hide_credentials"])
+		self.assertEqual(plugins["acl"]["allow"], ["dashboards"])
+		self.assertEqual(plugins["rate-limiting"]["limit_by"], "consumer")
+
+		consumer = next(c for c in config["consumers"] if c["username"] == "oan-dashboards")
+		self.assertEqual(consumer["acls"], [{"group": "dashboards"}])
+		self.assertIn("DECK_OAN_DASHBOARDS_API_KEY", consumer["keyauth_credentials"][0]["key"])
 
 	def test_middleware_exempts_only_the_templated_chart_path(self):
 		"""A `<param>` in an exempt path matches exactly one segment, nothing wider."""

@@ -4261,7 +4261,8 @@ paths:
           $ref: '#/components/responses/429RateLimited'
         '500':
           $ref: '#/components/responses/500InternalError'
-      security: []
+      security:
+      - DashboardKeyAuth: []
 components:
   securitySchemes:
     BearerAuth:
@@ -4276,6 +4277,13 @@ components:
       name: Authorization
       description: 'Format: `token <api_key>:<api_secret>`. Used only by the two inbound webhook receivers;
         issued per partner and paired with IP allowlisting at the gateway.'
+    DashboardKeyAuth:
+      type: apiKey
+      in: header
+      name: apikey
+      description: API key of the OAN dashboards (Kong consumer `oan-dashboards`, group `dashboards`).
+        Checked and stripped by the gateway; the platform itself treats the route as public, so today,
+        before the gateway enforces keys, the header is simply ignored.
   schemas:
     StandardSuccessResponse:
       type: object
