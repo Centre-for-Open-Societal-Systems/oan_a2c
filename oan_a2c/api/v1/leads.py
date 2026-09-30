@@ -818,7 +818,7 @@ def get_assignable_users(**kwargs):
 
 	has_next = (start_idx + page_len) < total_count
 	# Note: This pagination shape ({start, page_length, total_count, has_next}) is intentional
-	# and conforms to the API specification / contract established in docs/api-flow-backend.md.
+	# and conforms to the API contract in openapi/openapi_v1.yaml.
 	pagination = {
 		"start": start_idx,
 		"page_length": page_len,
