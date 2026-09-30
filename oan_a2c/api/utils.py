@@ -849,9 +849,10 @@ def sync_lead_with_loan(loan_doc):
 	audit_event.lead = lead_id
 	audit_event.event_type = "Status Changed"
 	audit_event.event_title = "Status Updated"
-	audit_event.event_description = _(
-		"Changed to {0}\nReason: loan application {1} is {2}\nUpdated by: {3}"
-	).format(steps[-1], loan_doc.name, loan_doc.stage_label or loan_state, actor)
+	description = _("Changed to {0}").format(steps[-1])
+	description += f"\nReason: loan application {loan_doc.name} is {loan_doc.stage_label or loan_state}"
+	description += f"\nUpdated by: {actor}"
+	audit_event.event_description = description
 	audit_event.insert(ignore_permissions=True)
 
 
