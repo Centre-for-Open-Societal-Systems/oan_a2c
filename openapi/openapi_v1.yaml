@@ -51,6 +51,8 @@ tags:
   description: In-app notifications for the signed-in user.
 - name: Inbound Webhooks
   description: Server-to-server receivers for external systems.
+- name: Programme Dashboards
+  description: Public, aggregate-only chart data for the OAN programme dashboards.
 security:
 - BearerAuth: []
 paths:
@@ -3732,6 +3734,61 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/LeadInboundRequest'
+  /v1/charts/{chart_id}:
+    get:
+      summary: Get aggregate data for a dashboard chart
+      tags:
+      - Programme Dashboards
+      operationId: get_v1_charts_chart_id
+      x-legacy-rpc-method: oan_a2c.api.v1.dashboard.get_chart
+      parameters:
+      - name: chart_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Chart identifier, e.g. a2cKpis.
+      - name: provider
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: Participating bank id to narrow every figure to. Omit or `all` for the whole
+          programme.
+      - name: region
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: Comma-separated region names, as the farmer registry reports them. Case-insensitive.
+      - name: woreda
+        in: query
+        required: false
+        schema:
+          type: string
+          nullable: true
+        description: Comma-separated woreda names. Case-insensitive.
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/DashboardChartRows'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '429': *id005
+        '500': *id006
+      security: []
 components:
   securitySchemes:
     BearerAuth:
@@ -4866,6 +4923,13 @@ components:
       description: Not documented with a request example; inferred from the endpoint's idempotency contract
         (dedupe by external_id, then by phone_number).
       x-schema-confidence: inferred
+    DashboardChartRows:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+      description: Aggregate rows for one chart. Columns depend on the chart; no row carries a record
+        identifier or personal data.
     MessageData:
       type: object
       properties:

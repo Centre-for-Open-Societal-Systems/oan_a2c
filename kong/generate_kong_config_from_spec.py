@@ -102,6 +102,16 @@ TIERS = {
 		"puts many users behind one address. Once a CDN fronts this path the origin sees only "
 		"cache misses and this can be tightened.",
 	},
+	"public-dashboards": {
+		"limit_by": "ip",
+		"minute": 600,
+		"hour": 20000,
+		"policy": "redis",
+		"note": "Programme dashboard charts: public, aggregate-only reads. IP-keyed because there "
+		"is no consumer; the OAN dashboards BFF calls on behalf of every viewer from one address "
+		"and caches each chart for 15 minutes, so its steady load is low. Same number as "
+		"RATE_LIMIT_PER_MINUTE in oan_a2c/api/v1/dashboard.py.",
+	},
 	"uploads": {
 		"limit_by": "consumer",
 		"minute": 10,
@@ -298,6 +308,8 @@ TIER_OVERRIDES = {
 	("DELETE", "/v1/notifications"): "authenticated-core",
 	# Domain 10: Inbound Webhooks
 	("POST", "/v1/webhooks/leads"): "webhooks-inbound",
+	# Programme Dashboards (public)
+	("GET", "/v1/charts/{chart_id}"): "public-dashboards",
 }
 
 

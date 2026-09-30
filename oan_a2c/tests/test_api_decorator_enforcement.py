@@ -11,7 +11,7 @@ class TestApiDecoratorEnforcement(unittest.TestCase):
 	Mandates:
 	1. Zero endpoints in oan_a2c/api use the legacy @frappe.whitelist decorator,
 	   as all routing is strictly handled via Werkzeug REST routing and OpenAPI spec.
-	2. All 95 endpoints registered in the OpenAPI route specification must be wrapped
+	2. All 96 endpoints registered in the OpenAPI route specification must be wrapped
 	   with the `@handle_api_errors` decorator for consistent error formatting and request ID tracking.
 	"""
 

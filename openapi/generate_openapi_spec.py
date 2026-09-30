@@ -187,6 +187,16 @@ def data(name, schema):
 
 data("MessageData", MSG)
 
+# --- Programme Dashboards ---
+data(
+	"DashboardChartRows",
+	ARR(
+		{"type": "object", "additionalProperties": True},
+		description="Aggregate rows for one chart. Columns depend on the chart; no row carries "
+		"a record identifier or personal data.",
+	),
+)
+
 # --- Domain 01: Identity & Access ---
 user_summary_props = {
 	"email": S(),
@@ -1097,6 +1107,29 @@ QP["SupportingDocumentDownload"] = [
 		"description": "1 to render inline; omit to download.",
 	}
 ]
+QP["DashboardChart"] = [
+	{
+		"name": "provider",
+		"in": "query",
+		"required": False,
+		"schema": S(nullable=True),
+		"description": "Participating bank id to narrow every figure to. Omit or `all` for the whole programme.",
+	},
+	{
+		"name": "region",
+		"in": "query",
+		"required": False,
+		"schema": S(nullable=True),
+		"description": "Comma-separated region names, as the farmer registry reports them. Case-insensitive.",
+	},
+	{
+		"name": "woreda",
+		"in": "query",
+		"required": False,
+		"schema": S(nullable=True),
+		"description": "Comma-separated woreda names. Case-insensitive.",
+	},
+]
 QP["KycDocumentDownload"] = [
 	{
 		"name": "view",
@@ -1118,7 +1151,7 @@ QP["GetBasicProfile"] = [
 
 
 # ---------------------------------------------------------------------------
-# The 95 routes.
+# The 96 routes.
 # ---------------------------------------------------------------------------
 def R(
 	method,
@@ -2117,8 +2150,20 @@ ROUTES = [
 		response="LeadInboundData",
 		legacy="oan_a2c.api.v1.webhooks.lead_inbound",
 	),
+	# --- 11 Programme Dashboards ---
+	R(
+		"get",
+		"/v1/charts/{chart_id}",
+		"Get aggregate data for a dashboard chart",
+		"Programme Dashboards",
+		"public",
+		query="DashboardChart",
+		response="DashboardChartRows",
+		path_params=[("chart_id", "Chart identifier, e.g. a2cKpis.")],
+		legacy="oan_a2c.api.v1.dashboard.get_chart",
+	),
 ]
-assert len(ROUTES) == 95, f"expected 95 routes, got {len(ROUTES)}"
+assert len(ROUTES) == 96, f"expected 96 routes, got {len(ROUTES)}"
 
 data(
 	"ConsentReasonListData",
@@ -2171,6 +2216,10 @@ TAGS = [
 	},
 	{"name": "Notifications", "description": "In-app notifications for the signed-in user."},
 	{"name": "Inbound Webhooks", "description": "Server-to-server receivers for external systems."},
+	{
+		"name": "Programme Dashboards",
+		"description": "Public, aggregate-only chart data for the OAN programme dashboards.",
+	},
 ]
 
 
