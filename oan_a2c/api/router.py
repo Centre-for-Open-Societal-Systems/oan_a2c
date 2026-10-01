@@ -254,6 +254,20 @@ def get_routes_spec() -> list[tuple[str, str, str]]:
 	return routes
 
 
+# Security schemes the gateway alone checks, and strips before the request reaches
+# Frappe. A route whose every requirement is one of these is guest to the platform:
+# Kong is what refuses a caller without the credential.
+GATEWAY_ONLY_SCHEMES = frozenset({"DashboardKeyAuth"})
+
+
+def is_guest_operation(details: dict) -> bool:
+	"""True when the platform must let an operation through without a user."""
+	sec = details.get("security")
+	if sec is None:
+		return False
+	return all(set(requirement) <= GATEWAY_ONLY_SCHEMES for requirement in sec)
+
+
 def _register_spec_routes():
 	"""Register all OpenAPI 3.0 spec routes in _rules."""
 	routes = get_routes_spec()
@@ -263,10 +277,8 @@ def _register_spec_routes():
 	paths = spec.get("paths", {})
 	for path, methods in paths.items():
 		for _method, details in methods.items():
-			if isinstance(details, dict):
-				sec = details.get("security")
-				if sec is not None and len(sec) == 0:
-					guest_paths.add(path)
+			if isinstance(details, dict) and is_guest_operation(details):
+				guest_paths.add(path)
 
 	# Guest endpoints fallback
 	for g_path in (

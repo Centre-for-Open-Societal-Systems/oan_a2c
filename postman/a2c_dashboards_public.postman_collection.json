@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a2c-programme-dashboards-public",
     "name": "OAN A2C — Programme Dashboards (Public)",
-    "description": "Aggregate chart data for the OAN programme dashboards: GET /api/v1/charts/{chart_id}.\n\nPublic: no Authorization header is sent. Rows are counts and sums only, never a farmer name, phone, ID or record id. Responses are cached for 15 minutes per chart and filter set, so a record change can take that long to show. Calls are rate limited per IP.\n\nFilters (all optional, `all` means none): `provider` (bank id), `region` and `woreda` (comma-separated names, case-insensitive).\n\nSet `base_url` to the A2C site, e.g. http://localhost:8000 locally. This collection needs no credentials and contains none.",
+    "description": "Aggregate chart data for the OAN programme dashboards: GET /api/v1/charts/{chart_id}.\n\nPublic: no Authorization header is sent. Rows are counts and sums only, never a farmer name, phone, ID or record id. Responses are cached for 15 minutes per chart and filter set, so a record change can take that long to show. Calls are rate limited per IP.\n\nFilters (all optional, `all` means none): `provider` (bank id), `region` and `woreda` (comma-separated names, case-insensitive).\n\nSet `base_url` to the A2C site, e.g. http://localhost:8000 locally. This collection needs no credentials and contains none.\n\nAuth: public today. Once the Kong gateway enforces authorization, the charts need the OAN dashboards' API key (consumer `oan-dashboards`) in the `apikey` header: set `dashboard_api_key` in your own environment (current value only) and the collection sends it.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -1045,6 +1045,23 @@
       "key": "dashboard_woredas",
       "value": "Dale,Aleta Wendo",
       "type": "string"
+    },
+    {
+      "key": "dashboard_api_key",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Sent only when set: public routes ignore it, the gateway needs it once it enforces keys.",
+          "const key = pm.variables.get('dashboard_api_key');",
+          "if (key) pm.request.headers.upsert({ key: 'apikey', value: key });"
+        ]
+      }
     }
   ]
 }
