@@ -1,0 +1,185 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-10-01 00:00:00.000000",
+ "description": "Dashboard rollup: programme-wide A2C aggregates as they stood on a day, rebuilt by the scheduler every 15 minutes. Today's rows are replaced on each refresh; earlier days are kept. Never edited by hand.",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "snapshot_date",
+  "family",
+  "bank",
+  "first_bank",
+  "region",
+  "woreda",
+  "region_key",
+  "woreda_key",
+  "col_dims",
+  "outcome",
+  "product",
+  "month",
+  "dataset",
+  "reason",
+  "sec_measures",
+  "total",
+  "records",
+  "requested_value",
+  "approved_value",
+  "col_measures",
+  "last_seen",
+  "details"
+ ],
+ "fields": [
+  {
+   "fieldname": "snapshot_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Snapshot Date",
+   "reqd": 1
+  },
+  {
+   "description": "Which figures this row carries; each family uses only some of the columns below.",
+   "fieldname": "family",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Family",
+   "options": "application\nfarmer\nconsent\nshare\nshare_dataset\ndecline\nprovider",
+   "reqd": 1
+  },
+  {
+   "description": "Participating Bank id. Empty on the programme-wide rows of families whose distinct counts do not add up across banks (farmer, consent, share).",
+   "fieldname": "bank",
+   "fieldtype": "Data",
+   "label": "Bank"
+  },
+  {
+   "description": "Share rows: the bank of the first application that used the consent.",
+   "fieldname": "first_bank",
+   "fieldtype": "Data",
+   "label": "First Bank"
+  },
+  {
+   "fieldname": "region",
+   "fieldtype": "Data",
+   "label": "Region"
+  },
+  {
+   "fieldname": "woreda",
+   "fieldtype": "Data",
+   "label": "Woreda"
+  },
+  {
+   "description": "Region name lower-cased with whitespace collapsed; what filters match.",
+   "fieldname": "region_key",
+   "fieldtype": "Data",
+   "label": "Region Key"
+  },
+  {
+   "fieldname": "woreda_key",
+   "fieldtype": "Data",
+   "label": "Woreda Key"
+  },
+  {
+   "fieldname": "col_dims",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "outcome",
+   "fieldtype": "Data",
+   "label": "Outcome"
+  },
+  {
+   "fieldname": "product",
+   "fieldtype": "Data",
+   "label": "Product"
+  },
+  {
+   "fieldname": "month",
+   "fieldtype": "Date",
+   "label": "Month"
+  },
+  {
+   "fieldname": "dataset",
+   "fieldtype": "Data",
+   "label": "Dataset"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Data",
+   "label": "Reason",
+   "length": 140
+  },
+  {
+   "fieldname": "sec_measures",
+   "fieldtype": "Section Break",
+   "label": "Measures"
+  },
+  {
+   "fieldname": "total",
+   "fieldtype": "Int",
+   "label": "Total"
+  },
+  {
+   "fieldname": "records",
+   "fieldtype": "Int",
+   "label": "Records"
+  },
+  {
+   "fieldname": "requested_value",
+   "fieldtype": "Float",
+   "label": "Requested Value"
+  },
+  {
+   "fieldname": "approved_value",
+   "fieldtype": "Float",
+   "label": "Approved Value"
+  },
+  {
+   "fieldname": "col_measures",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_seen",
+   "fieldtype": "Date",
+   "label": "Last Seen"
+  },
+  {
+   "description": "Provider rows: the bank's display fields as JSON.",
+   "fieldname": "details",
+   "fieldtype": "Small Text",
+   "label": "Details"
+  }
+ ],
+ "in_create": 1,
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-10-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "A2C Marketplace",
+ "name": "A2C Dashboard Snapshot",
+ "naming_rule": "Random",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 0,
+   "cancel": 0,
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 0,
+   "submit": 0,
+   "write": 0
+  }
+ ],
+ "read_only": 1,
+ "row_format": "Dynamic",
+ "sort_field": "snapshot_date",
+ "sort_order": "DESC",
+ "states": []
+}

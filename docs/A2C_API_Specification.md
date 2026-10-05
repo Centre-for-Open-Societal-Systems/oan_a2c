@@ -79,12 +79,13 @@ The gateway configuration is declarative — the entire routing and policy setup
 
 **Authentication at the Gateway**
 
-The gateway recognizes two credential types:
+The gateway recognizes three credential types:
 
-| Credential             | Used By                                                                  | What the Gateway Checks                                                     |
-| ---------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
-| **Bearer Token (JWT)** | All signed-in users — farmers, bank staff, development agents            | Signature and expiry only                                                   |
-| **Partner API Key**    | The two inbound webhook receivers (Consent Management, Inbound Webhooks) | A valid, provisioned key, plus the caller's IP address against an allowlist |
+| Credential             | Used By                                                                              | What the Gateway Checks                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| **Bearer Token (JWT)** | All signed-in users — farmers, bank staff, development agents                        | Signature and expiry only                                                                                     |
+| **Partner API Key**    | The two inbound webhook receivers (Consent Management, Inbound Webhooks)             | A valid, provisioned key, plus the caller's IP address against an allowlist                                   |
+| **Dashboard API Key**  | The OAN programme dashboards, reading the aggregate charts (`/v1/charts/{chart_id}`) | A valid key held by the `oan-dashboards` consumer, whose group is the only one the charts' access list admits |
 
 Role-based permissions — which bank a user belongs to, which actions their role allows — are enforced by the A2C platform itself, not the gateway. This keeps a single, consistent source of truth for authorization rather than duplicating those rules in two places.
 

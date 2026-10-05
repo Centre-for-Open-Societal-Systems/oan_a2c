@@ -102,6 +102,16 @@ TIERS = {
 		"puts many users behind one address. Once a CDN fronts this path the origin sees only "
 		"cache misses and this can be tightened.",
 	},
+	"public-dashboards": {
+		"limit_by": "consumer",
+		"minute": 600,
+		"hour": 20000,
+		"policy": "redis",
+		"note": "Programme dashboard charts: aggregate-only reads by the OAN dashboards, the one "
+		"consumer holding a dashboard key. It calls on behalf of every viewer and caches each chart "
+		"for 15 minutes, so its steady load is low. Same number as RATE_LIMIT_PER_MINUTE in "
+		"oan_a2c/api/v1/dashboard.py.",
+	},
 	"uploads": {
 		"limit_by": "consumer",
 		"minute": 10,
@@ -165,6 +175,22 @@ WEBHOOK_ALLOWED_CIDRS = [
 	"172.16.0.0/12",
 	"192.168.0.0/16",
 ]
+
+# ---------------------------------------------------------------------------
+# Dashboard key (DashboardKeyAuth routes).
+#
+# The OAN dashboards are a server, not a user: they present one API key, held by
+# the `oan-dashboards` consumer, and the ACL admits only its group, so a key issued
+# to a webhook partner cannot read the charts. Kong strips the key before the
+# request goes upstream. Frappe treats these routes as public
+# (api/router.GATEWAY_ONLY_SCHEMES): the gateway is the only door once the backend
+# host is private. The key is a decK template reference, resolved from the
+# environment at `deck sync`, never a literal in this repo.
+# ---------------------------------------------------------------------------
+DASHBOARD_CONSUMER = "oan-dashboards"
+DASHBOARD_ACL_GROUP = "dashboards"
+DASHBOARD_API_KEY = '${{ env "DECK_OAN_DASHBOARDS_API_KEY" }}'
+
 
 FRAPPE_SERVICE_CREDENTIAL = (
 	'token ${{ env "DECK_FRAPPE_WEBHOOK_API_KEY" }}:${{ env "DECK_FRAPPE_WEBHOOK_API_SECRET" }}'
@@ -298,6 +324,8 @@ TIER_OVERRIDES = {
 	("DELETE", "/v1/notifications"): "authenticated-core",
 	# Domain 10: Inbound Webhooks
 	("POST", "/v1/webhooks/leads"): "webhooks-inbound",
+	# Programme Dashboards (public)
+	("GET", "/v1/charts/{chart_id}"): "public-dashboards",
 }
 
 
@@ -320,6 +348,8 @@ def spec_routes(spec):
 				auth = "public"
 			elif security == [{"PartnerApiKeyAuth": []}]:
 				auth = "partner-key"
+			elif security == [{"DashboardKeyAuth": []}]:
+				auth = "dashboard-key"
 			else:
 				auth = "bearer"
 			tag = (op.get("tags") or [None])[0]
@@ -498,6 +528,13 @@ def build_config(routes):
 				{"name": "ip-restriction", "config": {"allow": list(WEBHOOK_ALLOWED_CIDRS)}}
 			)
 			route["plugins"].append(frappe_service_credential_plugin())
+		elif auth == "dashboard-key":
+			route["plugins"].append(
+				{"name": "key-auth", "config": {"key_names": ["apikey"], "hide_credentials": True}}
+			)
+			route["plugins"].append(
+				{"name": "acl", "config": {"allow": [DASHBOARD_ACL_GROUP], "hide_groups_header": True}}
+			)
 		# auth == "public": no auth plugin attached; rate-limiting (IP-keyed) still applies
 
 		service["routes"].append(route)
@@ -559,6 +596,12 @@ def build_config(routes):
 			"username": "telco-ivr-lead-gateway",
 			"tags": ["partner", "webhook"],
 			"keyauth_credentials": [{"key": "REPLACE_WITH_ROTATABLE_SECRET_2"}],
+		},
+		{
+			"username": DASHBOARD_CONSUMER,
+			"tags": ["dashboards", "machine-client"],
+			"keyauth_credentials": [{"key": DASHBOARD_API_KEY}],
+			"acls": [{"group": DASHBOARD_ACL_GROUP}],
 		},
 		{
 			"username": "partner-bank-example-gold",

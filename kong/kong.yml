@@ -2790,6 +2790,38 @@ services:
         add:
           headers:
           - Authorization:token ${{ env "DECK_FRAPPE_WEBHOOK_API_KEY" }}:${{ env "DECK_FRAPPE_WEBHOOK_API_SECRET" }}
+  - name: get-v1-charts-chart_id
+    methods:
+    - GET
+    paths:
+    - ~/v1/charts/(?<chart_id>[^/]+)$
+    strip_path: false
+    regex_priority: 3
+    tags:
+    - a2c
+    - v1
+    - d11
+    - public-dashboards
+    - dashboard-key
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 600
+        hour: 20000
+        limit_by: consumer
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
+    - name: key-auth
+      config:
+        key_names:
+        - apikey
+        hide_credentials: true
+    - name: acl
+      config:
+        allow:
+        - dashboards
+        hide_groups_header: true
   - name: static-public-files
     methods:
     - GET
@@ -2842,6 +2874,14 @@ consumers:
   - webhook
   keyauth_credentials:
   - key: REPLACE_WITH_ROTATABLE_SECRET_2
+- username: oan-dashboards
+  tags:
+  - dashboards
+  - machine-client
+  keyauth_credentials:
+  - key: ${{ env "DECK_OAN_DASHBOARDS_API_KEY" }}
+  acls:
+  - group: dashboards
 - username: partner-bank-example-gold
   tags:
   - partner
