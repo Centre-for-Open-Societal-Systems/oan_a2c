@@ -61,7 +61,6 @@ class ClearSchema(BaseModel):
 # --- Endpoints -------------------------------------------------------------
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetNotificationsSchema)
 @handle_api_errors
 def get_notifications(**kwargs):
@@ -116,7 +115,6 @@ def get_notifications(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(MarkReadSchema)
 @handle_api_errors
 def mark_read(**kwargs):
@@ -139,7 +137,6 @@ def mark_read(**kwargs):
 	return success_response(data={"updated": len(names)}, message="Notifications marked as read")
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(ClearSchema)
 @handle_api_errors
 def clear(**kwargs):

@@ -203,7 +203,6 @@ def _save_farmer_data_to_lead(lead_id, farmer_dict, openg2p_consent_id):
 
 
 # 1 ───────────────────────────────────────────────────────────────────────────
-@frappe.whitelist(allow_guest=False)
 @validate_request(SearchFarmerSchema)
 @handle_api_errors
 def search_farmer(**kwargs):
@@ -244,7 +243,6 @@ def search_farmer(**kwargs):
 
 
 # 2 ───────────────────────────────────────────────────────────────────────────
-@frappe.whitelist(allow_guest=False)
 @handle_api_errors
 def get_partner_allowed_data_field_ids():
 	"""Return the allowed data field IDs for the consent partner.
@@ -275,7 +273,6 @@ def _lead_for_consent_request(cr_doc, claimed_lead_id=None) -> str | None:
 
 
 # 3 ───────────────────────────────────────────────────────────────────────────
-@frappe.whitelist(allow_guest=False)
 @validate_request(RequestOTPSchema)
 @handle_api_errors
 def request_otp(**kwargs):
@@ -425,7 +422,6 @@ def request_otp(**kwargs):
 
 
 # 4 ───────────────────────────────────────────────────────────────────────────
-@frappe.whitelist(allow_guest=False)
 @validate_request(VerifyOTPSchema)
 @handle_api_errors
 def verify_otp(**kwargs):
@@ -549,7 +545,6 @@ def _save_direct_consent_response_to_lead(consent_request, response_data, openg2
 
 
 # 5 ───────────────────────────────────────────────────────────────────────────
-@frappe.whitelist(allow_guest=False)
 @validate_request(SubmitConsentSchema)
 @handle_api_errors
 def submit_consent(**kwargs):
@@ -812,7 +807,6 @@ def submit_consent(**kwargs):
 
 
 # 6 ───────────────────────────────────────────────────────────────────────────
-@frappe.whitelist(allow_guest=False)
 @handle_api_errors
 def get_consent_reasons():
 	"""Fetch all active consent reasons from OpenG2P. → client.get_consent_reasons"""
@@ -825,7 +819,6 @@ def get_consent_reasons():
 
 
 # 7 ───────────────────────────────────────────────────────────────────────────
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetConsentAllowedFieldsSchema)
 @handle_api_errors
 def get_consent_allowed_fields(**kwargs):

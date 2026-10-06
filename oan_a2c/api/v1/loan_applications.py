@@ -245,7 +245,6 @@ def _get_consent_details(consent_id: str) -> dict:
 	return res_fields
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetBasicProfileSchema)
 @handle_api_errors
 def get_basic_profile(lead_id: str | None = None, include_consent_data: bool | None = None):
@@ -333,7 +332,6 @@ def get_basic_profile(lead_id: str | None = None, include_consent_data: bool | N
 	return success_response(data=data, message="Basic profile retrieved successfully")
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(UpdateBasicProfileSchema)
 @handle_api_errors
 def update_basic_profile(
@@ -392,7 +390,6 @@ def update_basic_profile(
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(LoanApplicationIDSchema)
 @handle_api_errors
 def get_full_profile(**kwargs):
@@ -468,7 +465,6 @@ def get_full_profile(**kwargs):
 	return success_response(data=data, message="Full profile retrieved successfully")
 
 
-@frappe.whitelist(allow_guest=False)
 @handle_api_errors
 def get_loan_summary():
 	frappe.has_permission("A2C Loan Application", "read", throw=True)
@@ -533,7 +529,6 @@ def get_loan_summary():
 	return success_response(data=summary, message="Loan summary retrieved successfully")
 
 
-@frappe.whitelist(allow_guest=False)
 @handle_api_errors
 def get_loan_metadata():
 	"""
@@ -570,7 +565,6 @@ def get_loan_metadata():
 	return success_response(data={"statuses": status_list}, message="Loan metadata retrieved successfully")
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetAllLoansSchema)
 @handle_api_errors
 def get_all_loans(**kwargs):
@@ -741,7 +735,6 @@ def get_all_loans(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(LoanApplicationIDSchema)
 @handle_api_errors
 def upload_supporting_documents(**kwargs):
@@ -839,7 +832,6 @@ def upload_supporting_documents(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(LoanApplicationIDSchema)
 @handle_api_errors
 def get_supporting_documents(**kwargs):
@@ -864,7 +856,6 @@ def get_supporting_documents(**kwargs):
 	return success_response(data=files, message="Supporting documents retrieved successfully")
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(DownloadSupportingDocumentSchema)
 @handle_api_errors
 def download_supporting_document(**kwargs):
@@ -896,7 +887,6 @@ def download_supporting_document(**kwargs):
 		frappe.local.response.display_content_as = "inline"
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(DeleteSupportingDocumentSchema)
 @handle_api_errors
 def delete_supporting_document(**kwargs):
@@ -934,7 +924,6 @@ def delete_supporting_document(**kwargs):
 	return success_response(message=_("Document deleted successfully."))
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(LeadIDSchema)
 @handle_api_errors
 def create_loan_application(**kwargs):
@@ -1069,7 +1058,6 @@ class UpdateLoanStatusSchema(BaseModel):
 	# Validation will happen in the endpoint using resolve_bank_stage.
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(UpdateLoanStatusSchema)
 @handle_api_errors
 @require_role([ADMIN_ROLE, BANK_ADMIN_ROLE, BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE, "System Manager"])
@@ -1165,7 +1153,6 @@ def update_loan_status(**kwargs):
 	return success_response(message=_("Loan status updated to {0}.").format(resolved["stage_label"]))
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(UpdateLoanStepSchema)
 @handle_api_errors
 def update_loan_step(**kwargs):
@@ -1186,7 +1173,6 @@ def update_loan_step(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(AssignLoanOfficerSchema)
 @handle_api_errors
 def assign_loan_officer(**kwargs):

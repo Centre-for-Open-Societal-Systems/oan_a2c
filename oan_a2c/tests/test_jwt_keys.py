@@ -7,6 +7,7 @@ User, so these use Administrator and touch no rows at all.
 """
 
 import datetime
+import json
 import unittest
 
 import frappe
@@ -16,7 +17,9 @@ from oan_a2c.api.jwt_keys import (
 	FALLBACK_KID,
 	JWTKeyConfigurationError,
 	get_signing_key,
+	get_signing_material,
 	get_verification_key,
+	get_verification_material,
 )
 from oan_a2c.api.middleware import JWTUnauthorized, validate_jwt_request
 from oan_a2c.tests.request_context import RequestContextMixin
@@ -145,3 +148,124 @@ class TestJWTKeyResolution(RequestContextMixin, unittest.TestCase):
 		with self.assertRaises(JWTUnauthorized) as context:
 			self._validate(self._token("whatever", "v1"))
 		self.assertIn("System encryption key missing", context.exception.message)
+
+	# ------------------------------------------------------------------
+	# RS256 (Asymmetric RSA) Tests & Dual-Mode Validation
+	# ------------------------------------------------------------------
+
+	def test_rsa_signing_material_and_verification(self):
+		"""An RSA private key signs with RS256 and validates with the derived public key."""
+		from cryptography.hazmat.primitives import serialization
+		from cryptography.hazmat.primitives.asymmetric import rsa
+
+		key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+		priv_pem = key.private_bytes(
+			encoding=serialization.Encoding.PEM,
+			format=serialization.PrivateFormat.PKCS8,
+			encryption_algorithm=serialization.NoEncryption(),
+		).decode("utf-8")
+
+		self._set_conf(jwt_secrets={"v2": priv_pem}, jwt_current_kid="v2")
+		kid, _signing_key, alg = get_signing_material()
+		self.assertEqual(kid, "v2")
+		self.assertEqual(alg, "RS256")
+
+		verif_key, expected_alg = get_verification_material("v2")
+		self.assertEqual(expected_alg, "RS256")
+		self.assertIn("-----BEGIN PUBLIC KEY-----", verif_key)
+
+		# Mint an RS256 token and validate through middleware
+		now = datetime.datetime.now(datetime.UTC)
+		payload = {
+			"sub": "Administrator",
+			"iss": "oan_a2c_identity_gateway",
+			"aud": "oan_a2c_client",
+			"iat": now,
+			"exp": now + datetime.timedelta(minutes=15),
+			"roles": ["System Manager"],
+			"user_type": "marketplace",
+		}
+		rsa_token = jwt.encode(payload, priv_pem, algorithm="RS256", headers={"kid": "v2"})
+		self.assertIsNone(self._validate(rsa_token))
+
+	def test_dual_mode_accepts_both_rsa_and_hmac(self):
+		"""Dual-mode accepts both legacy HS256 and new RS256 tokens."""
+		from cryptography.hazmat.primitives import serialization
+		from cryptography.hazmat.primitives.asymmetric import rsa
+
+		key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+		priv_pem = key.private_bytes(
+			encoding=serialization.Encoding.PEM,
+			format=serialization.PrivateFormat.PKCS8,
+			encryption_algorithm=serialization.NoEncryption(),
+		).decode("utf-8")
+
+		self._set_conf(jwt_secrets={"v1": "legacy-hmac-secret", "v2": priv_pem}, jwt_current_kid="v2")
+
+		# HS256 token for v1 validates
+		hs256_token = self._token("legacy-hmac-secret", "v1")
+		self.assertIsNone(self._validate(hs256_token))
+
+		# RS256 token for v2 validates
+		now = datetime.datetime.now(datetime.UTC)
+		payload = {
+			"sub": "Administrator",
+			"iss": "oan_a2c_identity_gateway",
+			"aud": "oan_a2c_client",
+			"iat": now,
+			"exp": now + datetime.timedelta(minutes=15),
+			"roles": ["System Manager"],
+			"user_type": "marketplace",
+		}
+		rsa_token = jwt.encode(payload, priv_pem, algorithm="RS256", headers={"kid": "v2"})
+		self.assertIsNone(self._validate(rsa_token))
+
+	def test_algorithm_confusion_attack_rejected(self):
+		"""If an attacker signs a token using HS256 with the RSA public key for v2, it is rejected."""
+		from cryptography.hazmat.primitives import serialization
+		from cryptography.hazmat.primitives.asymmetric import rsa
+
+		key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+		priv_pem = key.private_bytes(
+			encoding=serialization.Encoding.PEM,
+			format=serialization.PrivateFormat.PKCS8,
+			encryption_algorithm=serialization.NoEncryption(),
+		).decode("utf-8")
+		pub_pem = (
+			key.public_key()
+			.public_bytes(
+				encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo
+			)
+			.decode("utf-8")
+		)
+
+		self._set_conf(jwt_secrets={"v2": priv_pem}, jwt_current_kid="v2")
+
+		now = datetime.datetime.now(datetime.UTC)
+		# Forged token: client claims kid="v2" but tries to use HS256 algorithm with the public key
+		import base64
+		import hashlib
+		import hmac
+
+		def _b64url(data: bytes) -> str:
+			return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+		header = {"typ": "JWT", "alg": "HS256", "kid": "v2"}
+		raw_payload = {
+			"sub": "Administrator",
+			"iss": "oan_a2c_identity_gateway",
+			"aud": "oan_a2c_client",
+			"iat": int(now.timestamp()),
+			"exp": int((now + datetime.timedelta(minutes=15)).timestamp()),
+			"roles": ["System Manager"],
+			"user_type": "marketplace",
+		}
+		h_b64 = _b64url(json.dumps(header).encode("utf-8"))
+		p_b64 = _b64url(json.dumps(raw_payload).encode("utf-8"))
+		signing_input = f"{h_b64}.{p_b64}".encode("ascii")
+		sig = hmac.new(pub_pem.encode("utf-8"), signing_input, hashlib.sha256).digest()
+		forged_token = f"{h_b64}.{p_b64}.{_b64url(sig)}"
+
+		with self.assertRaises(JWTUnauthorized) as context:
+			self._validate(forged_token)
+		self.assertIn("Invalid token", context.exception.message)

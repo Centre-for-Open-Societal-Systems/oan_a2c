@@ -1,5 +1,5 @@
 """
-- Enforces JWT session validation via whitelist allow_guest=False.
+- Enforces JWT session validation.
 - Explicitly executes frappe.has_permission.
 - Leverages frappe.get_list() to ensure Frappe's RBAC and User Permissions (multi-tenant
   data isolation) are dynamically applied at the database query layer.
@@ -131,7 +131,6 @@ class UpdateVisitScheduleStatusSchema(BaseModel):
 	status: Literal["Scheduled", "Completed", "Cancelled", "Missed"]
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetLeadsSchema)
 @handle_api_errors
 def get_leads(**kwargs):
@@ -383,7 +382,6 @@ def get_leads(**kwargs):
 	return success_response(data=leads, message="Leads retrieved successfully", pagination=pagination)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(CreateLeadSchema)
 @handle_api_errors
 def create_lead(**kwargs):
@@ -391,7 +389,7 @@ def create_lead(**kwargs):
 	Natively creates a new A2C Lead document from the A2C application interface.
 
 	Security Specs:
-	  - Enforces JWT session validation via whitelist allow_guest=False.
+	  - Enforces JWT session validation.
 	  - Validates role creation permissions natively.
 	  - Validates and sanitizes all input strings, including strict email formatting checks.
 	"""
@@ -464,7 +462,6 @@ def create_lead(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @handle_api_errors
 def get_lead_summary():
 	"""
@@ -518,7 +515,6 @@ def get_lead_summary():
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @handle_api_errors
 def get_lead_metadata():
 	"""
@@ -549,7 +545,6 @@ def get_lead_metadata():
 	return success_response(data=data, message="Lead metadata retrieved successfully")
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(AddLeadCreditInfoSchema)
 @handle_api_errors
 def add_lead_credit_info(**kwargs):
@@ -557,7 +552,7 @@ def add_lead_credit_info(**kwargs):
 	Creates a new A2C Credit Information record associated with a lead.
 
 	Security & Validation:
-	  - Enforces JWT session validation via whitelist allow_guest=False.
+	  - Enforces JWT session validation.
 	  - Checks user has 'write' permission on the lead and 'create' permission on A2C Credit Information.
 	  - Validates and sanitizes parameters.
 	"""
@@ -648,7 +643,6 @@ def add_lead_credit_info(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(LeadIDSchema)
 @handle_api_errors
 def get_lead_credit_infos(**kwargs):
@@ -671,7 +665,6 @@ def get_lead_credit_infos(**kwargs):
 	return success_response(data=results, message="Lead credit information retrieved successfully")
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(UpdateLeadStatusSchema)
 @handle_api_errors
 def update_lead_status(**kwargs):
@@ -721,7 +714,6 @@ def update_lead_status(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetAssignableUsersSchema)
 @handle_api_errors
 def get_assignable_users(**kwargs):
@@ -826,7 +818,7 @@ def get_assignable_users(**kwargs):
 
 	has_next = (start_idx + page_len) < total_count
 	# Note: This pagination shape ({start, page_length, total_count, has_next}) is intentional
-	# and conforms to the API specification / contract established in docs/api-flow-backend.md.
+	# and conforms to the API contract in openapi/openapi_v1.yaml.
 	pagination = {
 		"start": start_idx,
 		"page_length": page_len,
@@ -839,7 +831,6 @@ def get_assignable_users(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(AssignLeadSchema)
 @handle_api_errors
 def assign_lead(**kwargs):
@@ -898,7 +889,6 @@ def assign_lead(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(AddLeadCommentSchema)
 @handle_api_errors
 def add_lead_comment(**kwargs):
@@ -924,7 +914,6 @@ def add_lead_comment(**kwargs):
 	return success_response(data={"comment_id": audit_event.name}, message="Comment added successfully.")
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetLeadTimelineSchema)
 @handle_api_errors
 def get_lead_timeline(**kwargs):
@@ -961,7 +950,6 @@ def get_lead_timeline(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(LeadIDSchema)
 @handle_api_errors
 def get_lead_call_logs(**kwargs):
@@ -1008,13 +996,12 @@ def get_lead_call_logs(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(ScheduleVisitSchema)
 @handle_api_errors
 def schedule_visit(**kwargs):
 	"""
 	Schedules a new visit for an A2C Lead.
-	- Enforces JWT session validation via allow_guest=False.
+	- Enforces JWT session validation.
 	- Enforces user write permissions on the Lead and create permissions on the Visit Schedule.
 	- Inserts a system Comment on the lead's timeline.
 	"""
@@ -1063,7 +1050,6 @@ def schedule_visit(**kwargs):
 	return success_response(data={"schedule_id": schedule.name}, message="Visit scheduled successfully.")
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetVisitSchedulesSchema)
 @handle_api_errors
 def get_visit_schedules(**kwargs):
@@ -1138,7 +1124,6 @@ def get_visit_schedules(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(UpdateVisitScheduleStatusSchema)
 @handle_api_errors
 def update_visit_schedule_status(**kwargs):

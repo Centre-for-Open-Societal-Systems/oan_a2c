@@ -20,7 +20,8 @@ from oan_a2c.a2c_marketplace.roles import (
 	DEVELOPMENT_AGENT_ROLE,
 	FARMER_ROLE,
 )
-from oan_a2c.api.jwt_keys import JWTKeyConfigurationError, get_signing_key
+from oan_a2c.api.jwt_keys import JWTKeyConfigurationError, get_signing_key, get_signing_material
+from oan_a2c.api.router import prefixed
 from oan_a2c.api.utils import (
 	PasswordChangeRequired,
 	SafeEmail,
@@ -31,6 +32,9 @@ from oan_a2c.api.utils import (
 	validate_phone_string,
 	validate_request,
 )
+
+route = prefixed("/api/v1/auth")
+me_route = prefixed("/api/v1/me")
 
 
 def _resolve_login_id(usr: str) -> str:
@@ -152,7 +156,8 @@ def _classify_user_type(roles: list[str]) -> str:
 
 def generate_access_token(usr: str, roles: list) -> str:
 	try:
-		kid, secret = get_signing_key()
+		# Signs with RS256 if RSA key is configured; temporary HS256 fallback for legacy HMAC keys
+		kid, secret, alg = get_signing_material()
 	except JWTKeyConfigurationError:
 		frappe.throw(_("System configuration error: no JWT signing key"))
 
@@ -166,7 +171,7 @@ def generate_access_token(usr: str, roles: list) -> str:
 		"roles": roles,
 		"user_type": _classify_user_type(roles),
 	}
-	return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": kid})
+	return jwt.encode(payload, secret, algorithm=alg, headers={"kid": kid})
 
 
 def generate_refresh_token(usr: str, remember_me: bool = False) -> str:
@@ -234,8 +239,7 @@ def _get_user_bank_context(user_id: str) -> dict[str, str | None]:
 	}
 
 
-# nosemgrep: guest-whitelisted-method -- reviewed: public auth endpoint, validated + rate-limited
-@frappe.whitelist(allow_guest=True)
+@route("/login", allow_guest=True, summary="Login and obtain token pair")
 @validate_request(LoginSchema)
 @handle_api_errors
 def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = False):
@@ -314,8 +318,7 @@ def login(usr: str | None = None, pwd: str | None = None, remember_me: bool = Fa
 	)
 
 
-# nosemgrep: guest-whitelisted-method -- reviewed: public password-recovery endpoint, enumeration-safe
-@frappe.whitelist(allow_guest=True)
+@route("/password/forgot", allow_guest=True, summary="Initiate password recovery")
 @validate_request(ForgotPasswordSchema)
 @handle_api_errors
 def forgot_password(email: str):
@@ -347,8 +350,7 @@ def forgot_password(email: str):
 	)
 
 
-# nosemgrep: guest-whitelisted-method -- reviewed: public reset endpoint, gated on emailed OTP key
-@frappe.whitelist(allow_guest=True)
+@route("/password/reset", allow_guest=True, summary="Complete password reset")
 @validate_request(ResetPasswordSchema)
 @handle_api_errors
 def reset_password(email: str, key: str, new_password: str):
@@ -396,8 +398,7 @@ def reset_password(email: str, key: str, new_password: str):
 
 
 # reviewed: gated on the temporary password itself plus the must-change flag, rate-limited, enumeration-safe
-# nosemgrep: frappe-semgrep-rules.rules.security.guest-whitelisted-method
-@frappe.whitelist(allow_guest=True)
+@route("/password/initial", allow_guest=True, summary="Set initial password")
 @validate_request(SetInitialPasswordSchema)
 @handle_api_errors
 def set_initial_password(usr: str, current_password: str, new_password: str):
@@ -447,8 +448,7 @@ def set_initial_password(usr: str, current_password: str, new_password: str):
 	return success_response(message=_("Password set successfully. Please sign in with your new password."))
 
 
-# nosemgrep: guest-whitelisted-method -- reviewed: public token-rotation endpoint, gated on refresh token
-@frappe.whitelist(allow_guest=True)
+@route("/token/refresh", allow_guest=True, summary="Exchange refresh token")
 @validate_request(RefreshTokenSchema)
 @handle_api_errors
 def refresh(refresh_token: str):
@@ -512,8 +512,7 @@ def refresh(refresh_token: str):
 	return success_response(data={"token": new_access_token, "refresh_token": new_refresh_token})
 
 
-# nosemgrep: guest-whitelisted-method -- reviewed: public logout/revoke endpoint, gated on refresh token
-@frappe.whitelist(allow_guest=True)
+@route("/logout", allow_guest=True, summary="Revoke refresh token")
 @validate_request(LogoutSchema)
 @handle_api_errors
 def logout(refresh_token: str):
@@ -532,7 +531,7 @@ def logout(refresh_token: str):
 	return success_response(message=_("Logged out successfully."))
 
 
-@frappe.whitelist()
+@me_route("", methods=("GET",), summary="Get current user info")
 @handle_api_errors
 def get_me():
 	"""
@@ -566,7 +565,7 @@ def get_me():
 	)
 
 
-@frappe.whitelist()
+@me_route("/profile", methods=("GET",), summary="Get user profile")
 @handle_api_errors
 def get_user_profile():
 	"""
@@ -679,7 +678,24 @@ def _resolve_language(value):
 	)
 
 
-@frappe.whitelist()
+def _user_owned_file(file_url: str | None, user: str) -> str | None:
+	"""File name if `user` uploaded it, else None.
+
+	Mirrors ``_bank_owned_file`` in api/v1/seller/onboarding.py. ``user_image`` arrives
+	as an arbitrary caller-supplied string, so it must never be trusted as a reference
+	to adopt or delete: without this check a user can point ``user_image`` at any
+	``file_url`` in the system -- including /private/files KYC, loan and consent
+	documents -- and have the next profile update delete it.
+	"""
+	if not file_url:
+		return None
+	row = frappe.db.get_value("File", {"file_url": file_url}, ["name", "owner"], as_dict=True)
+	if not row or row.owner != user:
+		return None
+	return row.name
+
+
+@me_route("/profile", methods=("PATCH",), summary="Update user profile")
 @validate_request(UpdateProfileSchema)
 @handle_api_errors
 def update_profile(
@@ -692,8 +708,12 @@ def update_profile(
 	"""
 	Updates the authenticated user's profile details.
 
-	Note on Image Uploads: The client should first upload the image via Frappe's standard
-	POST /api/method/upload_file endpoint and pass the resulting file URL here as `user_image`.
+	Note on Image Uploads: The client should first upload the image via POST /v1/images
+	and pass the returned `file_url` here as `user_image`. (Frappe's own
+	/api/method/upload_file is not an option: it sits outside the /v1 namespace the JWT
+	middleware covers, so a Bearer-token caller is treated as Guest there.) The URL must
+	belong to a file this user uploaded -- any other reference is rejected with 403.
+	Pass an empty string to clear the avatar.
 	"""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Not permitted"), frappe.AuthenticationError)
@@ -711,22 +731,28 @@ def update_profile(
 		user.gender = gender.strip()
 	if user_image is not None:
 		user_image = user_image.strip()
+		# An empty string clears the avatar; any other value must name a file this user
+		# actually uploaded, or it is a reference to someone else's document.
+		if user_image and not _user_owned_file(user_image, frappe.session.user):
+			frappe.throw(_("Invalid image reference."), frappe.PermissionError)
 		if user.user_image and user.user_image != user_image:
-			old_file = frappe.db.get_value("File", {"file_url": user.user_image}, "name")
+			# Ownership-gated as well, so a previously stored hostile value cannot be
+			# used to delete another user's file.
+			old_file = _user_owned_file(user.user_image, frappe.session.user)
 			if old_file:
 				frappe.delete_doc("File", old_file, ignore_permissions=True, force=True)
 		user.user_image = user_image
 
 	# Note on ignore_permissions: We use this because giving users global "Write"
 	# access to the User DocType is a security risk. By ignoring permissions here,
-	# we securely allow users to update ONLY their own specific whitelisted profile
+	# we securely allow users to update ONLY their own specific allowed profile
 	# fields (name, phone, language, photo) without granting them raw table permissions.
 	user.save(ignore_permissions=True)
 
 	return get_user_profile()
 
 
-@frappe.whitelist()
+@me_route("/password", methods=("PATCH",), summary="Change password")
 @validate_request(ChangePasswordSchema)
 @handle_api_errors
 def change_password(current_password: str, new_password: str):

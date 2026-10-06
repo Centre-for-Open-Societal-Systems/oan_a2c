@@ -29,8 +29,10 @@ def sign_access_token(payload: dict, kid: str | None = None) -> str:
 
 	Pass `kid` only to forge a token naming a key the site does not have.
 	"""
-	signing_kid, secret = get_signing_key()
-	return jwt.encode(payload, secret, algorithm="HS256", headers={"kid": kid or signing_kid})
+	from oan_a2c.api.jwt_keys import get_signing_material
+
+	signing_kid, secret, alg = get_signing_material()
+	return jwt.encode(payload, secret, algorithm=alg, headers={"kid": kid or signing_kid})
 
 
 class RequestContextMixin:

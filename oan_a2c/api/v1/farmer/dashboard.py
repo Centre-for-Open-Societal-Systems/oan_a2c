@@ -25,7 +25,6 @@ _PROFILE_FIELDS = (
 )
 
 
-@frappe.whitelist(allow_guest=False)
 @handle_api_errors
 @require_role([FARMER_ROLE])
 def get_dashboard_summary(**kwargs):

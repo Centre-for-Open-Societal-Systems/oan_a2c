@@ -135,7 +135,6 @@ class GetProductCommentSchema(BaseModel):
 	product_id: str = Field(..., min_length=1, max_length=140)
 
 
-@frappe.whitelist()
 @validate_request(CreateProductSchema)
 @handle_api_errors
 @bank_scoped
@@ -171,7 +170,6 @@ def create_product(**kwargs):
 	return success_response(data={"message": _("Products created"), "product_ids": created_ids})
 
 
-@frappe.whitelist()
 @validate_request(UpdateProductSchema)
 @handle_api_errors
 def update_product(**kwargs):
@@ -220,7 +218,6 @@ def update_product(**kwargs):
 	)
 
 
-@frappe.whitelist()
 @validate_request(SetProductStatusSchema)
 @handle_api_errors
 def set_product_status(**kwargs):
@@ -288,7 +285,6 @@ def set_product_status(**kwargs):
 	)
 
 
-@frappe.whitelist()
 @handle_api_errors
 def list_products(
 	status: str | None = None,
@@ -459,7 +455,6 @@ def list_products(
 	return success_response(data={"products": products}, pagination=pagination)
 
 
-@frappe.whitelist()
 @validate_request(GetProductSchema)
 @handle_api_errors
 def get_product(**kwargs):
@@ -527,7 +522,6 @@ def get_product(**kwargs):
 	return success_response(data={"product": product_data})
 
 
-@frappe.whitelist()
 @validate_request(GetProductCommentSchema)
 @handle_api_errors
 def get_product_comment(**kwargs):

@@ -520,7 +520,6 @@ def validate_and_enqueue_consent(data, enforce_permission=True, sync=False, enqu
 	return consent_doc_name
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(ReceiveConsentDataSchema)
 @handle_api_errors
 def receive_consent_data(**kwargs):
@@ -528,6 +527,12 @@ def receive_consent_data(**kwargs):
 	Authenticated webhook receiver for OpenG2P consent data.
 	Requires `Authorization: token <api_key>:<api_secret>` and write permission
 	on A2C Consent Request. Used by direct callers (Postman, Odoo server action).
+
+	Behind Kong the header is supplied by the gateway's request-transformer, not
+	by the partner: the partner presents a `key-auth` credential, Kong replaces
+	it with the Frappe service user's key/secret. That service user therefore
+	needs a role carrying write DocPerm on A2C Consent Request — enforce_permission
+	below is a real check, not a formality.
 	"""
 	frappe.logger().info(f"🔗 Webhook received. Keys: {list(kwargs.keys())}")
 

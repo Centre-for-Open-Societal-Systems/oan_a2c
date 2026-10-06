@@ -10,7 +10,6 @@ from oan_a2c.api.utils import (
 )
 
 
-@frappe.whitelist(allow_guest=False)
 @handle_api_errors
 def lead_inbound(
 	phone_number: str | None = None,
@@ -21,9 +20,18 @@ def lead_inbound(
 	"""
 	Automated lead intake from external telco systems (IVR / missed call gateways).
 
-	Authentication: standard Frappe token auth (Authorization: token <key>:<secret>).
-	The JWT middleware in oan_a2c.api.middleware skips non-JWT endpoints automatically
-	because this endpoint uses Frappe's native API key/secret scheme — no Bearer token needed.
+	Authentication: two hops, neither of them JWT.
+
+	The partner authenticates to Kong with a `key-auth` credential. Kong then
+	rewrites the Authorization header to a Frappe API key/secret for a dedicated
+	service user (`Authorization: token <key>:<secret>`), which Frappe validates
+	in validate_auth_via_api_keys() before auth_hooks run — so this route is in
+	the JWT middleware's exempt list, and frappe.session.user is the service user
+	rather than Guest by the time we get here.
+
+	The route is deliberately *not* registered as a guest route: without that
+	credential the request is rejected before reaching this function, so a caller
+	who bypasses Kong and hits the origin directly gets a 401 rather than a lead.
 
 	Idempotency contract (spec §4.4):
 	  - Primary Check: By External Reference ID. If a lead already exists with this
@@ -32,8 +40,8 @@ def lead_inbound(
 	    If an active lead exists, we update it rather than duplicating.
 	  - Else: Create a fresh lead mapping phone_number and external_id.
 	"""
-	frappe.has_permission("A2C Lead", "create", throw=True)
-
+	# Telco webhook is a guest/machine-to-machine endpoint.
+	# Lead creation and updates run with ignore_permissions=True.
 	if not phone_number:
 		frappe.throw(_("phone_number is required"), frappe.MandatoryError)
 
@@ -73,7 +81,7 @@ def lead_inbound(
 	new_lead.lead_source = lead_source
 	new_lead.status = "Active"
 	new_lead.call_notes = _build_event_note(lead_source, external_ref_id, timestamp)
-	new_lead.insert(ignore_permissions=False)
+	new_lead.insert(ignore_permissions=True)
 
 	notify_lead_event(
 		new_lead.name,
@@ -97,7 +105,7 @@ def _update_existing_lead(lead_name, lead_source, external_ref_id, timestamp):
 	if external_ref_id and not existing_doc.external_id:
 		existing_doc.external_id = external_ref_id
 
-	existing_doc.save(ignore_permissions=False)
+	existing_doc.save(ignore_permissions=True)
 
 	notify_lead_event(
 		lead_name,

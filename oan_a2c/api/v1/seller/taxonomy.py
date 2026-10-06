@@ -30,7 +30,6 @@ class CreateTermSchema(BaseModel):
 	term_name: str = Field(..., min_length=1, max_length=140)
 
 
-@frappe.whitelist()
 @handle_api_errors
 def get_categories():
 	categories = frappe.get_all("A2C Term Category", fields=["name as term_id", "parent_category"])
@@ -40,7 +39,6 @@ def get_categories():
 	return success_response(data={"categories": categories})
 
 
-@frappe.whitelist()
 @handle_api_errors
 def get_tags():
 	tags = frappe.get_all("A2C Term Tag", fields=["name as term_id"])
@@ -50,7 +48,6 @@ def get_tags():
 	return success_response(data={"tags": tags})
 
 
-@frappe.whitelist()
 @handle_api_errors
 def get_attributes():
 	claimed = frappe.get_all("A2C Term Category", pluck="term") + frappe.get_all("A2C Term Tag", pluck="term")
@@ -59,7 +56,6 @@ def get_attributes():
 	return success_response(data={"attributes": terms})
 
 
-@frappe.whitelist()
 @validate_request(SetTermsSchema)
 @handle_api_errors
 def set_product_categories(product_id: str, term_ids: list):
@@ -113,7 +109,6 @@ def set_product_categories(product_id: str, term_ids: list):
 	return success_response(data={"message": _("Categories updated")})
 
 
-@frappe.whitelist()
 @validate_request(SetTermsSchema)
 @handle_api_errors
 def set_product_tags(product_id: str, term_ids: list):
@@ -164,7 +159,6 @@ def set_product_tags(product_id: str, term_ids: list):
 	return success_response(data={"message": _("Tags updated")})
 
 
-@frappe.whitelist()
 @validate_request(SetAttributesSchema)
 @handle_api_errors
 def set_product_attributes(product_id: str, attributes: dict):
@@ -241,7 +235,6 @@ def _get_or_create_term(term_name: str) -> str:
 	return term_id
 
 
-@frappe.whitelist()
 @validate_request(CreateCategorySchema)
 @handle_api_errors
 def create_category(term_name: str, description: str | None = None, parent_category: str | None = None):
@@ -266,7 +259,6 @@ def create_category(term_name: str, description: str | None = None, parent_categ
 	return success_response(data={"message": _("Category created"), "term_id": term_id})
 
 
-@frappe.whitelist()
 @validate_request(CreateTagSchema)
 @handle_api_errors
 def create_tag(term_name: str, description: str | None = None):
@@ -284,7 +276,6 @@ def create_tag(term_name: str, description: str | None = None):
 	return success_response(data={"message": _("Tag created"), "term_id": term_id})
 
 
-@frappe.whitelist()
 @validate_request(CreateTermSchema)
 @handle_api_errors
 def create_attribute_term(term_name: str):

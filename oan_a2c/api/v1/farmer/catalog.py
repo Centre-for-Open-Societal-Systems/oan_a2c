@@ -299,7 +299,6 @@ def _enrich_products_with_application_counts(products: list[dict]) -> None:
 		p["applications_count"] = counts_map.get(p.get("name"), 0)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(FarmerCatalogSchema)
 @handle_api_errors
 def list_catalog(**kwargs):
@@ -449,7 +448,6 @@ def list_catalog(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(SaveProductSchema)
 @handle_api_errors
 def save_product(**kwargs):
@@ -490,7 +488,6 @@ def save_product(**kwargs):
 	return success_response(message="Product saved successfully")
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(SaveProductSchema)
 @handle_api_errors
 def unsave_product(**kwargs):
@@ -504,7 +501,6 @@ def unsave_product(**kwargs):
 	return success_response(message="Product removed from saved list")
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(PaginationSchema)
 @handle_api_errors
 def get_saved_products(**kwargs):
@@ -589,7 +585,6 @@ def get_saved_products(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @handle_api_errors
 def get_catalog_facets(**kwargs):
 	"""Static filter options for the discovery sidebar, using global definitions."""
@@ -704,7 +699,6 @@ _BANK_PUBLIC_FIELDS = (
 )
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetBankDetailsSchema)
 @handle_api_errors
 def get_bank_details(**kwargs):

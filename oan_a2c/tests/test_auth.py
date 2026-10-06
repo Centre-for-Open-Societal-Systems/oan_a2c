@@ -20,9 +20,8 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 	Unit Tests for Identity and Access Management (IAM) endpoints.
 	Ensures strict adherence to our NSPF and No-Hack mandates.
 
-	Response shape note: @frappe.whitelist() envelopes the return value in
-	{"message": <return_value>} on the wire. These tests call the Python
-	functions directly, so they receive the inner dict — no outer "message" key.
+	Response shape note: Direct Python calls receive the returned dict directly
+	without any outer RPC wrapper.
 	"""
 
 	@classmethod
@@ -35,6 +34,10 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 			user.email = cls.test_email
 			user.first_name = "Test Agent"
 			user.insert(ignore_permissions=True)
+		else:
+			user = frappe.get_doc("User", cls.test_email)
+			user.first_name = "Test Agent"
+			user.save(ignore_permissions=True)
 
 		from frappe.utils.password import update_password
 
@@ -62,10 +65,17 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 		self.assertIn("token", response.get("data", {}))
 
 		token = response["data"]["token"]
+		header = jwt.get_unverified_header(token)
+		kid = header.get("kid") if header else None
+
+		from oan_a2c.api.jwt_keys import get_verification_material
+
+		material = get_verification_material(kid)
+		verif_key, expected_alg = material if material else (signing_secret(), "HS256")
 		payload = jwt.decode(
 			token,
-			signing_secret(),
-			algorithms=["HS256"],
+			verif_key,
+			algorithms=[expected_alg],
 			audience="oan_a2c_client",
 			issuer="oan_a2c_identity_gateway",
 		)
@@ -345,3 +355,18 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 		self.assertEqual(resp.get("status"), "success")
 		self.assertTrue(resp.get("data", {}).get("already_exists"))
 		self.assertIn("already have an account", resp.get("data", {}).get("message", ""))
+
+	def test_17_register_user_rejects_development_agent(self):
+		from oan_a2c.api.v1.auth import register_user
+
+		email = "selfreg_dev_agent@test.com"
+		resp = register_user(
+			email=email,
+			full_name="Self Registered Agent",
+			password="TestPassword123!",
+			phone_number="+251911777777",
+			role="A2C Development Agent",
+		)
+		self.assertEqual(resp.get("status"), "error")
+		self.assertFalse(frappe.db.exists("User", email))
+		frappe.local.response["http_status_code"] = 200

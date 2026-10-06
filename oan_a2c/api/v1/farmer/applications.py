@@ -41,7 +41,6 @@ class UpdateFarmerApplicationSchema(BaseModel):
 	loan_reason: str | None = Field(None, max_length=2000)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(GetAllLoansSchema)
 @handle_api_errors
 @require_role([FARMER_ROLE])
@@ -112,7 +111,6 @@ def list_applications(**kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False)
 @validate_request(LoanApplicationIDSchema)
 @handle_api_errors
 @require_role([FARMER_ROLE])
@@ -186,7 +184,6 @@ def get_application(**kwargs):
 	return success_response(data=data, message="Application retrieved successfully")
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(UpdateFarmerApplicationSchema)
 @handle_api_errors
 @require_role([FARMER_ROLE])
@@ -214,7 +211,6 @@ def update_application(**kwargs):
 	return success_response(message="Application updated successfully")
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(CreateFarmerApplicationSchema)
 @handle_api_errors
 @require_role([FARMER_ROLE])
@@ -282,7 +278,6 @@ def create_application(**kwargs):
 	return success_response(data={"application_id": app.name}, message="Application created successfully")
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @validate_request(LoanApplicationIDSchema)
 @handle_api_errors
 @require_role([FARMER_ROLE, DEVELOPMENT_AGENT_ROLE])

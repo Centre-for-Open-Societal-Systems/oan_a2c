@@ -71,6 +71,14 @@ To run the automated test suite for this application:
 bench --site mysite.localhost run-tests --app oan_a2c
 ```
 
+## API Contract & Gateway
+
+The A2C REST API is documented at three levels — a stakeholder-readable overview, a formal machine-readable contract, and the deployment/gateway setup:
+
+- **[`A2C_API_Specification.md`](docs/A2C_API_Specification.md)** — human-readable API reference: all 94 endpoints across the 10 resource domains (Identity & Access, Bank Onboarding & Administration, Bank Cataloging, Catalog Discovery, Applications, CRM/Leads & Field Ops, Loan Underwriting, Consent Management, Notifications, Inbound Webhooks), with a method/endpoint/description/access table per domain. Also covers authentication, gateway configuration, and response-format/pagination/rate-limiting appendices. Best starting point for anyone evaluating the API who isn't loading it into a tool.
+- **[`openapi/openapi_v1.public.yaml`](openapi/openapi_v1.public.yaml)** — the formal OpenAPI 3.0.3 contract: the same 94 endpoints with full request/response schemas and per-operation auth requirements. Load into Swagger UI, Postman, or a codegen tool.
+- **[`kong/README_kong_onboarding.md`](kong/README_kong_onboarding.md)** — how the API is deployed and secured behind Kong: authentication, throttling tiers, and onboarding a new external integration.
+
 ## Contributing
 
 Install the pre-commit hooks before your first commit — CI runs the same checks on every pull

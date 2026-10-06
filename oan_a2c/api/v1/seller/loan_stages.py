@@ -79,7 +79,6 @@ def _resolve_bank(bank_arg: str | None = None) -> str:
 	return user_bank
 
 
-@frappe.whitelist(allow_guest=False, methods=["GET"])
 @handle_api_errors
 @require_role([BANK_ADMIN_ROLE, BANK_AGENT_ROLE, ADMIN_ROLE, "System Manager"])
 def get_stages(bank: str | None = None):
@@ -123,7 +122,6 @@ def get_stages(bank: str | None = None):
 	)
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @bank_scoped
 @validate_request(AddStageSchema)
 @handle_api_errors
@@ -178,7 +176,6 @@ def add_stage(bank: str | None = None, **kwargs):
 	)
 
 
-@frappe.whitelist(allow_guest=False, methods=["POST"])
 @bank_scoped
 @validate_request(SyncStagesSchema)
 @handle_api_errors

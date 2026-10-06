@@ -5,7 +5,6 @@ from oan_a2c.a2c_marketplace.stats_cache import get_dashboard_stats
 from oan_a2c.api.utils import handle_api_errors, success_response
 
 
-@frappe.whitelist()
 @handle_api_errors
 @bank_scoped(require_bank=False)
 def get_stats(bank: str | None = None):

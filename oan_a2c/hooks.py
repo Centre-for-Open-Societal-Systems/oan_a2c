@@ -93,7 +93,10 @@ after_install = "oan_a2c.setup.migrate.after_install"
 
 # Re-assert those custom fields and roles on every migrate so already-provisioned sites
 # stay self-healing when the definitions change.
-after_migrate = "oan_a2c.setup.migrate.after_migrate"
+after_migrate = [
+	"oan_a2c.setup.migrate.after_migrate",
+	"oan_a2c.a2c_marketplace.dashboard_rollup.ensure_built",
+]
 
 # Uninstallation
 # ------------
@@ -204,6 +207,12 @@ scheduler_events = {
 	"hourly": [
 		"oan_a2c.a2c_marketplace.stats_cache.reconcile_all_banks",
 	],
+	# The public dashboard charts read only this snapshot, so this is how fresh they are.
+	"cron": {
+		"*/15 * * * *": [
+			"oan_a2c.a2c_marketplace.dashboard_rollup.refresh",
+		],
+	},
 }
 
 # Testing
@@ -244,7 +253,7 @@ before_tests = "oan_a2c.tests.before_tests"
 
 # Request Events
 # ----------------
-# before_request = ["oan_a2c.utils.before_request"]
+before_request = ["oan_a2c.api.router.ensure_routes_registered"]
 # after_request = ["oan_a2c.utils.after_request"]
 
 # Job Events
