@@ -765,7 +765,11 @@ def apply_status_transition(doc, target_status):
 	if doc.doctype == "A2C Loan Application" and target_status == "In Transition":
 		doc._enforce_submission_prerequisites()
 
-	doc = apply_workflow(doc, action)
+	doc.flags.in_workflow_transition = True
+	try:
+		doc = apply_workflow(doc, action)
+	finally:
+		doc.flags.in_workflow_transition = False
 
 	# apply_workflow moves `workflow_state` but not the separate `status` Select field that the
 	# rest of the app (lists, summaries, filters) reads. Mirror the new state onto `status` so
@@ -773,7 +777,83 @@ def apply_status_transition(doc, target_status):
 	if doc.get("status") != doc.workflow_state:
 		doc.db_set("status", doc.workflow_state)
 
+	if doc.doctype == "A2C Loan Application":
+		from oan_a2c.a2c_marketplace.stages import TERMINAL_ARCHETYPES
+
+		if doc.workflow_state in TERMINAL_ARCHETYPES:
+			sync_lead_with_loan(doc)
+
 	return doc
+
+
+# Lead moves the system makes when an agent-sourced loan reaches a final state, keyed by
+# the loan outcome (successful or not, per the stage archetype mapping), then by the lead's
+# current state. A loan can only be created from a Verified or Processed lead, and a
+# Granted lead must pass through Processed first.
+_LEAD_SYNC_PATHS = {
+	True: {"Verified": ("Processed", "Granted"), "Processed": ("Granted",)},
+	False: {"Verified": ("Rejected",), "Processed": ("Rejected",)},
+}
+
+
+def sync_lead_with_loan(loan_doc):
+	"""Grant or reject the lead behind a loan that just reached a terminal stage.
+
+	Whichever stage label the bank uses, its archetype decides the outcome: a successful
+	terminal archetype grants the lead, any other terminal archetype rejects it.
+
+	The bank decides on the loan, so the lead follows it instead of waiting for a second
+	manual call. The lead workflow gates these actions on roles the caller may not hold
+	(Mark Processed is a Development Agent action, Grant a Bank Agent one), so the moves run
+	as Administrator; the loan transition has already authorised the decision.
+
+	Best-effort: a lead that cannot follow (Dormant, already final, a missing record) is
+	logged and left alone, and never fails the loan decision itself.
+	"""
+	lead_id = loan_doc.get("lead_id")
+	if not lead_id:
+		return
+
+	from oan_a2c.a2c_marketplace.stages import SUCCESSFUL_ARCHETYPES
+
+	loan_state = loan_doc.workflow_state
+	lead_row = frappe.db.get_value("A2C Lead", lead_id, ["workflow_state", "status"], as_dict=True)
+	if not lead_row:
+		return
+	lead_state = lead_row.workflow_state or lead_row.status
+	steps = _LEAD_SYNC_PATHS[loan_state in SUCCESSFUL_ARCHETYPES].get(lead_state)
+	if not steps:
+		return
+
+	actor = frappe.session.user
+	form_dict = frappe.local.form_dict
+	frappe.db.savepoint("lead_sync")
+	try:
+		frappe.set_user("Administrator")  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-setuser
+		lead = frappe.get_doc("A2C Lead", lead_id)
+		for target in steps:
+			lead = apply_status_transition(lead, target)
+	except Exception:
+		frappe.db.rollback(save_point="lead_sync")
+		frappe.log_error(
+			title=f"Lead sync failed | {lead_id}",
+			message=f"Loan {loan_doc.name} is {loan_state}; lead {lead_id} stayed {lead_state}.\n"
+			+ frappe.get_traceback(),
+		)
+		return
+	finally:
+		frappe.set_user(actor)  # nosemgrep: frappe-semgrep-rules.rules.security.frappe-setuser
+		frappe.local.form_dict = form_dict
+
+	audit_event = frappe.new_doc("A2C Lead Audit Event")
+	audit_event.lead = lead_id
+	audit_event.event_type = "Status Changed"
+	audit_event.event_title = "Status Updated"
+	description = _("Changed to {0}").format(steps[-1])
+	description += f"\nReason: loan application {loan_doc.name} is {loan_doc.stage_label or loan_state}"
+	description += f"\nUpdated by: {actor}"
+	audit_event.event_description = description
+	audit_event.insert(ignore_permissions=True)
 
 
 def notify_lead_event(lead_id, subject, message=None, notification_type="Alert"):

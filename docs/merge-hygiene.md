@@ -61,8 +61,8 @@ bench --site development.localhost run-tests --app oan_a2c --module oan_a2c.test
 
 ## Docs: never reformat what you are not editing
 
-`docs/api-flow-*.md` and `docs/architecture_and_api_spec.md` are edited by nearly every
-branch. Two rules keep them mergeable:
+Shared docs such as `docs/A2C_API_Specification.md` and `docs/design_decisions.md` are
+edited by many branches. Two rules keep them mergeable:
 
 1. **Let prettier do the formatting.** Do not hand-pad tables, and do not add or strip blank
    lines around headings to match your own taste. A branch that reformats a file turns every

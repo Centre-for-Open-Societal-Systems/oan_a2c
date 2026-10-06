@@ -355,3 +355,18 @@ class TestAuthAPI(RequestContextMixin, unittest.TestCase):
 		self.assertEqual(resp.get("status"), "success")
 		self.assertTrue(resp.get("data", {}).get("already_exists"))
 		self.assertIn("already have an account", resp.get("data", {}).get("message", ""))
+
+	def test_17_register_user_rejects_development_agent(self):
+		from oan_a2c.api.v1.auth import register_user
+
+		email = "selfreg_dev_agent@test.com"
+		resp = register_user(
+			email=email,
+			full_name="Self Registered Agent",
+			password="TestPassword123!",
+			phone_number="+251911777777",
+			role="A2C Development Agent",
+		)
+		self.assertEqual(resp.get("status"), "error")
+		self.assertFalse(frappe.db.exists("User", email))
+		frappe.local.response["http_status_code"] = 200

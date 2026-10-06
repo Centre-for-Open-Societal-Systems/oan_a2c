@@ -149,7 +149,7 @@ Bank registration, KYC compliance, organizational profile, and team management. 
 | `POST`  | `/v1/banks`                                 | Registers a new participating bank and links the caller as its administrator. | Bearer Token                      |
 | `GET`   | `/v1/banks/me`                              | Returns the caller's bank profile.                                            | Bearer Token                      |
 | `PATCH` | `/v1/banks/me`                              | Updates the bank's profile details.                                           | Bearer Token — Bank Admin         |
-| `PATCH` | `/v1/banks/me/status`                       | Updates the bank's onboarding status (e.g., In Review → Active).              | Bearer Token — Bank Admin         |
+| `PATCH` | `/v1/banks/me/status`                       | Approves or suspends a bank (In Review → Active, Active ↔ Suspended).         | Bearer Token — Platform admin     |
 | `POST`  | `/v1/banks/me/kyc-documents`                | Uploads the bank's regulatory KYC document.                                   | Bearer Token — Bank Admin         |
 | `POST`  | `/v1/images`                                | Uploads a public image (bank logo or user avatar), returns its `file_url`.    | Bearer Token — any signed-in user |
 | `PUT`   | `/v1/banks/me/contacts`                     | Sets the bank's Grievance Redressal Officer and Operations contact details.   | Bearer Token                      |

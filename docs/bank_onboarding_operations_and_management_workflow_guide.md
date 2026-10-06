@@ -2,6 +2,8 @@ A comprehensive end-to-end API testing and integration guide for participating b
 
 Every endpoint documented here is callable by an `A2C Bank Admin` or `A2C Bank Agent`. Lead capture and qualification belong to the `A2C Development Agent` and are covered in a separate guide — see [Role Capability Boundaries](#4-role-capability-boundaries) and the [Appendix](#appendix-endpoints-outside-the-bank-role) for the exact division.
 
+> **Paths.** Routes are the REST paths under `/v1` (see `openapi/openapi_v1.yaml`). Where a path has a placeholder such as `{id}` or `{userId}`, put the record's ID there; request bodies below may still show that ID as a field from the older RPC style.
+
 ---
 
 ## Architecture & Security Standards
@@ -16,7 +18,7 @@ Authorization: Bearer <jwt_access_token>
 
 - **Access Tokens:** Short-lived (**15 minutes**) issued upon successful login or token refresh.
 - **Refresh Tokens:** Stored securely and rotated (**1 day** default validity, or **30 days** if `remember_me` was selected).
-- **Temporary Passwords & Initial Password Setup:** When a Bank Admin invites a Bank Agent, a temporary password is assigned with `must_change_password: true`. The agent must call `oan_a2c.api.auth.set_initial_password` before establishing an authenticated session.
+- **Temporary Passwords & Initial Password Setup:** When a Bank Admin invites a Bank Agent, a temporary password is assigned with `must_change_password: true`. The agent must call `POST /v1/auth/password/initial` before establishing an authenticated session.
 
 ### 2. Multi-Tenancy & Bank Scope Isolation
 
@@ -81,7 +83,7 @@ sequenceDiagram
 
 ### Step 1: Bank Administrator User Registration
 
-**POST** `/api/method/oan_a2c.api.v1.auth.register_user`
+**POST** `/v1/auth/register`
 
 Registers the initial primary Bank Administrator account with the platform role `A2C Bank Admin`.
 
@@ -132,7 +134,7 @@ The initial signup interface for the prospective bank administrator.
 
 ### Step 2: Authentication & Token Generation (Login)
 
-**POST** `/api/method/oan_a2c.api.auth.login`
+**POST** `/v1/auth/login`
 
 Authenticates user credentials and issues a stateless JWT Bearer token along with a database-backed refresh token.
 
@@ -188,7 +190,7 @@ Portal login screen where credentials are exchanged for a JWT session.
 
 ### Step 3: Refresh Access Token
 
-**POST** `/api/method/oan_a2c.api.auth.refresh`
+**POST** `/v1/auth/token/refresh`
 
 Refreshes an expired short-lived access token using a valid refresh token.
 
@@ -217,7 +219,7 @@ Refreshes an expired short-lived access token using a valid refresh token.
 
 ### Step 4: Verify Identity & Current Session Context (`get_me`)
 
-**GET** `/api/method/oan_a2c.api.auth.get_me`
+**GET** `/v1/me`
 
 Fetches current identity, active platform roles, and associated bank context.
 
@@ -245,8 +247,8 @@ Fetches current identity, active platform roles, and associated bank context.
 
 ### Step 5: Get & Update Personal User Profile
 
-**GET** `/api/method/oan_a2c.api.auth.get_user_profile`
-**POST** `/api/method/oan_a2c.api.auth.update_profile`
+**GET** `/v1/me/profile`
+**PATCH** `/v1/me/profile`
 
 Enables users to fetch and update their personal user profile settings.
 
@@ -286,13 +288,13 @@ Enables users to fetch and update their personal user profile settings.
 
 #### UI
 
-![[Pasted image 20260828130817.png]]
+![Pasted image 20260828130817](image/bank_onboarding_workflow/Pasted%20image%2020260828130817.png)
 
 ---
 
 ### Step 6: Change Password (Authenticated User)
 
-**POST** `/api/method/oan_a2c.api.auth.change_password`
+**PATCH** `/v1/me/password`
 
 Allows a logged-in user to change their existing password.
 
@@ -317,13 +319,13 @@ Allows a logged-in user to change their existing password.
 }
 ```
 
-![[Pasted image 20260828130916.png]]
+![Pasted image 20260828130916](image/bank_onboarding_workflow/Pasted%20image%2020260828130916.png)
 
 ---
 
 ### Step 7: Logout & Session Termination
 
-**POST** `/api/method/oan_a2c.api.auth.logout`
+**POST** `/v1/auth/logout`
 
 Invalidates and revokes the active refresh token.
 
@@ -347,12 +349,12 @@ Invalidates and revokes the active refresh token.
 }
 ```
 
-## ![[Pasted image 20260828131123.png]]
+![Pasted image 20260828131123](image/bank_onboarding_workflow/Pasted%20image%2020260828131123.png)
 
 ### Step 8: Password Recovery Flow (Forgot & Reset Password)
 
-**POST** `/api/method/oan_a2c.api.auth.forgot_password`
-**POST** `/api/method/oan_a2c.api.auth.reset_password`
+**POST** `/v1/auth/password/forgot`
+**POST** `/v1/auth/password/reset`
 
 #### Expected Request Body (`forgot_password`)
 
@@ -404,7 +406,7 @@ graph TD
 
 ### Step 9: Register Bank Entity
 
-**POST** `/api/method/oan_a2c.api.v1.seller.onboarding.register_bank`
+**POST** `/v1/banks`
 
 Registers a new participating bank entity with initial status `In Review`, creating the `A2C Participating Bank` record and automatically creating a default `User Permission` linking the caller to this bank.
 
@@ -472,7 +474,7 @@ The initial organization registration wizard form capturing legal entity details
 
 ### Step 10: Upload Mandatory KYC Compliance Document
 
-**POST** `/api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document`
+**POST** `/v1/banks/me/kyc-documents`
 
 Uploads the mandatory regulatory KYC document (banking license, certificate of incorporation) as a private PDF attachment.
 
@@ -517,7 +519,7 @@ Compliance document upload screen allowing the administrator to attach regulator
 
 ### Step 11: Upload Bank Logo / Public Asset
 
-**POST** `/api/method/oan_a2c.api.v1.seller.onboarding.upload_image`
+**POST** `/v1/images`
 
 Uploads a public image file (PNG, JPEG, or WebP) for use as the bank's marketplace brand logo.
 
@@ -550,13 +552,13 @@ Uploads a public image file (PNG, JPEG, or WebP) for use as the bank's marketpla
 }
 ```
 
-![[Pasted image 20260828132455.png]]
+![Pasted image 20260828132455](image/bank_onboarding_workflow/Pasted%20image%2020260828132455.png)
 
 ---
 
 ### Step 12: Save Organization Compliance Contacts (GRO & OPS)
 
-**POST** `/api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts`
+**PUT** `/v1/banks/me/contacts`
 
 Records the Grievance Redressal Officer (GRO) and Operations (OPS) point-of-contact details for regulatory compliance.
 
@@ -604,7 +606,7 @@ The onboarding wizard section where grievance and operational contact details ar
 
 ### Step 13: View Bank Profile Details
 
-**GET** `/api/method/oan_a2c.api.v1.seller.onboarding.get_bank_profile`
+**GET** `/v1/banks/me`
 
 Retrieves the bank's registration information, address, logo, and onboarding verification statuses.
 
@@ -645,11 +647,11 @@ Retrieves the bank's registration information, address, logo, and onboarding ver
 }
 ```
 
-## ![[Pasted image 20260828132503.png]]
+![Pasted image 20260828132503](image/bank_onboarding_workflow/Pasted%20image%2020260828132503.png)
 
 ### Step 14: Update Organization Profile
 
-**POST** `/api/method/oan_a2c.api.v1.seller.onboarding.update_bank_profile`
+**PATCH** `/v1/banks/me`
 
 Modifies editable profile fields, branding information, and contact details for the bank. Pass the `file_url` returned by Step 11 as `logo` to publish the bank's marketplace brand logo.
 
@@ -679,17 +681,17 @@ Modifies editable profile fields, branding information, and contact details for 
 }
 ```
 
-![[Pasted image 20260828132519.png]]
+![Pasted image 20260828132519](image/bank_onboarding_workflow/Pasted%20image%2020260828132519.png)
 
 ---
 
 ### Step 15: Activate / Update Bank Status
 
-**POST** `/api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status`
+**PATCH** `/v1/banks/me/status`
 
 Transitions the bank's platform status. Must be set to `Active` before loan products can be created and offered on the marketplace.
 
-> **Permissions:** Restricted to `A2C Bank Admin` (or a platform administrator, who must additionally supply `bank_code`).
+> **Permissions:** Platform administrators only (`A2C Administrator` or `System Manager`), who must supply `bank_code`. A bank can never change its own status: Bank Admins and Bank Agents get `403`. Allowed moves: `In Review` → `Active` or `Suspended`, `Active` ↔ `Suspended`.
 
 #### Expected Request Body
 
@@ -743,7 +745,7 @@ sequenceDiagram
 
 ### Step 16: Invite Team Member (Bank Agent)
 
-**POST** `/api/method/oan_a2c.api.v1.seller.onboarding.invite_team_member`
+**POST** `/v1/banks/me/team`
 
 Invites a loan officer / agent to join the bank with an initial temporary password.
 
@@ -789,13 +791,13 @@ Invites a loan officer / agent to join the bank with an initial temporary passwo
 
 The team management interface where administrators invite officers and review user lists.
 
-![[Pasted image 20260828132635.png]]
+![Pasted image 20260828132635](image/bank_onboarding_workflow/Pasted%20image%2020260828132635.png)
 
 ---
 
 ### Step 17: Agent First-Time Login & Password Initialization
 
-**POST** `/api/method/oan_a2c.api.auth.set_initial_password`
+**POST** `/v1/auth/password/initial`
 
 When an invited agent attempts to log in with their temporary password, login rejects with `PASSWORD_CHANGE_REQUIRED`. The agent calls this endpoint (no token required) to exchange the temporary password for their permanent credential.
 
@@ -829,11 +831,11 @@ When an invited agent attempts to log in with their temporary password, login re
 }
 ```
 
-## ![[Pasted image 20260828132650.png]]
+![Pasted image 20260828132650](image/bank_onboarding_workflow/Pasted%20image%2020260828132650.png)
 
 ### Step 18: List Bank Team Members
 
-**GET** `/api/method/oan_a2c.api.v1.seller.onboarding.list_users`
+**GET** `/v1/banks/me/team`
 
 Lists all user accounts affiliated with the bank organization.
 
@@ -861,13 +863,13 @@ Lists all user accounts affiliated with the bank organization.
 }
 ```
 
-![[Pasted image 20260828132729.png]]
+![Pasted image 20260828132729](image/bank_onboarding_workflow/Pasted%20image%2020260828132729.png)
 
 ---
 
 ### Step 19: Update Team Member Profile & Status
 
-**POST** `/api/method/oan_a2c.api.v1.seller.onboarding.update_user`
+**PATCH** `/v1/banks/me/team/{userId}`
 
 Enables Bank Admins to enable/disable agent accounts, update display names, or manage roles within the bank.
 
@@ -898,7 +900,7 @@ Enables Bank Admins to enable/disable agent accounts, update display names, or m
 
 ### Step 20: Reset Team Member Password (Admin Intervention)
 
-**POST** `/api/method/oan_a2c.api.v1.seller.onboarding.reset_member_password`
+**POST** `/v1/banks/me/team/{userId}/password-reset`
 
 Issues a new temporary password for a Bank Agent who has forgotten their password or had their account compromised.
 
@@ -923,7 +925,7 @@ Issues a new temporary password for a Bank Agent who has forgotten their passwor
 }
 ```
 
-![[Pasted image 20260828132715.png]]
+![Pasted image 20260828132715](image/bank_onboarding_workflow/Pasted%20image%2020260828132715.png)
 
 ---
 
@@ -931,7 +933,7 @@ Issues a new temporary password for a Bank Agent who has forgotten their passwor
 
 ### Step 21: Get Dashboard Key Metrics
 
-**GET** `/api/method/oan_a2c.api.v1.seller.dashboard.get_stats`
+**GET** `/v1/banks/me/dashboard/stats`
 
 Retrieves cached, high-performance aggregated metrics on active products, pipeline applications, and total approved loan volumes.
 
@@ -954,13 +956,13 @@ Retrieves cached, high-performance aggregated metrics on active products, pipeli
 }
 ```
 
-## ![[Pasted image 20260828132802.png]]
+![Pasted image 20260828132802](image/bank_onboarding_workflow/Pasted%20image%2020260828132802.png)
 
 ## Phase 5: Loan Products, Catalog & Taxonomy Management
 
 ### Step 22: Create Loan Product (Single or Bulk)
 
-**POST** `/api/method/oan_a2c.api.v1.seller.loan_products.create_product`
+**POST** `/v1/banks/me/products`
 
 Creates new loan product offerings under the bank with initial status `Pending Approval`.
 
@@ -1020,13 +1022,13 @@ Creates new loan product offerings under the bank with initial status `Pending A
 
 The product creation wizard where financial terms, interest bands, and repayment terms are configured.
 
-![[Pasted image 20260828132831.png]]
+![Pasted image 20260828132831](image/bank_onboarding_workflow/Pasted%20image%2020260828132831.png)
 
 ---
 
 ### Step 23: Update Loan Product
 
-**POST** `/api/method/oan_a2c.api.v1.seller.loan_products.update_product`
+**PATCH** `/v1/banks/me/products/{id}`
 
 Updates terms, interest rates, amounts, or metadata of an existing loan product.
 
@@ -1057,13 +1059,13 @@ Updates terms, interest rates, amounts, or metadata of an existing loan product.
 }
 ```
 
-![[Pasted image 20260828132901.png]]
+![Pasted image 20260828132901](image/bank_onboarding_workflow/Pasted%20image%2020260828132901.png)
 
 ---
 
 ### Step 24: Approve Loan Product / Transition Status
 
-**POST** `/api/method/oan_a2c.api.v1.seller.loan_products.set_product_status`
+**PATCH** `/v1/banks/me/products/{id}/status`
 
 Transitions a product's lifecycle status. Setting status to `Active` publishes the product to the marketplace catalog for farmers.
 
@@ -1105,13 +1107,13 @@ Transitions a product's lifecycle status. Setting status to `Active` publishes t
 
 The product review dashboard where an administrator inspects terms and publishes the product to the marketplace.
 
-![[Pasted image 20260828132928.png]]
+![Pasted image 20260828132928](image/bank_onboarding_workflow/Pasted%20image%2020260828132928.png)
 
 ---
 
 ### Step 25: List & Search Loan Products
 
-**GET** `/api/method/oan_a2c.api.v1.seller.loan_products.list_products`
+**GET** `/v1/banks/me/products`
 
 Paginated listing of the bank's catalog with faceted filtering on status, category, tag, interest rates, loan amounts, and tenure.
 
@@ -1168,11 +1170,11 @@ Paginated listing of the bank's catalog with faceted filtering on status, catego
 }
 ```
 
-## ![[Pasted image 20260828133003.png]]
+![Pasted image 20260828133003](image/bank_onboarding_workflow/Pasted%20image%2020260828133003.png)
 
 ### Step 26: Get Loan Product Detail
 
-**GET** `/api/method/oan_a2c.api.v1.seller.loan_products.get_product`
+**GET** `/v1/banks/me/products/{id}`
 
 Fetches the complete loan product record, including associated taxonomy categories, tags, attributes, and custom metadata.
 
@@ -1221,13 +1223,13 @@ Fetches the complete loan product record, including associated taxonomy categori
 }
 ```
 
-![[Pasted image 20260828133014.png]]
+![Pasted image 20260828133014](image/bank_onboarding_workflow/Pasted%20image%2020260828133014.png)
 
 ---
 
 ### Step 27: Get Product Audit History & Comments
 
-**GET** `/api/method/oan_a2c.api.v1.seller.loan_products.get_product_comment`
+**GET** `/v1/banks/me/products/{id}/audit-log`
 
 Retrieves status transition history and audit reasons for a loan product.
 
@@ -1259,9 +1261,9 @@ Retrieves status transition history and audit reasons for a loan product.
 
 ### Step 28: Taxonomy Discovery (Categories, Tags & Attributes)
 
-**GET** `/api/method/oan_a2c.api.v1.seller.taxonomy.get_categories`
-**GET** `/api/method/oan_a2c.api.v1.seller.taxonomy.get_tags`
-**GET** `/api/method/oan_a2c.api.v1.seller.taxonomy.get_attributes`
+**GET** `/v1/taxonomy/categories`
+**GET** `/v1/taxonomy/tags`
+**GET** `/v1/taxonomy/attributes`
 
 Lists standard taxonomy metadata available on the marketplace.
 
@@ -1287,9 +1289,9 @@ Lists standard taxonomy metadata available on the marketplace.
 
 ### Step 29: Assign Taxonomy to Loan Product
 
-**POST** `/api/method/oan_a2c.api.v1.seller.taxonomy.set_product_categories`
-**POST** `/api/method/oan_a2c.api.v1.seller.taxonomy.set_product_tags`
-**POST** `/api/method/oan_a2c.api.v1.seller.taxonomy.set_product_attributes`
+**PUT** `/v1/banks/me/products/{id}/categories`
+**PUT** `/v1/banks/me/products/{id}/tags`
+**PUT** `/v1/banks/me/products/{id}/attributes`
 
 #### Expected Request Body (`set_product_categories`)
 
@@ -1333,7 +1335,7 @@ Each bank defines its own loan pipeline. Every stage maps onto one of three plat
 
 ### Step 30: List Configured Pipeline Stages
 
-**GET** `/api/method/oan_a2c.api.v1.seller.loan_stages.get_stages`
+**GET** `/v1/banks/me/pipeline-stages`
 
 Fetches the customized loan workflow status stages for the caller's bank, with active application counts per stage.
 
@@ -1381,7 +1383,7 @@ Fetches the customized loan workflow status stages for the caller's bank, with a
 
 ### Step 31: Add a Single Custom Pipeline Stage
 
-**POST** `/api/method/oan_a2c.api.v1.seller.loan_stages.add_stage`
+**POST** `/v1/banks/me/pipeline-stages`
 
 Adds a single new custom workflow stage to the bank's pipeline.
 
@@ -1430,7 +1432,7 @@ Adds a single new custom workflow stage to the bank's pipeline.
 
 ### Step 32: Batch Sync / Reorder Entire Pipeline
 
-**POST** `/api/method/oan_a2c.api.v1.seller.loan_stages.sync_stages`
+**PUT** `/v1/banks/me/pipeline-stages`
 
 Reorders, updates, adds, or prunes pipeline stages in a single atomic transaction.
 
@@ -1487,7 +1489,7 @@ Applications reach a bank already created — a Development Agent converts a qua
 
 ### Step 33: List & Filter Loan Applications
 
-**GET** `/api/method/oan_a2c.api.v1.loan_applications.get_all_loans`
+**GET** `/v1/loan-applications`
 
 Fetches a paginated list of loan applications scoped to the caller's bank.
 
@@ -1543,14 +1545,14 @@ Fetches a paginated list of loan applications scoped to the caller's bank.
 }
 ```
 
-![[Pasted image 20260828141318.png]]
+![Pasted image 20260828141318](image/bank_onboarding_workflow/Pasted%20image%2020260828141318.png)
 
 ---
 
 ### Step 34: Loan Summary Metrics & Metadata Facets
 
-**GET** `/api/method/oan_a2c.api.v1.loan_applications.get_loan_summary`
-**GET** `/api/method/oan_a2c.api.v1.loan_applications.get_loan_metadata`
+**GET** `/v1/loan-applications/summary`
+**GET** `/v1/loan-applications/metadata`
 
 #### Success Response (`get_loan_summary`)
 
@@ -1568,13 +1570,13 @@ Fetches a paginated list of loan applications scoped to the caller's bank.
 }
 ```
 
-![[Pasted image 20260828145409.png]]
+![Pasted image 20260828145409](image/bank_onboarding_workflow/Pasted%20image%2020260828145409.png)
 
 ---
 
 ### Step 35: View Full Borrower Underwriting Profile
 
-**GET** `/api/method/oan_a2c.api.v1.loan_applications.get_full_profile`
+**GET** `/v1/loan-applications/{id}/full-profile`
 
 Returns the complete underwriting record for one application: applicant identity, household composition, landholding, soil and moisture characteristics, certification, and current pipeline position. This is the endpoint a bank uses to review an applicant — it is keyed on the **application**, not the lead.
 
@@ -1644,13 +1646,13 @@ The response is a **flat object** — there are no nested `personal` / `farm_det
 }
 ```
 
-![[Pasted image 20260828141458.png]]
+![Pasted image 20260828141458](image/bank_onboarding_workflow/Pasted%20image%2020260828141458.png)
 
 ---
 
 ### Step 36: Update Loan Status / Move Pipeline Stage
 
-**POST** `/api/method/oan_a2c.api.v1.loan_applications.update_loan_status`
+**PATCH** `/v1/loan-applications/{id}/status`
 
 Moves a loan application through the bank's pipeline. This is the **only** mutation a bank role may perform on an application.
 
@@ -1695,7 +1697,7 @@ The `status` value accepts either:
 
 The loan processing dashboard where underwriting officers review applicant details, documents, and submit approval decisions.
 
-![[Pasted image 20260828141525.png]]
+![Pasted image 20260828141525](image/bank_onboarding_workflow/Pasted%20image%2020260828141525.png)
 
 ---
 
@@ -1703,7 +1705,7 @@ The loan processing dashboard where underwriting officers review applicant detai
 
 ### Step 37: Get Notifications & Unread Counter
 
-**GET** `/api/method/oan_a2c.api.v1.notifications.get_notifications`
+**GET** `/v1/notifications`
 
 Retrieves in-app notifications for the authenticated user along with the total unread badge count.
 
@@ -1749,7 +1751,7 @@ Retrieves in-app notifications for the authenticated user along with the total u
 
 ### Step 38: Mark Notifications Read
 
-**POST** `/api/method/oan_a2c.api.v1.notifications.mark_read`
+**PATCH** `/v1/notifications/read`
 
 Marks specific notification records as read, or marks all unread notifications read when `mark_all: true`.
 
@@ -1778,7 +1780,7 @@ Marks specific notification records as read, or marks all unread notifications r
 
 ### Step 39: Clear / Delete Notifications
 
-**POST** `/api/method/oan_a2c.api.v1.notifications.clear`
+**DELETE** `/v1/notifications`
 
 Permanently deletes selected notifications or clears all user notifications.
 
@@ -1803,7 +1805,7 @@ Permanently deletes selected notifications or clears all user notifications.
 }
 ```
 
-![[Pasted image 20260828145458.png]]
+![Pasted image 20260828145458](image/bank_onboarding_workflow/Pasted%20image%2020260828145458.png)
 
 ---
 
@@ -1811,56 +1813,56 @@ Permanently deletes selected notifications or clears all user notifications.
 
 Every endpoint below is callable by a bank user. The **Role** column gives the minimum role required: _Admin_ means `A2C Bank Admin` only; _Both_ means either `A2C Bank Admin` or `A2C Bank Agent`.
 
-| Category          | HTTP Method | Method / Endpoint Path                                                      | Role   | Description                                                   |
-| :---------------- | :---------- | :-------------------------------------------------------------------------- | :----- | :------------------------------------------------------------ |
-| **Auth**          | `POST`      | `/api/method/oan_a2c.api.v1.auth.register_user`                             | Public | Register new Bank Administrator                               |
-| **Auth**          | `POST`      | `/api/method/oan_a2c.api.auth.login`                                        | Public | Authenticate & obtain JWT Bearer token                        |
-| **Auth**          | `POST`      | `/api/method/oan_a2c.api.auth.refresh`                                      | Public | Refresh access token                                          |
-| **Auth**          | `POST`      | `/api/method/oan_a2c.api.auth.set_initial_password`                         | Public | Rotate temporary password on first login                      |
-| **Auth**          | `POST`      | `/api/method/oan_a2c.api.auth.forgot_password`                              | Public | Request password reset instructions                           |
-| **Auth**          | `POST`      | `/api/method/oan_a2c.api.auth.reset_password`                               | Public | Complete password reset                                       |
-| **Auth**          | `POST`      | `/api/method/oan_a2c.api.auth.logout`                                       | Public | Logout & revoke refresh token                                 |
-| **Auth**          | `GET`       | `/api/method/oan_a2c.api.auth.get_me`                                       | Both   | Get current user context & bank association                   |
-| **Auth**          | `GET`       | `/api/method/oan_a2c.api.auth.get_user_profile`                             | Both   | Get detailed user profile                                     |
-| **Auth**          | `POST`      | `/api/method/oan_a2c.api.auth.update_profile`                               | Both   | Update user profile                                           |
-| **Auth**          | `POST`      | `/api/method/oan_a2c.api.auth.change_password`                              | Both   | Change password for logged-in user                            |
-| **Onboarding**    | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.register_bank`                | Both   | Register new bank organization                                |
-| **Onboarding**    | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document`          | Admin  | Upload mandatory KYC PDF                                      |
-| **Onboarding**    | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.upload_image`                 | Both   | Upload image file, returns `file_url`                         |
-| **Onboarding**    | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts`            | Both   | Save compliance contacts (GRO & OPS)                          |
-| **Onboarding**    | `GET`       | `/api/method/oan_a2c.api.v1.seller.onboarding.get_bank_profile`             | Both   | Retrieve organization profile (compliance fields: Admin only) |
-| **Onboarding**    | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.update_bank_profile`          | Both   | Update organization details & branding                        |
-| **Onboarding**    | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status`           | Admin  | Update bank onboarding status (`Active`)                      |
-| **Team**          | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.invite_team_member`           | Admin  | Invite Bank Agent team member                                 |
-| **Team**          | `GET`       | `/api/method/oan_a2c.api.v1.seller.onboarding.list_users`                   | Admin  | List bank team members                                        |
-| **Team**          | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.update_user`                  | Admin  | Update team member role/status                                |
-| **Team**          | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.reset_member_password`        | Admin  | Reset agent temporary password                                |
-| **Dashboard**     | `GET`       | `/api/method/oan_a2c.api.v1.seller.dashboard.get_stats`                     | Both   | Bank statistics & metric counters                             |
-| **Catalog**       | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_products.create_product`            | Both   | Create loan product (single or bulk)                          |
-| **Catalog**       | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_products.update_product`            | Both   | Update loan product parameters                                |
-| **Catalog**       | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_products.set_product_status`        | Admin¹ | Approve / activate / archive loan product                     |
-| **Catalog**       | `GET`       | `/api/method/oan_a2c.api.v1.seller.loan_products.list_products`             | Both   | Search & filter bank loan products                            |
-| **Catalog**       | `GET`       | `/api/method/oan_a2c.api.v1.seller.loan_products.get_product`               | Both   | Get loan product details & terms                              |
-| **Catalog**       | `GET`       | `/api/method/oan_a2c.api.v1.seller.loan_products.get_product_comment`       | Both   | Audit history & approval comments                             |
-| **Taxonomy**      | `GET`       | `/api/method/oan_a2c.api.v1.seller.taxonomy.get_categories`                 | Both   | List taxonomy categories                                      |
-| **Taxonomy**      | `GET`       | `/api/method/oan_a2c.api.v1.seller.taxonomy.get_tags`                       | Both   | List taxonomy tags                                            |
-| **Taxonomy**      | `GET`       | `/api/method/oan_a2c.api.v1.seller.taxonomy.get_attributes`                 | Both   | List taxonomy attributes                                      |
-| **Taxonomy**      | `POST`      | `/api/method/oan_a2c.api.v1.seller.taxonomy.set_product_categories`         | Both   | Map categories to loan product                                |
-| **Taxonomy**      | `POST`      | `/api/method/oan_a2c.api.v1.seller.taxonomy.set_product_tags`               | Both   | Map tags to loan product                                      |
-| **Taxonomy**      | `POST`      | `/api/method/oan_a2c.api.v1.seller.taxonomy.set_product_attributes`         | Both   | Map attributes to loan product                                |
-| **Pipeline**      | `GET`       | `/api/method/oan_a2c.api.v1.seller.loan_stages.get_stages`                  | Both   | List custom pipeline stages                                   |
-| **Pipeline**      | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_stages.add_stage`                   | Admin  | Add custom pipeline stage                                     |
-| **Pipeline**      | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_stages.sync_stages`                 | Admin  | Batch sync / reorder pipeline stages                          |
-| **Underwriting**  | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_all_loans`                | Both   | Search & filter loan applications                             |
-| **Underwriting**  | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_loan_summary`             | Both   | Summary application metrics                                   |
-| **Underwriting**  | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_loan_metadata`            | Both   | Application filter metadata                                   |
-| **Underwriting**  | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_full_profile`             | Both   | Full applicant underwriting profile                           |
-| **Underwriting**  | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_supporting_documents`     | Both   | List document attachments                                     |
-| **Underwriting**  | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.download_supporting_document` | Both   | Download document attachment                                  |
-| **Underwriting**  | `POST`      | `/api/method/oan_a2c.api.v1.loan_applications.update_loan_status`           | Both   | Move pipeline stage / complete / reject                       |
-| **Notifications** | `GET`       | `/api/method/oan_a2c.api.v1.notifications.get_notifications`                | Both   | List user notifications & unread count                        |
-| **Notifications** | `POST`      | `/api/method/oan_a2c.api.v1.notifications.mark_read`                        | Both   | Mark notifications as read                                    |
-| **Notifications** | `POST`      | `/api/method/oan_a2c.api.v1.notifications.clear`                            | Both   | Delete / clear notifications                                  |
+| Category          | HTTP Method | Method / Endpoint Path                                 | Role   | Description                                                   |
+| :---------------- | :---------- | :----------------------------------------------------- | :----- | :------------------------------------------------------------ |
+| **Auth**          | `POST`      | `/v1/auth/register`                                    | Public | Register new Bank Administrator                               |
+| **Auth**          | `POST`      | `/v1/auth/login`                                       | Public | Authenticate & obtain JWT Bearer token                        |
+| **Auth**          | `POST`      | `/v1/auth/token/refresh`                               | Public | Refresh access token                                          |
+| **Auth**          | `POST`      | `/v1/auth/password/initial`                            | Public | Rotate temporary password on first login                      |
+| **Auth**          | `POST`      | `/v1/auth/password/forgot`                             | Public | Request password reset instructions                           |
+| **Auth**          | `POST`      | `/v1/auth/password/reset`                              | Public | Complete password reset                                       |
+| **Auth**          | `POST`      | `/v1/auth/logout`                                      | Public | Logout & revoke refresh token                                 |
+| **Auth**          | `GET`       | `/v1/me`                                               | Both   | Get current user context & bank association                   |
+| **Auth**          | `GET`       | `/v1/me/profile`                                       | Both   | Get detailed user profile                                     |
+| **Auth**          | `PATCH`     | `/v1/me/profile`                                       | Both   | Update user profile                                           |
+| **Auth**          | `PATCH`     | `/v1/me/password`                                      | Both   | Change password for logged-in user                            |
+| **Onboarding**    | `POST`      | `/v1/banks`                                            | Both   | Register new bank organization                                |
+| **Onboarding**    | `POST`      | `/v1/banks/me/kyc-documents`                           | Admin  | Upload mandatory KYC PDF                                      |
+| **Onboarding**    | `POST`      | `/v1/images`                                           | Both   | Upload image file, returns `file_url`                         |
+| **Onboarding**    | `PUT`       | `/v1/banks/me/contacts`                                | Both   | Save compliance contacts (GRO & OPS)                          |
+| **Onboarding**    | `GET`       | `/v1/banks/me`                                         | Both   | Retrieve organization profile (compliance fields: Admin only) |
+| **Onboarding**    | `PATCH`     | `/v1/banks/me`                                         | Both   | Update organization details & branding                        |
+| **Onboarding**    | `PATCH`     | `/v1/banks/me/status`                                  | Admin  | Platform admin only: approve or suspend a bank                |
+| **Team**          | `POST`      | `/v1/banks/me/team`                                    | Admin  | Invite Bank Agent team member                                 |
+| **Team**          | `GET`       | `/v1/banks/me/team`                                    | Admin  | List bank team members                                        |
+| **Team**          | `PATCH`     | `/v1/banks/me/team/{userId}`                           | Admin  | Update team member role/status                                |
+| **Team**          | `POST`      | `/v1/banks/me/team/{userId}/password-reset`            | Admin  | Reset agent temporary password                                |
+| **Dashboard**     | `GET`       | `/v1/banks/me/dashboard/stats`                         | Both   | Bank statistics & metric counters                             |
+| **Catalog**       | `POST`      | `/v1/banks/me/products`                                | Both   | Create loan product (single or bulk)                          |
+| **Catalog**       | `PATCH`     | `/v1/banks/me/products/{id}`                           | Both   | Update loan product parameters                                |
+| **Catalog**       | `PATCH`     | `/v1/banks/me/products/{id}/status`                    | Admin¹ | Approve / activate / archive loan product                     |
+| **Catalog**       | `GET`       | `/v1/banks/me/products`                                | Both   | Search & filter bank loan products                            |
+| **Catalog**       | `GET`       | `/v1/banks/me/products/{id}`                           | Both   | Get loan product details & terms                              |
+| **Catalog**       | `GET`       | `/v1/banks/me/products/{id}/audit-log`                 | Both   | Audit history & approval comments                             |
+| **Taxonomy**      | `GET`       | `/v1/taxonomy/categories`                              | Both   | List taxonomy categories                                      |
+| **Taxonomy**      | `GET`       | `/v1/taxonomy/tags`                                    | Both   | List taxonomy tags                                            |
+| **Taxonomy**      | `GET`       | `/v1/taxonomy/attributes`                              | Both   | List taxonomy attributes                                      |
+| **Taxonomy**      | `PUT`       | `/v1/banks/me/products/{id}/categories`                | Both   | Map categories to loan product                                |
+| **Taxonomy**      | `PUT`       | `/v1/banks/me/products/{id}/tags`                      | Both   | Map tags to loan product                                      |
+| **Taxonomy**      | `PUT`       | `/v1/banks/me/products/{id}/attributes`                | Both   | Map attributes to loan product                                |
+| **Pipeline**      | `GET`       | `/v1/banks/me/pipeline-stages`                         | Both   | List custom pipeline stages                                   |
+| **Pipeline**      | `POST`      | `/v1/banks/me/pipeline-stages`                         | Admin  | Add custom pipeline stage                                     |
+| **Pipeline**      | `PUT`       | `/v1/banks/me/pipeline-stages`                         | Admin  | Batch sync / reorder pipeline stages                          |
+| **Underwriting**  | `GET`       | `/v1/loan-applications`                                | Both   | Search & filter loan applications                             |
+| **Underwriting**  | `GET`       | `/v1/loan-applications/summary`                        | Both   | Summary application metrics                                   |
+| **Underwriting**  | `GET`       | `/v1/loan-applications/metadata`                       | Both   | Application filter metadata                                   |
+| **Underwriting**  | `GET`       | `/v1/loan-applications/{id}/full-profile`              | Both   | Full applicant underwriting profile                           |
+| **Underwriting**  | `GET`       | `/v1/loan-applications/{id}/documents`                 | Both   | List document attachments                                     |
+| **Underwriting**  | `GET`       | `/v1/loan-applications/{id}/documents/{docId}/content` | Both   | Download document attachment                                  |
+| **Underwriting**  | `PATCH`     | `/v1/loan-applications/{id}/status`                    | Both   | Move pipeline stage / complete / reject                       |
+| **Notifications** | `GET`       | `/v1/notifications`                                    | Both   | List user notifications & unread count                        |
+| **Notifications** | `PATCH`     | `/v1/notifications/read`                               | Both   | Mark notifications as read                                    |
+| **Notifications** | `DELETE`    | `/v1/notifications`                                    | Both   | Delete / clear notifications                                  |
 
 ¹ `set_product_status` is callable by both roles, but transitions to `Active`, `Rejected`, or `Archived` require `A2C Bank Admin` and a non-empty `reason`.
 
@@ -1870,7 +1872,7 @@ Every endpoint below is callable by a bank user. The **Role** column gives the m
 
 ### Step 40: Create Taxonomy Category
 
-**POST** `/api/method/oan_a2c.api.v1.seller.taxonomy.create_category`
+**POST** `/v1/admin/taxonomy/categories`
 
 Creates a new marketplace taxonomy category term (e.g., "Crop Input Loans").
 
@@ -1911,7 +1913,7 @@ Creates a new marketplace taxonomy category term (e.g., "Crop Input Loans").
 
 ### Step 41: Create Taxonomy Tag
 
-**POST** `/api/method/oan_a2c.api.v1.seller.taxonomy.create_tag`
+**POST** `/v1/admin/taxonomy/tags`
 
 Creates a new search and filtering tag for product discovery (e.g., "No Collateral", "Fast Disbursal").
 
@@ -1950,7 +1952,7 @@ Creates a new search and filtering tag for product discovery (e.g., "No Collater
 
 ### Step 42: Create Attribute Term
 
-**POST** `/api/method/oan_a2c.api.v1.seller.taxonomy.create_attribute_term`
+**POST** `/v1/admin/taxonomy/attribute-terms`
 
 Pre-registers a taxonomy term used for dynamic product attributes and qualification criteria.
 
@@ -1989,7 +1991,7 @@ Pre-registers a taxonomy term used for dynamic product attributes and qualificat
 
 ### Step 43: Create Loan Application (Direct / Agent-Assisted Intake)
 
-**POST** `/api/method/oan_a2c.api.v1.loan_applications.create_loan_application`
+**POST** `/v1/loan-applications`
 
 Creates an `A2C Loan Application` record by copying data from the lead's verified `A2C Farmer Profile` and linked `A2C Credit Information`.
 
@@ -2045,7 +2047,7 @@ Creates an `A2C Loan Application` record by copying data from the lead's verifie
 
 ### Step 44: Get Basic Applicant Profile
 
-**GET** `/api/method/oan_a2c.api.v1.loan_applications.get_basic_profile`
+**GET** `/v1/loan-applications/{id}/basic-profile`
 
 Retrieves basic demographic, location, and consent metadata for a borrower lead or the currently authenticated farmer.
 
@@ -2099,7 +2101,7 @@ Retrieves basic demographic, location, and consent metadata for a borrower lead 
 
 ### Step 45: Update Basic Applicant Profile
 
-**POST** `/api/method/oan_a2c.api.v1.loan_applications.update_basic_profile`
+**PATCH** `/v1/loan-applications/{id}/basic-profile`
 
 Updates contact information and administrative location details for a lead's linked farmer profile.
 
@@ -2144,7 +2146,7 @@ Updates contact information and administrative location details for a lead's lin
 
 ### Step 46: Upload Supporting Application Documents
 
-**POST** `/api/method/oan_a2c.api.v1.loan_applications.upload_supporting_documents`
+**POST** `/v1/loan-applications/{id}/documents`
 
 Uploads private supporting document attachments (PDF, PNG, JPG; max 5MB each; up to 5 files per request) for a loan application.
 
@@ -2177,7 +2179,7 @@ Uploads private supporting document attachments (PDF, PNG, JPG; max 5MB each; up
 
 ### Step 47: Delete Supporting Application Document
 
-**POST** `/api/method/oan_a2c.api.v1.loan_applications.delete_supporting_document`
+**DELETE** `/v1/loan-applications/{id}/documents/{docId}`
 
 Deletes an attached private supporting document from a loan application and logs an audit trail event.
 
@@ -2210,7 +2212,7 @@ Deletes an attached private supporting document from a loan application and logs
 
 ### Step 48: Update Loan Application Progression Step
 
-**POST** `/api/method/oan_a2c.api.v1.loan_applications.update_loan_step`
+**PATCH** `/v1/loan-applications/{id}/step`
 
 Updates the wizard/intake progression step (valid values: `1`, `2`, `3`, `4`). Skipping forward by more than one step is prohibited.
 
@@ -2247,7 +2249,7 @@ Updates the wizard/intake progression step (valid values: `1`, `2`, `3`, `4`). S
 
 ### Step 49: Assign Loan Officer / Underwriter
 
-**POST** `/api/method/oan_a2c.api.v1.loan_applications.assign_loan_officer`
+**PATCH** `/v1/loan-applications/{id}/officer`
 
 Assigns an active bank officer or underwriter to a loan application.
 
@@ -2287,7 +2289,7 @@ Assigns an active bank officer or underwriter to a loan application.
 
 ### Step 50: Create Inbound Lead
 
-**POST** `/api/method/oan_a2c.api.v1.leads.create_lead`
+**POST** `/v1/leads`
 
 Captures a new prospective borrower lead into the marketplace funnel.
 
@@ -2341,7 +2343,7 @@ Captures a new prospective borrower lead into the marketplace funnel.
 
 ### Step 51: List & Filter Leads
 
-**GET** `/api/method/oan_a2c.api.v1.leads.get_leads`
+**GET** `/v1/leads`
 
 Retrieves a paginated list of borrower leads with multi-criteria filtering across statuses, sources, assigned agents, and credit amounts.
 
@@ -2397,7 +2399,7 @@ Retrieves a paginated list of borrower leads with multi-criteria filtering acros
 
 ### Step 52: Get Lead Summary & Stage Counts
 
-**GET** `/api/method/oan_a2c.api.v1.leads.get_lead_summary`
+**GET** `/v1/leads/summary`
 
 Fetches aggregate counters grouped by lead lifecycle status and assignment queue tabs.
 
@@ -2430,7 +2432,7 @@ Fetches aggregate counters grouped by lead lifecycle status and assignment queue
 
 ### Step 53: Get Lead Filter Metadata
 
-**GET** `/api/method/oan_a2c.api.v1.leads.get_lead_metadata`
+**GET** `/v1/leads/metadata`
 
 Fetches dynamic filter options, selectable statuses, lead sources, and loan types for UI form builders.
 
@@ -2468,7 +2470,7 @@ Fetches dynamic filter options, selectable statuses, lead sources, and loan type
 
 ### Step 54: Update Lead Status
 
-**POST** `/api/method/oan_a2c.api.v1.leads.update_lead_status`
+**PATCH** `/v1/leads/{id}/status`
 
 Transitions a lead through lifecycle workflow states (`Active` -> `Verified` -> `Processed`). Cannot update terminal states (`Processed`, `Granted`, `Rejected`, `Dormant`).
 
@@ -2507,7 +2509,7 @@ Transitions a lead through lifecycle workflow states (`Active` -> `Verified` -> 
 
 ### Step 55: Get Assignable Field Users
 
-**GET** `/api/method/oan_a2c.api.v1.leads.get_assignable_users`
+**GET** `/v1/leads/assignable-users`
 
 Searches platform users eligible to be assigned leads (Development Agents, Field Officers).
 
@@ -2546,7 +2548,7 @@ Searches platform users eligible to be assigned leads (Development Agents, Field
 
 ### Step 56: Assign Lead to Field Agent
 
-**POST** `/api/method/oan_a2c.api.v1.leads.assign_lead`
+**PATCH** `/v1/leads/{id}/assignment`
 
 Assigns a lead to an active agent user and sets `assigned_date` to the current timestamp.
 
@@ -2584,7 +2586,7 @@ Assigns a lead to an active agent user and sets `assigned_date` to the current t
 
 ### Step 57: Add Lead Comment / Internal Note
 
-**POST** `/api/method/oan_a2c.api.v1.leads.add_lead_comment`
+**POST** `/v1/leads/{id}/comments`
 
 Adds an internal operational comment or note to the lead's chronological audit trail.
 
@@ -2620,7 +2622,7 @@ Adds an internal operational comment or note to the lead's chronological audit t
 
 ### Step 58: Get Lead Activity Timeline
 
-**GET** `/api/method/oan_a2c.api.v1.leads.get_lead_timeline`
+**GET** `/v1/leads/{id}/timeline`
 
 Retrieves the complete audit trail and event history for a specific lead.
 
@@ -2658,7 +2660,7 @@ Updated by: agent@bank.com",
 
 ### Step 59: Get Lead Call & Telephony Logs
 
-**GET** `/api/method/oan_a2c.api.v1.leads.get_lead_call_logs`
+**GET** `/v1/leads/{id}/call-logs`
 
 Retrieves and parses inbound IVR, missed-call, and telephony interaction history associated with the lead.
 
@@ -2692,7 +2694,7 @@ Retrieves and parses inbound IVR, missed-call, and telephony interaction history
 
 ### Step 60: Schedule Lead Field Visit
 
-**POST** `/api/method/oan_a2c.api.v1.leads.schedule_visit`
+**POST** `/v1/visit-schedules`
 
 Schedules a physical field visit for farm verification, KYC validation, or biometric intake.
 
@@ -2742,7 +2744,7 @@ Schedules a physical field visit for farm verification, KYC validation, or biome
 
 ### Step 61: List Lead Visit Schedules
 
-**GET** `/api/method/oan_a2c.api.v1.leads.get_visit_schedules`
+**GET** `/v1/visit-schedules`
 
 Retrieves a paginated list of visit schedules filtered by date, lead, or status.
 
@@ -2793,7 +2795,7 @@ Retrieves a paginated list of visit schedules filtered by date, lead, or status.
 
 ### Step 62: Update Visit Schedule Status
 
-**POST** `/api/method/oan_a2c.api.v1.leads.update_visit_schedule_status`
+**PATCH** `/v1/visit-schedules/{id}/status`
 
 Updates the status of a visit schedule (`Scheduled`, `Completed`, `Cancelled`, `Missed`). Terminal states (`Completed`, `Missed`) cannot be modified.
 
@@ -2830,7 +2832,7 @@ Updates the status of a visit schedule (`Scheduled`, `Completed`, `Cancelled`, `
 
 ### Step 63: Add Lead Credit / Financial Information
 
-**POST** `/api/method/oan_a2c.api.v1.leads.add_lead_credit_info`
+**POST** `/v1/leads/{id}/credit-info`
 
 Attaches credit demand and product requirements to an active lead.
 
@@ -2872,7 +2874,7 @@ Attaches credit demand and product requirements to an active lead.
 
 ### Step 64: List Lead Credit / Financial Information Records
 
-**GET** `/api/method/oan_a2c.api.v1.leads.get_lead_credit_infos`
+**GET** `/v1/leads/{id}/credit-info`
 
 Retrieves all recorded credit requirement records for a specific lead.
 
@@ -2908,7 +2910,7 @@ Retrieves all recorded credit requirement records for a specific lead.
 
 ### Step 65: Discover Consent Reasons
 
-**GET** `/api/method/oan_a2c.api.v1.consent.consent.get_consent_reasons`
+**GET** `/v1/consent/reasons`
 
 Fetches all active consent purposes configured in the OpenG2P Consent Manager.
 
@@ -2937,7 +2939,7 @@ Fetches all active consent purposes configured in the OpenG2P Consent Manager.
 
 ### Step 66: Discover Allowed Consent Data Fields
 
-**GET** `/api/method/oan_a2c.api.v1.consent.consent.get_consent_allowed_fields`
+**GET** `/v1/consent/allowed-fields`
 
 Fetches the complete catalog of accessible farmer attributes and registry fields available for consent requests.
 
@@ -2976,7 +2978,7 @@ Fetches the complete catalog of accessible farmer attributes and registry fields
 
 ### Step 67: Get Partner Allowed Data Field IDs
 
-**GET** `/api/method/oan_a2c.api.v1.consent.consent.get_partner_allowed_data_field_ids`
+**GET** `/v1/consent/partners/me/allowed-field-ids`
 
 Retrieves the specific array of numeric field IDs authorized for this marketplace tenant.
 
@@ -2994,7 +2996,7 @@ Retrieves the specific array of numeric field IDs authorized for this marketplac
 
 ### Step 68: Search Farmer by Fayda National ID
 
-**POST** `/api/method/oan_a2c.api.v1.consent.consent.search_farmer`
+**GET** `/v1/consent/farmers`
 
 Queries the National ID / Fayda system via OpenG2P to verify farmer registry existence before opening consent.
 
@@ -3037,7 +3039,7 @@ Queries the National ID / Fayda system via OpenG2P to verify farmer registry exi
 
 ### Step 69: Request Consent Verification OTP
 
-**POST** `/api/method/oan_a2c.api.v1.consent.consent.request_otp`
+**POST** `/v1/consent/otp`
 
 Creates an `A2C Consent Request` in `Pending OTP` status and requests OpenG2P / Fayda to dispatch an OTP to the farmer's registered mobile number.
 
@@ -3079,7 +3081,7 @@ Creates an `A2C Consent Request` in `Pending OTP` status and requests OpenG2P / 
 
 ### Step 70: Verify Consent OTP
 
-**POST** `/api/method/oan_a2c.api.v1.consent.consent.verify_otp`
+**POST** `/v1/consent/otp/verify`
 
 Verifies the one-time password provided by the farmer against OpenG2P and transitions the consent request to `OTP Verified`.
 
@@ -3120,7 +3122,7 @@ Verifies the one-time password provided by the farmer against OpenG2P and transi
 
 ### Step 71: Submit Consent Package
 
-**POST** `/api/method/oan_a2c.api.v1.consent.consent.submit_consent`
+**POST** `/v1/consent/requests`
 
 Attaches signed consent artifact and requested data fields, submits to OpenG2P for approval, and updates the lead with farmer registry data.
 
@@ -3180,7 +3182,7 @@ Attaches signed consent artifact and requested data fields, submits to OpenG2P f
 
 ### Step 72: Inbound Telco / IVR Lead Webhook
 
-**POST** `/api/method/oan_a2c.api.v1.webhooks.lead_inbound`
+**POST** `/v1/webhooks/leads`
 
 Automated lead intake from external telco systems (IVR, missed-call gateways) with automated deduplication.
 
@@ -3222,7 +3224,7 @@ Automated lead intake from external telco systems (IVR, missed-call gateways) wi
 
 ### Step 73: OpenG2P Consent Data Callback Webhook
 
-**POST** `/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data`
+**POST** `/v1/webhooks/consent-data`
 
 Authenticated webhook endpoint called by OpenG2P upon consent authorization to deliver decrypted farmer identity and agricultural registry data.
 
@@ -3272,7 +3274,7 @@ Authenticated webhook endpoint called by OpenG2P upon consent authorization to d
 
 ### Step 74: List Marketplace Loan Products (Farmer Catalog)
 
-**GET** `/api/method/oan_a2c.api.v1.farmer.catalog.list_catalog`
+**GET** `/v1/catalog/products`
 
 Allows browsing of all published active loan products across all onboarding banks with extensive multi-facet filtering.
 
@@ -3335,7 +3337,7 @@ Allows browsing of all published active loan products across all onboarding bank
 
 ### Step 75: Get Marketplace Catalog Facets & Filter Options
 
-**GET** `/api/method/oan_a2c.api.v1.farmer.catalog.get_catalog_facets`
+**GET** `/v1/catalog/facets`
 
 Returns dynamic aggregations, available bank options, tenures, and category terms for rendering marketplace discovery sidebars.
 
@@ -3398,7 +3400,7 @@ Returns dynamic aggregations, available bank options, tenures, and category term
 
 ### Step 76: Get Bank Storefront & Organization Details
 
-**GET** `/api/method/oan_a2c.api.v1.farmer.catalog.get_bank_details`
+**GET** `/v1/catalog/banks/{bankId}`
 
 Returns public storefront details for a specific active lender bank.
 
@@ -3432,7 +3434,7 @@ Returns public storefront details for a specific active lender bank.
 
 ### Step 77: Bookmark / Save Loan Product
 
-**POST** `/api/method/oan_a2c.api.v1.farmer.catalog.save_product`
+**PUT** `/v1/catalog/saved-products/{productId}`
 
 Bookmarks a loan product for the authenticated caller.
 
@@ -3464,7 +3466,7 @@ Bookmarks a loan product for the authenticated caller.
 
 ### Step 78: Remove Bookmarked / Saved Loan Product
 
-**POST** `/api/method/oan_a2c.api.v1.farmer.catalog.unsave_product`
+**DELETE** `/v1/catalog/saved-products/{productId}`
 
 Removes a loan product from the user's bookmarked favorites.
 
@@ -3496,7 +3498,7 @@ Removes a loan product from the user's bookmarked favorites.
 
 ### Step 79: List Bookmarked / Saved Loan Products
 
-**GET** `/api/method/oan_a2c.api.v1.farmer.catalog.get_saved_products`
+**GET** `/v1/catalog/saved-products`
 
 Retrieves a paginated list of loan products bookmarked by the caller.
 
@@ -3547,7 +3549,7 @@ Retrieves a paginated list of loan products bookmarked by the caller.
 
 ### Step 80: Create Self-Service Loan Application
 
-**POST** `/api/method/oan_a2c.api.v1.farmer.applications.create_application`
+**POST** `/v1/applications`
 
 Initializes a new draft loan application in `Active` status bound to the authenticated farmer's profile.
 
@@ -3589,7 +3591,7 @@ Initializes a new draft loan application in `Active` status bound to the authent
 
 ### Step 81: List Farmer Applications
 
-**GET** `/api/method/oan_a2c.api.v1.farmer.applications.list_applications`
+**GET** `/v1/applications`
 
 Lists loan applications belonging to the authenticated farmer across all lenders.
 
@@ -3640,7 +3642,7 @@ Lists loan applications belonging to the authenticated farmer across all lenders
 
 ### Step 82: Get Farmer Application Details
 
-**GET** `/api/method/oan_a2c.api.v1.farmer.applications.get_application`
+**GET** `/v1/applications/{id}`
 
 Retrieves the full borrower profile, farm data, and live underwriting pipeline stage for a single application.
 
@@ -3704,7 +3706,7 @@ Retrieves the full borrower profile, farm data, and live underwriting pipeline s
 
 ### Step 83: Update Draft Application
 
-**POST** `/api/method/oan_a2c.api.v1.farmer.applications.update_application`
+**PATCH** `/v1/applications/{id}`
 
 Updates the requested loan amount or purpose notes for an unsubmitted `Active` application.
 
@@ -3740,7 +3742,7 @@ Updates the requested loan amount or purpose notes for an unsubmitted `Active` a
 
 ### Step 84: Submit Application for Bank Underwriting
 
-**POST** `/api/method/oan_a2c.api.v1.farmer.applications.submit_application`
+**POST** `/v1/applications/{id}/submit`
 
 Submits an `Active` draft application into the lender's underwriting workflow (transitions status to the bank's initial stage, archetype `In Transition`).
 
@@ -3774,7 +3776,7 @@ Submits an `Active` draft application into the lender's underwriting workflow (t
 
 ### Step 85: Get Farmer Dashboard Summary
 
-**GET** `/api/method/oan_a2c.api.v1.farmer.dashboard.get_dashboard_summary`
+**GET** `/v1/me/dashboard`
 
 Fetches farmer identity summary and recent loan applications for rendering the borrower portal home dashboard.
 
@@ -3822,99 +3824,99 @@ Fetches farmer identity summary and recent loan applications for rendering the b
 
 The complete catalog of all 95 marketplace API endpoints across all platform functional modules and access roles.
 
-| Functional Area       | HTTP Method | Method / Endpoint Path                                                          | Minimum Role Required       | Description                               |
-| :-------------------- | :---------- | :------------------------------------------------------------------------------ | :-------------------------- | :---------------------------------------- |
-| **Auth**              | `POST`      | `/api/method/oan_a2c.api.v1.auth.register_user`                                 | Public                      | Register new Bank Administrator           |
-| **Auth**              | `POST`      | `/api/method/oan_a2c.api.auth.login`                                            | Public                      | Authenticate & obtain JWT Bearer token    |
-| **Auth**              | `POST`      | `/api/method/oan_a2c.api.auth.refresh`                                          | Public                      | Refresh access token                      |
-| **Auth**              | `POST`      | `/api/method/oan_a2c.api.auth.set_initial_password`                             | Public                      | Rotate temporary password on first login  |
-| **Auth**              | `POST`      | `/api/method/oan_a2c.api.auth.forgot_password`                                  | Public                      | Request password reset instructions       |
-| **Auth**              | `POST`      | `/api/method/oan_a2c.api.auth.reset_password`                                   | Public                      | Complete password reset                   |
-| **Auth**              | `POST`      | `/api/method/oan_a2c.api.auth.logout`                                           | Public                      | Logout & revoke refresh token             |
-| **Auth**              | `GET`       | `/api/method/oan_a2c.api.auth.get_me`                                           | Authenticated               | Get current user context & platform roles |
-| **Auth**              | `GET`       | `/api/method/oan_a2c.api.auth.get_user_profile`                                 | Authenticated               | Get detailed user profile                 |
-| **Auth**              | `POST`      | `/api/method/oan_a2c.api.auth.update_profile`                                   | Authenticated               | Update personal user profile              |
-| **Auth**              | `POST`      | `/api/method/oan_a2c.api.auth.change_password`                                  | Authenticated               | Change password for logged-in user        |
-| **Seller Onboarding** | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.register_bank`                    | Bank Admin / Agent          | Register new bank organization            |
-| **Seller Onboarding** | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.upload_kyc_document`              | Bank Admin                  | Upload mandatory KYC PDF                  |
-| **Seller Onboarding** | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.upload_image`                     | Bank Admin / Agent          | Upload public asset / image file          |
-| **Seller Onboarding** | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.save_org_contacts`                | Bank Admin / Agent          | Save compliance contacts (GRO & OPS)      |
-| **Seller Onboarding** | `GET`       | `/api/method/oan_a2c.api.v1.seller.onboarding.get_bank_profile`                 | Bank Admin / Agent          | Retrieve organization profile details     |
-| **Seller Onboarding** | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.update_bank_profile`              | Bank Admin / Agent          | Update organization details & branding    |
-| **Seller Onboarding** | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.update_bank_status`               | Bank Admin                  | Update bank onboarding status (`Active`)  |
-| **Team Management**   | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.invite_team_member`               | Bank Admin                  | Invite Bank Agent team member             |
-| **Team Management**   | `GET`       | `/api/method/oan_a2c.api.v1.seller.onboarding.list_users`                       | Bank Admin                  | List bank team members                    |
-| **Team Management**   | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.update_user`                      | Bank Admin                  | Update team member role/status            |
-| **Team Management**   | `POST`      | `/api/method/oan_a2c.api.v1.seller.onboarding.reset_member_password`            | Bank Admin                  | Reset agent temporary password            |
-| **Seller Dashboard**  | `GET`       | `/api/method/oan_a2c.api.v1.seller.dashboard.get_stats`                         | Bank Admin / Agent          | Bank statistics & metric counters         |
-| **Product Catalog**   | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_products.create_product`                | Bank Admin / Agent          | Create loan product (single or bulk)      |
-| **Product Catalog**   | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_products.update_product`                | Bank Admin / Agent          | Update loan product parameters            |
-| **Product Catalog**   | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_products.set_product_status`            | Bank Admin                  | Approve / activate / archive loan product |
-| **Product Catalog**   | `GET`       | `/api/method/oan_a2c.api.v1.seller.loan_products.list_products`                 | Bank Admin / Agent          | Search & filter bank loan products        |
-| **Product Catalog**   | `GET`       | `/api/method/oan_a2c.api.v1.seller.loan_products.get_product`                   | Bank Admin / Agent          | Get loan product details & terms          |
-| **Product Catalog**   | `GET`       | `/api/method/oan_a2c.api.v1.seller.loan_products.get_product_comment`           | Bank Admin / Agent          | Audit history & approval comments         |
-| **Taxonomy**          | `GET`       | `/api/method/oan_a2c.api.v1.seller.taxonomy.get_categories`                     | Bank Admin / Agent          | List taxonomy categories                  |
-| **Taxonomy**          | `GET`       | `/api/method/oan_a2c.api.v1.seller.taxonomy.get_tags`                           | Bank Admin / Agent          | List taxonomy tags                        |
-| **Taxonomy**          | `GET`       | `/api/method/oan_a2c.api.v1.seller.taxonomy.get_attributes`                     | Bank Admin / Agent          | List taxonomy attributes                  |
-| **Taxonomy**          | `POST`      | `/api/method/oan_a2c.api.v1.seller.taxonomy.set_product_categories`             | Bank Admin / Agent          | Map categories to loan product            |
-| **Taxonomy**          | `POST`      | `/api/method/oan_a2c.api.v1.seller.taxonomy.set_product_tags`                   | Bank Admin / Agent          | Map tags to loan product                  |
-| **Taxonomy**          | `POST`      | `/api/method/oan_a2c.api.v1.seller.taxonomy.set_product_attributes`             | Bank Admin / Agent          | Map attributes to loan product            |
-| **Taxonomy**          | `POST`      | `/api/method/oan_a2c.api.v1.seller.taxonomy.create_category`                    | Bank Admin / Manager        | Create new taxonomy category term         |
-| **Taxonomy**          | `POST`      | `/api/method/oan_a2c.api.v1.seller.taxonomy.create_tag`                         | Bank Admin / Manager        | Create new taxonomy tag term              |
-| **Taxonomy**          | `POST`      | `/api/method/oan_a2c.api.v1.seller.taxonomy.create_attribute_term`              | Bank Admin / Manager        | Create attribute term                     |
-| **Pipeline Config**   | `GET`       | `/api/method/oan_a2c.api.v1.seller.loan_stages.get_stages`                      | Bank Admin / Agent          | List custom pipeline stages               |
-| **Pipeline Config**   | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_stages.add_stage`                       | Bank Admin                  | Add custom pipeline stage                 |
-| **Pipeline Config**   | `POST`      | `/api/method/oan_a2c.api.v1.seller.loan_stages.sync_stages`                     | Bank Admin                  | Batch sync / reorder pipeline stages      |
-| **Underwriting**      | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_all_loans`                    | Bank Admin / Agent          | Search & filter loan applications         |
-| **Underwriting**      | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_loan_summary`                 | Bank Admin / Agent          | Summary application metrics               |
-| **Underwriting**      | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_loan_metadata`                | Bank Admin / Agent          | Application filter metadata               |
-| **Underwriting**      | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_full_profile`                 | Bank Admin / Agent          | Full applicant underwriting profile       |
-| **Underwriting**      | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_basic_profile`                | Bank Admin / Agent / Farmer | Basic applicant profile & consent data    |
-| **Underwriting**      | `POST`      | `/api/method/oan_a2c.api.v1.loan_applications.update_basic_profile`             | Bank Admin / Agent / Farmer | Update basic profile data                 |
-| **Underwriting**      | `POST`      | `/api/method/oan_a2c.api.v1.loan_applications.create_loan_application`          | Dev Agent / Bank Admin      | Create loan application from lead         |
-| **Underwriting**      | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.get_supporting_documents`         | Bank Admin / Agent          | List document attachments                 |
-| **Underwriting**      | `GET`       | `/api/method/oan_a2c.api.v1.loan_applications.download_supporting_document`     | Bank Admin / Agent          | Download document attachment              |
-| **Underwriting**      | `POST`      | `/api/method/oan_a2c.api.v1.loan_applications.upload_supporting_documents`      | Bank Admin / Agent          | Upload private supporting documents       |
-| **Underwriting**      | `POST`      | `/api/method/oan_a2c.api.v1.loan_applications.delete_supporting_document`       | Bank Admin / Agent          | Delete attached supporting document       |
-| **Underwriting**      | `POST`      | `/api/method/oan_a2c.api.v1.loan_applications.update_loan_step`                 | Bank Admin / Agent          | Update loan intake progression step       |
-| **Underwriting**      | `POST`      | `/api/method/oan_a2c.api.v1.loan_applications.assign_loan_officer`              | Bank Admin / Agent          | Assign loan officer / underwriter         |
-| **Underwriting**      | `POST`      | `/api/method/oan_a2c.api.v1.loan_applications.update_loan_status`               | Bank Admin / Agent          | Move pipeline stage / complete / reject   |
-| **Notifications**     | `GET`       | `/api/method/oan_a2c.api.v1.notifications.get_notifications`                    | Authenticated               | List user notifications & unread count    |
-| **Notifications**     | `POST`      | `/api/method/oan_a2c.api.v1.notifications.mark_read`                            | Authenticated               | Mark notifications as read                |
-| **Notifications**     | `POST`      | `/api/method/oan_a2c.api.v1.notifications.clear`                                | Authenticated               | Delete / clear notifications              |
-| **Leads / CRM**       | `POST`      | `/api/method/oan_a2c.api.v1.leads.create_lead`                                  | Dev Agent / Admin           | Manually create prospective lead          |
-| **Leads / CRM**       | `GET`       | `/api/method/oan_a2c.api.v1.leads.get_leads`                                    | Dev Agent / Admin           | List & filter borrower leads              |
-| **Leads / CRM**       | `GET`       | `/api/method/oan_a2c.api.v1.leads.get_lead_summary`                             | Dev Agent / Admin           | Funnel status & queue metrics             |
-| **Leads / CRM**       | `GET`       | `/api/method/oan_a2c.api.v1.leads.get_lead_metadata`                            | Dev Agent / Admin           | Dynamic lead filter metadata              |
-| **Leads / CRM**       | `POST`      | `/api/method/oan_a2c.api.v1.leads.update_lead_status`                           | Dev Agent / Admin           | Transition lead lifecycle state           |
-| **Leads / CRM**       | `GET`       | `/api/method/oan_a2c.api.v1.leads.get_assignable_users`                         | Dev Agent / Admin           | Search assignable field agents            |
-| **Leads / CRM**       | `POST`      | `/api/method/oan_a2c.api.v1.leads.assign_lead`                                  | Dev Agent / Admin           | Assign lead to field agent                |
-| **Leads / CRM**       | `POST`      | `/api/method/oan_a2c.api.v1.leads.add_lead_comment`                             | Dev Agent / Admin           | Add internal comment to lead              |
-| **Leads / CRM**       | `GET`       | `/api/method/oan_a2c.api.v1.leads.get_lead_timeline`                            | Dev Agent / Admin           | Chronological lead audit timeline         |
-| **Leads / CRM**       | `GET`       | `/api/method/oan_a2c.api.v1.leads.get_lead_call_logs`                           | Dev Agent / Admin           | IVR / Telephony interaction logs          |
-| **Leads / CRM**       | `POST`      | `/api/method/oan_a2c.api.v1.leads.schedule_visit`                               | Dev Agent / Admin           | Schedule field KYC / inspection visit     |
-| **Leads / CRM**       | `GET`       | `/api/method/oan_a2c.api.v1.leads.get_visit_schedules`                          | Dev Agent / Admin           | List scheduled field visits               |
-| **Leads / CRM**       | `POST`      | `/api/method/oan_a2c.api.v1.leads.update_visit_schedule_status`                 | Dev Agent / Admin           | Update visit status (Complete/Cancel)     |
-| **Leads / CRM**       | `POST`      | `/api/method/oan_a2c.api.v1.leads.add_lead_credit_info`                         | Dev Agent / Admin           | Attach credit requirement to lead         |
-| **Leads / CRM**       | `GET`       | `/api/method/oan_a2c.api.v1.leads.get_lead_credit_infos`                        | Dev Agent / Admin           | List credit requirement records           |
-| **OpenG2P Consent**   | `GET`       | `/api/method/oan_a2c.api.v1.consent.consent.get_consent_reasons`                | Dev Agent / Admin           | Discover OpenG2P consent reasons          |
-| **OpenG2P Consent**   | `GET`       | `/api/method/oan_a2c.api.v1.consent.consent.get_consent_allowed_fields`         | Dev Agent / Admin           | Discover allowed farmer data fields       |
-| **OpenG2P Consent**   | `GET`       | `/api/method/oan_a2c.api.v1.consent.consent.get_partner_allowed_data_field_ids` | Dev Agent / Admin           | Get authorized partner field IDs          |
-| **OpenG2P Consent**   | `POST`      | `/api/method/oan_a2c.api.v1.consent.consent.search_farmer`                      | Dev Agent / Admin           | Lookup farmer by Fayda National ID        |
-| **OpenG2P Consent**   | `POST`      | `/api/method/oan_a2c.api.v1.consent.consent.request_otp`                        | Dev Agent / Admin           | Dispatch Fayda consent OTP                |
-| **OpenG2P Consent**   | `POST`      | `/api/method/oan_a2c.api.v1.consent.consent.verify_otp`                         | Dev Agent / Admin           | Verify Fayda consent OTP                  |
-| **OpenG2P Consent**   | `POST`      | `/api/method/oan_a2c.api.v1.consent.consent.submit_consent`                     | Dev Agent / Admin           | Submit & approve consent package          |
-| **Webhooks**          | `POST`      | `/api/method/oan_a2c.api.v1.webhooks.lead_inbound`                              | Token Auth                  | Ingest inbound telco missed call / IVR    |
-| **Webhooks**          | `POST`      | `/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data`          | Token Auth                  | Ingest OpenG2P decrypted consent data     |
-| **Farmer Catalog**    | `GET`       | `/api/method/oan_a2c.api.v1.farmer.catalog.list_catalog`                        | Authenticated               | Browse marketplace loan products          |
-| **Farmer Catalog**    | `GET`       | `/api/method/oan_a2c.api.v1.farmer.catalog.get_catalog_facets`                  | Authenticated               | Discovery sidebar facets & options        |
-| **Farmer Catalog**    | `GET`       | `/api/method/oan_a2c.api.v1.farmer.catalog.get_bank_details`                    | Authenticated               | Public lender storefront profile          |
-| **Farmer Catalog**    | `POST`      | `/api/method/oan_a2c.api.v1.farmer.catalog.save_product`                        | Authenticated               | Bookmark loan product                     |
-| **Farmer Catalog**    | `POST`      | `/api/method/oan_a2c.api.v1.farmer.catalog.unsave_product`                      | Authenticated               | Remove bookmarked loan product            |
-| **Farmer Catalog**    | `GET`       | `/api/method/oan_a2c.api.v1.farmer.catalog.get_saved_products`                  | Authenticated               | List bookmarked loan products             |
-| **Farmer B2C Portal** | `POST`      | `/api/method/oan_a2c.api.v1.farmer.applications.create_application`             | Farmer                      | Create self-service draft application     |
-| **Farmer B2C Portal** | `GET`       | `/api/method/oan_a2c.api.v1.farmer.applications.list_applications`              | Farmer                      | List own submitted/draft applications     |
-| **Farmer B2C Portal** | `GET`       | `/api/method/oan_a2c.api.v1.farmer.applications.get_application`                | Farmer                      | Full application status & details         |
-| **Farmer B2C Portal** | `POST`      | `/api/method/oan_a2c.api.v1.farmer.applications.update_application`             | Farmer                      | Update active draft application           |
-| **Farmer B2C Portal** | `POST`      | `/api/method/oan_a2c.api.v1.farmer.applications.submit_application`             | Farmer / Dev Agent          | Submit application for bank underwriting  |
-| **Farmer B2C Portal** | `GET`       | `/api/method/oan_a2c.api.v1.farmer.dashboard.get_dashboard_summary`             | Farmer                      | Borrower dashboard metrics & profile      |
+| Functional Area       | HTTP Method | Method / Endpoint Path                                 | Minimum Role Required       | Description                               |
+| :-------------------- | :---------- | :----------------------------------------------------- | :-------------------------- | :---------------------------------------- |
+| **Auth**              | `POST`      | `/v1/auth/register`                                    | Public                      | Register new Bank Administrator           |
+| **Auth**              | `POST`      | `/v1/auth/login`                                       | Public                      | Authenticate & obtain JWT Bearer token    |
+| **Auth**              | `POST`      | `/v1/auth/token/refresh`                               | Public                      | Refresh access token                      |
+| **Auth**              | `POST`      | `/v1/auth/password/initial`                            | Public                      | Rotate temporary password on first login  |
+| **Auth**              | `POST`      | `/v1/auth/password/forgot`                             | Public                      | Request password reset instructions       |
+| **Auth**              | `POST`      | `/v1/auth/password/reset`                              | Public                      | Complete password reset                   |
+| **Auth**              | `POST`      | `/v1/auth/logout`                                      | Public                      | Logout & revoke refresh token             |
+| **Auth**              | `GET`       | `/v1/me`                                               | Authenticated               | Get current user context & platform roles |
+| **Auth**              | `GET`       | `/v1/me/profile`                                       | Authenticated               | Get detailed user profile                 |
+| **Auth**              | `PATCH`     | `/v1/me/profile`                                       | Authenticated               | Update personal user profile              |
+| **Auth**              | `PATCH`     | `/v1/me/password`                                      | Authenticated               | Change password for logged-in user        |
+| **Seller Onboarding** | `POST`      | `/v1/banks`                                            | Bank Admin / Agent          | Register new bank organization            |
+| **Seller Onboarding** | `POST`      | `/v1/banks/me/kyc-documents`                           | Bank Admin                  | Upload mandatory KYC PDF                  |
+| **Seller Onboarding** | `POST`      | `/v1/images`                                           | Bank Admin / Agent          | Upload public asset / image file          |
+| **Seller Onboarding** | `PUT`       | `/v1/banks/me/contacts`                                | Bank Admin / Agent          | Save compliance contacts (GRO & OPS)      |
+| **Seller Onboarding** | `GET`       | `/v1/banks/me`                                         | Bank Admin / Agent          | Retrieve organization profile details     |
+| **Seller Onboarding** | `PATCH`     | `/v1/banks/me`                                         | Bank Admin / Agent          | Update organization details & branding    |
+| **Seller Onboarding** | `PATCH`     | `/v1/banks/me/status`                                  | Platform admin only         | Approve or suspend a bank                 |
+| **Team Management**   | `POST`      | `/v1/banks/me/team`                                    | Bank Admin                  | Invite Bank Agent team member             |
+| **Team Management**   | `GET`       | `/v1/banks/me/team`                                    | Bank Admin                  | List bank team members                    |
+| **Team Management**   | `PATCH`     | `/v1/banks/me/team/{userId}`                           | Bank Admin                  | Update team member role/status            |
+| **Team Management**   | `POST`      | `/v1/banks/me/team/{userId}/password-reset`            | Bank Admin                  | Reset agent temporary password            |
+| **Seller Dashboard**  | `GET`       | `/v1/banks/me/dashboard/stats`                         | Bank Admin / Agent          | Bank statistics & metric counters         |
+| **Product Catalog**   | `POST`      | `/v1/banks/me/products`                                | Bank Admin / Agent          | Create loan product (single or bulk)      |
+| **Product Catalog**   | `PATCH`     | `/v1/banks/me/products/{id}`                           | Bank Admin / Agent          | Update loan product parameters            |
+| **Product Catalog**   | `PATCH`     | `/v1/banks/me/products/{id}/status`                    | Bank Admin                  | Approve / activate / archive loan product |
+| **Product Catalog**   | `GET`       | `/v1/banks/me/products`                                | Bank Admin / Agent          | Search & filter bank loan products        |
+| **Product Catalog**   | `GET`       | `/v1/banks/me/products/{id}`                           | Bank Admin / Agent          | Get loan product details & terms          |
+| **Product Catalog**   | `GET`       | `/v1/banks/me/products/{id}/audit-log`                 | Bank Admin / Agent          | Audit history & approval comments         |
+| **Taxonomy**          | `GET`       | `/v1/taxonomy/categories`                              | Bank Admin / Agent          | List taxonomy categories                  |
+| **Taxonomy**          | `GET`       | `/v1/taxonomy/tags`                                    | Bank Admin / Agent          | List taxonomy tags                        |
+| **Taxonomy**          | `GET`       | `/v1/taxonomy/attributes`                              | Bank Admin / Agent          | List taxonomy attributes                  |
+| **Taxonomy**          | `PUT`       | `/v1/banks/me/products/{id}/categories`                | Bank Admin / Agent          | Map categories to loan product            |
+| **Taxonomy**          | `PUT`       | `/v1/banks/me/products/{id}/tags`                      | Bank Admin / Agent          | Map tags to loan product                  |
+| **Taxonomy**          | `PUT`       | `/v1/banks/me/products/{id}/attributes`                | Bank Admin / Agent          | Map attributes to loan product            |
+| **Taxonomy**          | `POST`      | `/v1/admin/taxonomy/categories`                        | Bank Admin / Manager        | Create new taxonomy category term         |
+| **Taxonomy**          | `POST`      | `/v1/admin/taxonomy/tags`                              | Bank Admin / Manager        | Create new taxonomy tag term              |
+| **Taxonomy**          | `POST`      | `/v1/admin/taxonomy/attribute-terms`                   | Bank Admin / Manager        | Create attribute term                     |
+| **Pipeline Config**   | `GET`       | `/v1/banks/me/pipeline-stages`                         | Bank Admin / Agent          | List custom pipeline stages               |
+| **Pipeline Config**   | `POST`      | `/v1/banks/me/pipeline-stages`                         | Bank Admin                  | Add custom pipeline stage                 |
+| **Pipeline Config**   | `PUT`       | `/v1/banks/me/pipeline-stages`                         | Bank Admin                  | Batch sync / reorder pipeline stages      |
+| **Underwriting**      | `GET`       | `/v1/loan-applications`                                | Bank Admin / Agent          | Search & filter loan applications         |
+| **Underwriting**      | `GET`       | `/v1/loan-applications/summary`                        | Bank Admin / Agent          | Summary application metrics               |
+| **Underwriting**      | `GET`       | `/v1/loan-applications/metadata`                       | Bank Admin / Agent          | Application filter metadata               |
+| **Underwriting**      | `GET`       | `/v1/loan-applications/{id}/full-profile`              | Bank Admin / Agent          | Full applicant underwriting profile       |
+| **Underwriting**      | `GET`       | `/v1/loan-applications/{id}/basic-profile`             | Bank Admin / Agent / Farmer | Basic applicant profile & consent data    |
+| **Underwriting**      | `PATCH`     | `/v1/loan-applications/{id}/basic-profile`             | Bank Admin / Agent / Farmer | Update basic profile data                 |
+| **Underwriting**      | `POST`      | `/v1/loan-applications`                                | Dev Agent / Bank Admin      | Create loan application from lead         |
+| **Underwriting**      | `GET`       | `/v1/loan-applications/{id}/documents`                 | Bank Admin / Agent          | List document attachments                 |
+| **Underwriting**      | `GET`       | `/v1/loan-applications/{id}/documents/{docId}/content` | Bank Admin / Agent          | Download document attachment              |
+| **Underwriting**      | `POST`      | `/v1/loan-applications/{id}/documents`                 | Dev Agent / Farmer          | Upload private supporting documents       |
+| **Underwriting**      | `DELETE`    | `/v1/loan-applications/{id}/documents/{docId}`         | Dev Agent / Farmer          | Delete attached supporting document       |
+| **Underwriting**      | `PATCH`     | `/v1/loan-applications/{id}/step`                      | Bank Admin / Agent          | Update loan intake progression step       |
+| **Underwriting**      | `PATCH`     | `/v1/loan-applications/{id}/officer`                   | Bank Admin / Agent          | Assign loan officer / underwriter         |
+| **Underwriting**      | `PATCH`     | `/v1/loan-applications/{id}/status`                    | Bank Admin / Agent          | Move pipeline stage / complete / reject   |
+| **Notifications**     | `GET`       | `/v1/notifications`                                    | Authenticated               | List user notifications & unread count    |
+| **Notifications**     | `PATCH`     | `/v1/notifications/read`                               | Authenticated               | Mark notifications as read                |
+| **Notifications**     | `DELETE`    | `/v1/notifications`                                    | Authenticated               | Delete / clear notifications              |
+| **Leads / CRM**       | `POST`      | `/v1/leads`                                            | Dev Agent / Admin           | Manually create prospective lead          |
+| **Leads / CRM**       | `GET`       | `/v1/leads`                                            | Dev Agent / Admin           | List & filter borrower leads              |
+| **Leads / CRM**       | `GET`       | `/v1/leads/summary`                                    | Dev Agent / Admin           | Funnel status & queue metrics             |
+| **Leads / CRM**       | `GET`       | `/v1/leads/metadata`                                   | Dev Agent / Admin           | Dynamic lead filter metadata              |
+| **Leads / CRM**       | `PATCH`     | `/v1/leads/{id}/status`                                | Dev Agent / Admin           | Transition lead lifecycle state           |
+| **Leads / CRM**       | `GET`       | `/v1/leads/assignable-users`                           | Dev Agent / Admin           | Search assignable field agents            |
+| **Leads / CRM**       | `PATCH`     | `/v1/leads/{id}/assignment`                            | Dev Agent / Admin           | Assign lead to field agent                |
+| **Leads / CRM**       | `POST`      | `/v1/leads/{id}/comments`                              | Dev Agent / Admin           | Add internal comment to lead              |
+| **Leads / CRM**       | `GET`       | `/v1/leads/{id}/timeline`                              | Dev Agent / Admin           | Chronological lead audit timeline         |
+| **Leads / CRM**       | `GET`       | `/v1/leads/{id}/call-logs`                             | Dev Agent / Admin           | IVR / Telephony interaction logs          |
+| **Leads / CRM**       | `POST`      | `/v1/visit-schedules`                                  | Dev Agent / Admin           | Schedule field KYC / inspection visit     |
+| **Leads / CRM**       | `GET`       | `/v1/visit-schedules`                                  | Dev Agent / Admin           | List scheduled field visits               |
+| **Leads / CRM**       | `PATCH`     | `/v1/visit-schedules/{id}/status`                      | Dev Agent / Admin           | Update visit status (Complete/Cancel)     |
+| **Leads / CRM**       | `POST`      | `/v1/leads/{id}/credit-info`                           | Dev Agent / Admin           | Attach credit requirement to lead         |
+| **Leads / CRM**       | `GET`       | `/v1/leads/{id}/credit-info`                           | Dev Agent / Admin           | List credit requirement records           |
+| **OpenG2P Consent**   | `GET`       | `/v1/consent/reasons`                                  | Dev Agent / Admin           | Discover OpenG2P consent reasons          |
+| **OpenG2P Consent**   | `GET`       | `/v1/consent/allowed-fields`                           | Dev Agent / Admin           | Discover allowed farmer data fields       |
+| **OpenG2P Consent**   | `GET`       | `/v1/consent/partners/me/allowed-field-ids`            | Dev Agent / Admin           | Get authorized partner field IDs          |
+| **OpenG2P Consent**   | `GET`       | `/v1/consent/farmers`                                  | Dev Agent / Admin           | Lookup farmer by Fayda National ID        |
+| **OpenG2P Consent**   | `POST`      | `/v1/consent/otp`                                      | Dev Agent / Admin           | Dispatch Fayda consent OTP                |
+| **OpenG2P Consent**   | `POST`      | `/v1/consent/otp/verify`                               | Dev Agent / Admin           | Verify Fayda consent OTP                  |
+| **OpenG2P Consent**   | `POST`      | `/v1/consent/requests`                                 | Dev Agent / Admin           | Submit & approve consent package          |
+| **Webhooks**          | `POST`      | `/v1/webhooks/leads`                                   | Token Auth                  | Ingest inbound telco missed call / IVR    |
+| **Webhooks**          | `POST`      | `/v1/webhooks/consent-data`                            | Token Auth                  | Ingest OpenG2P decrypted consent data     |
+| **Farmer Catalog**    | `GET`       | `/v1/catalog/products`                                 | Authenticated               | Browse marketplace loan products          |
+| **Farmer Catalog**    | `GET`       | `/v1/catalog/facets`                                   | Authenticated               | Discovery sidebar facets & options        |
+| **Farmer Catalog**    | `GET`       | `/v1/catalog/banks/{bankId}`                           | Authenticated               | Public lender storefront profile          |
+| **Farmer Catalog**    | `PUT`       | `/v1/catalog/saved-products/{productId}`               | Authenticated               | Bookmark loan product                     |
+| **Farmer Catalog**    | `DELETE`    | `/v1/catalog/saved-products/{productId}`               | Authenticated               | Remove bookmarked loan product            |
+| **Farmer Catalog**    | `GET`       | `/v1/catalog/saved-products`                           | Authenticated               | List bookmarked loan products             |
+| **Farmer B2C Portal** | `POST`      | `/v1/applications`                                     | Farmer                      | Create self-service draft application     |
+| **Farmer B2C Portal** | `GET`       | `/v1/applications`                                     | Farmer                      | List own submitted/draft applications     |
+| **Farmer B2C Portal** | `GET`       | `/v1/applications/{id}`                                | Farmer                      | Full application status & details         |
+| **Farmer B2C Portal** | `PATCH`     | `/v1/applications/{id}`                                | Farmer                      | Update active draft application           |
+| **Farmer B2C Portal** | `POST`      | `/v1/applications/{id}/submit`                         | Farmer / Dev Agent          | Submit application for bank underwriting  |
+| **Farmer B2C Portal** | `GET`       | `/v1/me/dashboard`                                     | Farmer                      | Borrower dashboard metrics & profile      |
