@@ -262,6 +262,8 @@ A Development Agent converts a qualified lead into a formal loan application at 
 | `GET`    | `/v1/loan-applications`                                | Lists loan applications for the caller's bank.                        | Bearer Token                     |
 | `GET`    | `/v1/loan-applications/summary`                        | Returns loan application totals by pipeline status.                   | Bearer Token                     |
 | `GET`    | `/v1/loan-applications/metadata`                       | Returns status dropdown options for loan applications.                | Bearer Token                     |
+| `GET`    | `/v1/loan-applications/basic-profile`                  | Returns the authenticated farmer's basic profile and consent data.    | Bearer Token — Farmer            |
+| `PATCH`  | `/v1/loan-applications/basic-profile`                  | Updates the authenticated farmer's contact and location details.      | Bearer Token — Farmer            |
 | `GET`    | `/v1/loan-applications/{id}/full-profile`              | Returns the complete underwriting profile for an application.         | Bearer Token                     |
 | `GET`    | `/v1/loan-applications/{id}/basic-profile`             | Returns the applicant's basic profile linked to the originating lead. | Bearer Token — Development Agent |
 | `PATCH`  | `/v1/loan-applications/{id}/basic-profile`             | Updates the applicant's contact and location details.                 | Bearer Token — Development Agent |
