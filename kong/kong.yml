@@ -2151,6 +2151,64 @@ services:
         key_claim_name: iss
         header_names:
         - Authorization
+  - name: get-v1-loan-applications-basic-profile
+    methods:
+    - GET
+    paths:
+    - ~/v1/loan-applications/basic-profile$
+    strip_path: false
+    regex_priority: 3
+    tags:
+    - a2c
+    - v1
+    - d07
+    - crm-internal
+    - bearer
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 600
+        hour: 30000
+        limit_by: consumer
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
+    - name: jwt
+      config:
+        claims_to_verify:
+        - exp
+        key_claim_name: iss
+        header_names:
+        - Authorization
+  - name: patch-v1-loan-applications-basic-profile
+    methods:
+    - PATCH
+    paths:
+    - ~/v1/loan-applications/basic-profile$
+    strip_path: false
+    regex_priority: 3
+    tags:
+    - a2c
+    - v1
+    - d07
+    - crm-internal
+    - bearer
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 600
+        hour: 30000
+        limit_by: consumer
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
+    - name: jwt
+      config:
+        claims_to_verify:
+        - exp
+        key_claim_name: iss
+        header_names:
+        - Authorization
   - name: get-v1-loan-applications-id-basic-profile
     methods:
     - GET

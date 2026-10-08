@@ -36,9 +36,9 @@ class TestRestRouter(RequestContextMixin, unittest.TestCase):
 		frappe.db.rollback()
 
 	def test_all_routes_loaded(self):
-		"""Verify all 96 routes from openapi_v1.yaml are compiled in the URL Map."""
+		"""Verify all 98 routes from openapi_v1.yaml are compiled in the URL Map."""
 		routes = get_routes_spec()
-		self.assertEqual(len(routes), 96, f"Expected 96 routes in spec, found {len(routes)}")
+		self.assertEqual(len(routes), 98, f"Expected 98 routes in spec, found {len(routes)}")
 
 	def test_expand_path_param_aliases(self):
 		"""Verify path variable alias expansion for controller kwargs."""
@@ -161,3 +161,19 @@ class TestRestRouter(RequestContextMixin, unittest.TestCase):
 		adapter = API_URL_MAP.bind("localhost", "/")
 		endpoint, _path_args = adapter.match("/v1/catalog/products", method="GET")
 		self.assertEqual(endpoint, "oan_a2c.api.v1.farmer.catalog.list_catalog")
+
+	def test_basic_profile_routes_matching(self):
+		"""Test route matching for both with-id and without-id basic-profile routes."""
+		adapter = API_URL_MAP.bind("localhost", "/")
+
+		# Without ID (farmer self-service / authenticated caller)
+		endpoint_no_id, path_args_no_id = adapter.match("/v1/loan-applications/basic-profile", method="GET")
+		self.assertEqual(endpoint_no_id, "oan_a2c.api.v1.loan_applications.get_basic_profile")
+		self.assertEqual(path_args_no_id, {})
+
+		# With ID (agent / staff caller)
+		endpoint_with_id, path_args_with_id = adapter.match(
+			"/v1/loan-applications/LEAD-001/basic-profile", method="GET"
+		)
+		self.assertEqual(endpoint_with_id, "oan_a2c.api.v1.loan_applications.get_basic_profile")
+		self.assertEqual(path_args_with_id.get("id"), "LEAD-001")

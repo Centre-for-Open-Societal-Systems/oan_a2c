@@ -2989,6 +2989,73 @@ paths:
         '500': *id006
       security:
       - BearerAuth: []
+  /v1/loan-applications/basic-profile:
+    get:
+      summary: Get the basic profile
+      tags:
+      - Loan Underwriting
+      operationId: get_v1_loan-applications_basic-profile
+      x-legacy-rpc-method: oan_a2c.api.v1.loan_applications.get_basic_profile
+      parameters:
+      - name: include_consent_data
+        in: query
+        required: false
+        schema:
+          type: integer
+          nullable: true
+        description: Include consent request data (1 or 0)
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LoanApplicationBasicProfileData'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '429': *id005
+        '500': *id006
+      security:
+      - BearerAuth: []
+    patch:
+      summary: Update the basic profile
+      tags:
+      - Loan Underwriting
+      operationId: patch_v1_loan-applications_basic-profile
+      x-legacy-rpc-method: oan_a2c.api.v1.loan_applications.update_basic_profile
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '429': *id005
+        '500': *id006
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBasicProfileRequest'
   /v1/loan-applications/{id}/basic-profile:
     get:
       summary: Get the applicant's basic profile
