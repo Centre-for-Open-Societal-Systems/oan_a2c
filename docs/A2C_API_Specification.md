@@ -126,13 +126,13 @@ Registration, login, token lifecycle, password recovery, and the caller's own pr
 | ------- | --------------------------- | --------------------------------------------------------------------------------------- | ------------ |
 | `POST`  | `/v1/auth/register`         | Creates a new user account (defaults to the Bank Admin role for organization sign-ups). | Public       |
 | `POST`  | `/v1/auth/login`            | Authenticates a user and issues an access token and refresh token.                      | Public       |
-| `POST`  | `/v1/auth/token/refresh`    | Exchanges a valid refresh token for a new access token.                                 | Public       |
+| `POST`  | `/v1/auth/refresh`          | Exchanges a valid refresh token for a new access token.                                 | Public       |
 | `POST`  | `/v1/auth/logout`           | Revokes the caller's refresh token, ending the session.                                 | Bearer Token |
 | `POST`  | `/v1/auth/password/forgot`  | Sends a one-time recovery code to the account's registered email.                       | Public       |
 | `POST`  | `/v1/auth/password/reset`   | Completes password recovery using the code from the forgot-password step.               | Public       |
 | `POST`  | `/v1/auth/password/initial` | Lets a newly invited team member replace their temporary password.                      | Public       |
 | `PATCH` | `/v1/me/password`           | Changes the password of the currently signed-in user.                                   | Bearer Token |
-| `GET`   | `/v1/me`                    | Returns the signed-in user's identity, roles, and bank affiliation.                     | Bearer Token |
+| `GET`   | `/v1/auth/me`               | Returns the signed-in user's identity, roles, and bank affiliation.                     | Bearer Token |
 | `GET`   | `/v1/me/profile`            | Returns the signed-in user's full profile details.                                      | Bearer Token |
 | `PATCH` | `/v1/me/profile`            | Updates the signed-in user's name, phone, language, or avatar.                          | Bearer Token |
 

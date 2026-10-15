@@ -549,12 +549,12 @@
                       "",
                       "var jsonData = pm.response.json();",
                       "var data = jsonData.data || (jsonData.message && jsonData.message.data) || jsonData.message || {};",
-                      "if (data.token) {",
-                      "    pm.collectionVariables.set(\"jwt_token\", data.token);",
-                      "    pm.collectionVariables.set(\"a2c_admin_jwt\", data.token);",
+                      "if (data.access_token) {",
+                      "    pm.collectionVariables.set(\"jwt_token\", data.access_token);",
+                      "    pm.collectionVariables.set(\"a2c_admin_jwt\", data.access_token);",
                       "    if (pm.environment.name) {",
-                      "        pm.environment.set(\"jwt_token\", data.token);",
-                      "        pm.environment.set(\"a2c_admin_jwt\", data.token);",
+                      "        pm.environment.set(\"jwt_token\", data.access_token);",
+                      "        pm.environment.set(\"a2c_admin_jwt\", data.access_token);",
                       "    }",
                       "    console.log(\"A2C Administrator JWT captured successfully\");",
                       "}"
@@ -890,7 +890,7 @@
                       "    var jsonData = pm.response.json();",
                       "    var resData = jsonData.data || (jsonData.message && jsonData.message.data) || (typeof jsonData.message === 'object' ? jsonData.message : null);",
                       "    if (resData) {",
-                      "        var token = resData.token || resData.access_token;",
+                      "        var token = resData.access_token || resData.access_token;",
                       "        if (token) {",
                       "            pm.collectionVariables.set(\"jwt_token\", token);",
                       "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", token); }",
@@ -2555,23 +2555,18 @@
                       "var responseJson = pm.response.json();",
                       "var data = responseJson.message && responseJson.message.data ? responseJson.message.data : (responseJson.data || {});",
                       "",
-                      "if (data.token) {",
-                      "    pm.collectionVariables.set('jwt_token', data.token);",
-                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.token); }",
+                      "if (data.access_token) {",
+                      "    pm.collectionVariables.set('jwt_token', data.access_token);",
+                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.access_token); }",
                       "}",
                       "if (data.refresh_token) {",
                       "    pm.collectionVariables.set('refresh_token', data.refresh_token);",
                       "if (pm.environment && pm.environment.name) { pm.environment.set(\"refresh_token\", data.refresh_token); }",
                       "}",
                       "if (data.user) {",
-                      "    if (data.user.email) {",
-                      "        pm.collectionVariables.set('assigned_to', data.user.email);",
-                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"assigned_to\", data.user.email); }",
-                      "    }",
-                      "    if (data.user.full_name) {",
-                      "        const firstName = data.user.full_name.split(' ')[0];",
-                      "        pm.collectionVariables.set('agent_search_query', firstName);",
-                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"agent_search_query\", firstName); }",
+                      "    if (data.user) {",
+                      "        pm.collectionVariables.set('assigned_to', data.user);",
+                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"assigned_to\", data.user); }",
                       "    }",
                       "}"
                     ],
@@ -2604,7 +2599,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n    \"email\": \"{{usr}}\"\n}"
+                  "raw": "{\n    \"usr\": \"{{usr}}\"\n}"
                 }
               },
               "response": [],
@@ -2654,7 +2649,7 @@
                 },
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n    \"email\": \"{{usr}}\",\n    \"key\": \"{{reset_otp}}\",\n    \"new_password\": \"{{new_password}}\"\n}"
+                  "raw": "{\n    \"usr\": \"{{usr}}\",\n    \"otp\": \"{{reset_otp}}\",\n    \"new_password\": \"{{new_password}}\"\n}"
                 }
               },
               "response": [],
@@ -2732,14 +2727,13 @@
                   }
                 ],
                 "url": {
-                  "raw": "{{base_url}}/v1/auth/token/refresh",
+                  "raw": "{{base_url}}/v1/auth/refresh",
                   "host": [
                     "{{base_url}}"
                   ],
                   "path": [
                     "v1",
                     "auth",
-                    "token",
                     "refresh"
                   ]
                 },
@@ -2761,9 +2755,9 @@
                       "var responseJson = pm.response.json();",
                       "var data = responseJson.message && responseJson.message.data ? responseJson.message.data : (responseJson.data || {});",
                       "",
-                      "if (data.token) {",
-                      "    pm.collectionVariables.set('jwt_token', data.token);",
-                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.token); }",
+                      "if (data.access_token) {",
+                      "    pm.collectionVariables.set('jwt_token', data.access_token);",
+                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.access_token); }",
                       "}",
                       "if (data.refresh_token) {",
                       "    pm.collectionVariables.set('refresh_token', data.refresh_token);",
@@ -4750,9 +4744,9 @@
                       "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
                       "var responseJson = pm.response.json();",
                       "var data = (responseJson.message && responseJson.message.data) ? responseJson.message.data : (responseJson.data || {});",
-                      "if (data.token) {",
-                      "    pm.collectionVariables.set('jwt_token', data.token);",
-                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.token); }",
+                      "if (data.access_token) {",
+                      "    pm.collectionVariables.set('jwt_token', data.access_token);",
+                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.access_token); }",
                       "    console.log('Dev Agent JWT captured');",
                       "}"
                     ],
@@ -5246,9 +5240,9 @@
                       "pm.test('Status code is 200', function () { pm.response.to.have.status(200); });",
                       "var responseJson = pm.response.json();",
                       "var data = (responseJson.message && responseJson.message.data) ? responseJson.message.data : (responseJson.data || {});",
-                      "if (data.token) {",
-                      "    pm.collectionVariables.set('jwt_token', data.token);",
-                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.token); }",
+                      "if (data.access_token) {",
+                      "    pm.collectionVariables.set('jwt_token', data.access_token);",
+                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.access_token); }",
                       "    console.log('Bank Agent JWT captured for approval');",
                       "}"
                     ],
@@ -5613,11 +5607,11 @@
                       "",
                       "var responseJson = pm.response.json();",
                       "var data = (responseJson.message && responseJson.message.data) ? responseJson.message.data : (responseJson.data || {});",
-                      "if (data.token) {",
-                      "    pm.collectionVariables.set('jwt_token', data.token);",
-                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.token); }",
-                      "    pm.collectionVariables.set('bank_agent_jwt', data.token);",
-                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"bank_agent_jwt\", data.token); }",
+                      "if (data.access_token) {",
+                      "    pm.collectionVariables.set('jwt_token', data.access_token);",
+                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"jwt_token\", data.access_token); }",
+                      "    pm.collectionVariables.set('bank_agent_jwt', data.access_token);",
+                      "if (pm.environment && pm.environment.name) { pm.environment.set(\"bank_agent_jwt\", data.access_token); }",
                       "    console.log('Bank agent JWT captured');",
                       "}"
                     ],
@@ -6014,12 +6008,12 @@
                   "",
                   "var jsonData = pm.response.json();",
                   "var data = jsonData.data || (jsonData.message && jsonData.message.data) || jsonData.message || {};",
-                  "if (data.token) {",
-                  "    pm.collectionVariables.set(\"jwt_token\", data.token);",
-                  "    pm.collectionVariables.set(\"farmer_jwt_token\", data.token);",
+                  "if (data.access_token) {",
+                  "    pm.collectionVariables.set(\"jwt_token\", data.access_token);",
+                  "    pm.collectionVariables.set(\"farmer_jwt_token\", data.access_token);",
                   "    if (pm.environment.name) {",
-                  "        pm.environment.set(\"jwt_token\", data.token);",
-                  "        pm.environment.set(\"farmer_jwt_token\", data.token);",
+                  "        pm.environment.set(\"jwt_token\", data.access_token);",
+                  "        pm.environment.set(\"farmer_jwt_token\", data.access_token);",
                   "    }",
                   "    console.log(\"Farmer JWT captured successfully\");",
                   "}"
@@ -6040,12 +6034,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/v1/me",
+              "raw": "{{base_url}}/v1/auth/me",
               "host": [
                 "{{base_url}}"
               ],
               "path": [
                 "v1",
+                "auth",
                 "me"
               ]
             }

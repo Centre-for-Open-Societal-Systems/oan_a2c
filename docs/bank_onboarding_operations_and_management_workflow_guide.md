@@ -111,18 +111,25 @@ Registers the initial primary Bank Administrator account with the platform role 
 
 #### Success Response
 
+The caller is signed in immediately: the response is a token pair, the same as login.
+
 ```json
 {
   "status": "success",
-  "message": "Account created successfully.",
+  "message": "Success",
   "data": {
-    "message": "Account created successfully."
+    "access_token": "eyJhbGciOiJSUzI1NiIsIn...",
+    "refresh_token": "a1b2c3d4e5f67890abcdef...",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "user": "admin@bank.com",
+    "roles": ["A2C Bank Admin"],
+    "scope": null
   }
 }
 ```
 
-> **Note:** If the email or phone number is already registered, the endpoint returns:
-> `{"status": "success", "message": "You already have an account. Please log in.", "data": {"message": "You already have an account. Please log in.", "already_exists": true}}`
+> **Note:** If the email or phone number is already registered, the endpoint returns `400 ValidationError` (for example "A user with this email address already exists."). Registration is served by `oan_auth_service` and accepts only the roles listed in the site's `jwt_self_registerable_roles`.
 
 #### User Interface
 
@@ -150,11 +157,11 @@ Authenticates user credentials and issues a stateless JWT Bearer token along wit
 
 #### Variables
 
-| Variable          | Type    | Required | Description                                                             | Example          |
-| :---------------- | :------ | :------- | :---------------------------------------------------------------------- | :--------------- |
-| `{{usr}}`         | string  | Yes      | Registered email address or mobile phone number                         | `admin@bank.com` |
-| `{{pwd}}`         | string  | Yes      | Account password                                                        | `Password123!`   |
-| `{{remember_me}}` | boolean | No       | Extends refresh token lifespan from 1 day to 30 days (default: `false`) | `false`          |
+| Variable          | Type    | Required | Description                                           | Example          |
+| :---------------- | :------ | :------- | :---------------------------------------------------- | :--------------- |
+| `{{usr}}`         | string  | Yes      | Registered email address or mobile phone number       | `admin@bank.com` |
+| `{{pwd}}`         | string  | Yes      | Account password                                      | `Password123!`   |
+| `{{remember_me}}` | boolean | No       | Extends the refresh token lifespan (default: `false`) | `false`          |
 
 #### Success Response
 
@@ -163,22 +170,18 @@ Authenticates user credentials and issues a stateless JWT Bearer token along wit
   "status": "success",
   "message": "Success",
   "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsIn...",
+    "access_token": "eyJhbGciOiJSUzI1NiIsIn...",
     "refresh_token": "a1b2c3d4e5f67890abcdef...",
-    "user": {
-      "email": "admin@bank.com",
-      "full_name": "Abebe Kebede",
-      "roles": ["A2C Bank Admin"],
-      "user_type": "bank",
-      "bank": null,
-      "bank_id": null,
-      "bank_code": null,
-      "bank_name": null,
-      "bank_status": null
-    }
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "user": "admin@bank.com",
+    "roles": ["A2C Bank Admin"],
+    "scope": null
   }
 }
 ```
+
+User type and bank context are not part of the login response. Read them from `GET /v1/auth/me` (`data.profiles.a2c`).
 
 #### User Interface
 
@@ -190,7 +193,7 @@ Portal login screen where credentials are exchanged for a JWT session.
 
 ### Step 3: Refresh Access Token
 
-**POST** `/v1/auth/token/refresh`
+**POST** `/v1/auth/refresh`
 
 Refreshes an expired short-lived access token using a valid refresh token.
 
@@ -209,17 +212,21 @@ Refreshes an expired short-lived access token using a valid refresh token.
   "status": "success",
   "message": "Success",
   "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsIn...",
-    "refresh_token": "b2c3d4e5f6g78901bcdefg..."
+    "access_token": "eyJhbGciOiJSUzI1NiIsIn...",
+    "refresh_token": "b2c3d4e5f6g78901bcdefg...",
+    "token_type": "Bearer",
+    "expires_in": 900,
+    "user": "admin@bank.com",
+    "roles": ["A2C Bank Admin"],
+    "scope": null
   }
-}
 ```
 
 ---
 
 ### Step 4: Verify Identity & Current Session Context (`get_me`)
 
-**GET** `/v1/me`
+**GET** `/v1/auth/me`
 
 Fetches current identity, active platform roles, and associated bank context.
 
@@ -230,15 +237,23 @@ Fetches current identity, active platform roles, and associated bank context.
   "status": "success",
   "message": "Success",
   "data": {
-    "email": "admin@bank.com",
+    "user": "admin@bank.com",
+    "first_name": "Abebe",
+    "last_name": "Kebede",
     "full_name": "Abebe Kebede",
+    "login_email": null,
+    "mobile_no": "+251911111111",
     "roles": ["A2C Bank Admin"],
-    "user_type": "bank",
-    "bank": "A2C-BANK-0001",
-    "bank_id": "A2C-BANK-0001",
-    "bank_code": "BNK001",
-    "bank_name": "Example Bank",
-    "bank_status": "In Review"
+    "profiles": {
+      "a2c": {
+        "user_type": "bank_admin",
+        "bank": "Example Bank",
+        "bank_id": "A2C-BANK-0001",
+        "bank_code": "BNK001",
+        "bank_name": "Example Bank",
+        "bank_status": "In Review"
+      }
+    }
   }
 }
 ```
@@ -1817,12 +1832,12 @@ Every endpoint below is callable by a bank user. The **Role** column gives the m
 | :---------------- | :---------- | :----------------------------------------------------- | :----- | :------------------------------------------------------------ |
 | **Auth**          | `POST`      | `/v1/auth/register`                                    | Public | Register new Bank Administrator                               |
 | **Auth**          | `POST`      | `/v1/auth/login`                                       | Public | Authenticate & obtain JWT Bearer token                        |
-| **Auth**          | `POST`      | `/v1/auth/token/refresh`                               | Public | Refresh access token                                          |
+| **Auth**          | `POST`      | `/v1/auth/refresh`                                     | Public | Refresh access token                                          |
 | **Auth**          | `POST`      | `/v1/auth/password/initial`                            | Public | Rotate temporary password on first login                      |
 | **Auth**          | `POST`      | `/v1/auth/password/forgot`                             | Public | Request password reset instructions                           |
 | **Auth**          | `POST`      | `/v1/auth/password/reset`                              | Public | Complete password reset                                       |
 | **Auth**          | `POST`      | `/v1/auth/logout`                                      | Public | Logout & revoke refresh token                                 |
-| **Auth**          | `GET`       | `/v1/me`                                               | Both   | Get current user context & bank association                   |
+| **Auth**          | `GET`       | `/v1/auth/me`                                          | Both   | Get current user context & bank association                   |
 | **Auth**          | `GET`       | `/v1/me/profile`                                       | Both   | Get detailed user profile                                     |
 | **Auth**          | `PATCH`     | `/v1/me/profile`                                       | Both   | Update user profile                                           |
 | **Auth**          | `PATCH`     | `/v1/me/password`                                      | Both   | Change password for logged-in user                            |
@@ -3828,12 +3843,12 @@ The complete catalog of all 95 marketplace API endpoints across all platform fun
 | :-------------------- | :---------- | :----------------------------------------------------- | :-------------------------- | :---------------------------------------- |
 | **Auth**              | `POST`      | `/v1/auth/register`                                    | Public                      | Register new Bank Administrator           |
 | **Auth**              | `POST`      | `/v1/auth/login`                                       | Public                      | Authenticate & obtain JWT Bearer token    |
-| **Auth**              | `POST`      | `/v1/auth/token/refresh`                               | Public                      | Refresh access token                      |
+| **Auth**              | `POST`      | `/v1/auth/refresh`                                     | Public                      | Refresh access token                      |
 | **Auth**              | `POST`      | `/v1/auth/password/initial`                            | Public                      | Rotate temporary password on first login  |
 | **Auth**              | `POST`      | `/v1/auth/password/forgot`                             | Public                      | Request password reset instructions       |
 | **Auth**              | `POST`      | `/v1/auth/password/reset`                              | Public                      | Complete password reset                   |
 | **Auth**              | `POST`      | `/v1/auth/logout`                                      | Public                      | Logout & revoke refresh token             |
-| **Auth**              | `GET`       | `/v1/me`                                               | Authenticated               | Get current user context & platform roles |
+| **Auth**              | `GET`       | `/v1/auth/me`                                          | Authenticated               | Get current user context & platform roles |
 | **Auth**              | `GET`       | `/v1/me/profile`                                       | Authenticated               | Get detailed user profile                 |
 | **Auth**              | `PATCH`     | `/v1/me/profile`                                       | Authenticated               | Update personal user profile              |
 | **Auth**              | `PATCH`     | `/v1/me/password`                                      | Authenticated               | Change password for logged-in user        |

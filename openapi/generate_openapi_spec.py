@@ -198,31 +198,89 @@ data(
 )
 
 # --- Domain 01: Identity & Access ---
-user_summary_props = {
-	"email": S(),
-	"full_name": S(),
-	"roles": ARR(S()),
-	"user_type": S(nullable=True),
-	"bank": S(nullable=True),
-	"bank_id": S(nullable=True),
-	"bank_code": S(nullable=True),
-	"bank_name": S(nullable=True),
-	"bank_status": S(nullable=True),
-}
-data("UserSummary", OBJ(user_summary_props))
-data(
-	"LoginData",
-	OBJ(
-		{
-			"token": S(description="Short-lived JWT access token"),
-			"refresh_token": S(description="Long-lived refresh token; 1 day, or 30 with remember_me"),
-			"user": REF("UserSummary"),
+# Auth endpoints are served by oan_auth_service; these mirror its contract.
+_TOKEN_PAIR = {
+	"type": "object",
+	"properties": {
+		"access_token": {"type": "string", "description": "Short-lived JWT access token"},
+		"refresh_token": {
+			"type": "string",
+			"description": "Single-use cryptographically secure refresh token",
 		},
-		required=["token", "refresh_token", "user"],
-	),
-)
-data("TokenPairData", OBJ({"token": S(), "refresh_token": S()}, required=["token", "refresh_token"]))
-data("IdentityData", OBJ(user_summary_props))
+		"token_type": {"type": "string", "example": "Bearer"},
+		"expires_in": {
+			"type": "integer",
+			"example": 900,
+			"description": "Access token expiration in seconds",
+		},
+		"user": {
+			"type": "string",
+			"example": "USR-0001",
+			"description": "Canonical user ID or synthetic email",
+		},
+		"roles": {"type": "array", "items": {"type": "string"}, "description": "Roles assigned to this user"},
+		"scope": {
+			"type": "array",
+			"items": {"type": "string"},
+			"nullable": True,
+			"description": "Narrowed token scope if requested",
+		},
+	},
+	"required": ["access_token", "refresh_token", "token_type", "expires_in", "user", "roles"],
+	"description": "Access token and refresh token pair",
+}
+_LOGOUT = {
+	"type": "object",
+	"properties": {"revoked": {"type": "boolean", "description": "Whether the refresh token was revoked"}},
+	"required": ["revoked"],
+}
+_USER_ME = {
+	"type": "object",
+	"properties": {
+		"user": {"type": "string", "description": "Unique User ID / internal handle"},
+		"first_name": {"type": "string", "nullable": True},
+		"last_name": {"type": "string", "nullable": True},
+		"full_name": {"type": "string", "description": "Full display name"},
+		"login_email": {
+			"type": "string",
+			"format": "email",
+			"nullable": True,
+			"description": "Authoritative login email",
+		},
+		"mobile_no": {
+			"type": "string",
+			"nullable": True,
+			"description": "Primary contact mobile number in E.164 format",
+		},
+		"country_code": {
+			"type": "string",
+			"example": "+251",
+			"nullable": True,
+			"description": "E.164 country dialing code",
+		},
+		"phone_number": {
+			"type": "string",
+			"example": "911223344",
+			"nullable": True,
+			"description": "National subscriber phone number",
+		},
+		"roles": {"type": "array", "items": {"type": "string"}, "description": "List of assigned roles"},
+		"profiles": {
+			"type": "object",
+			"properties": {},
+			"additionalProperties": True,
+			"description": "App-specific profiles from on_user_profile hooks. a2c "
+			"adds `profiles.a2c` with `user_type` (bank_admin, "
+			"bank_agent, dev_agent, marketplace, farmer, unknown) and, for bank users, `bank`, "
+			"`bank_id`, `bank_code`, `bank_name`, `bank_status`.",
+		},
+	},
+	"required": ["user", "full_name", "roles"],
+	"description": "Introspected user identity and profile claims",
+}
+data("TokenPairData", _TOKEN_PAIR)
+data("LogoutData", _LOGOUT)
+data("UserMeData", _USER_ME)
 data(
 	"ProfileData",
 	OBJ(
@@ -866,13 +924,170 @@ data(
 # stripped since they move into the URL under the REST design.
 # ---------------------------------------------------------------------------
 REQ = {}
-REQ["RegisterRequest"] = adapt_request_schema("RegisterUserSchema")
-REQ["LoginRequest"] = adapt_request_schema("LoginSchema")
-REQ["TokenRefreshRequest"] = adapt_request_schema("RefreshTokenSchema")
-REQ["LogoutRequest"] = adapt_request_schema("LogoutSchema")
-REQ["ForgotPasswordRequest"] = adapt_request_schema("ForgotPasswordSchema")
-REQ["ResetPasswordRequest"] = adapt_request_schema("ResetPasswordSchema")
-REQ["InitialPasswordRequest"] = adapt_request_schema("SetInitialPasswordSchema")
+# Auth request bodies mirror oan_auth_service.
+_REGISTER = {
+	"type": "object",
+	"properties": {
+		"password": {
+			"type": "string",
+			"format": "password",
+			"minLength": 8,
+			"maxLength": 128,
+			"description": "Password meeting complexity requirements (at least 8 "
+			"characters with letters, numbers, and special "
+			"characters)",
+		},
+		"full_name": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 140,
+			"description": "Full name of user or organization",
+		},
+		"email": {
+			"type": "string",
+			"format": "email",
+			"nullable": True,
+			"description": "Login email address",
+		},
+		"phone_number": {
+			"type": "string",
+			"nullable": True,
+			"description": "Phone number. Can be full international E.164 "
+			"format (e.g. +251911223344) or national "
+			"subscriber digits when country_code is provided.",
+		},
+		"country_code": {
+			"type": "string",
+			"example": "+251",
+			"nullable": True,
+			"description": "Optional country dialing code (e.g. +251, +91). "
+			"When provided, phone_number is treated as "
+			"national digits.",
+		},
+		"role": {"type": "string", "nullable": True, "description": "Singular role to request"},
+		"roles": {
+			"type": "array",
+			"items": {"type": "string"},
+			"nullable": True,
+			"description": "Multiple roles to request",
+		},
+	},
+	"additionalProperties": True,
+	"required": ["password", "full_name"],
+	"description": "Payload for registering a new user account with email or phone_number. When "
+	"country_code is provided, phone_number is treated as the national subscriber "
+	"number; otherwise, it must be in full international E.164 format.",
+}
+_LOGIN = {
+	"type": "object",
+	"properties": {
+		"usr": {
+			"type": "string",
+			"minLength": 1,
+			"description": "Login identifier: email, mobile number, or User ID",
+		},
+		"pwd": {"type": "string", "format": "password", "minLength": 1, "description": "Account password"},
+		"remember_me": {
+			"type": "boolean",
+			"default": False,
+			"description": "Extend refresh token lifetime to 90 days",
+		},
+		"scope": {
+			"type": "string",
+			"nullable": True,
+			"description": "Optional scope narrowing: comma-separated list of roles",
+		},
+	},
+	"required": ["usr", "pwd"],
+	"description": "Credentials to authenticate and obtain token pair",
+}
+_REFRESH = {
+	"type": "object",
+	"properties": {
+		"refresh_token": {"type": "string", "minLength": 1, "description": "Active single-use refresh token"}
+	},
+	"required": ["refresh_token"],
+	"description": "Refresh token exchange payload",
+}
+_LOGOUT_REQ = {
+	"type": "object",
+	"properties": {
+		"refresh_token": {"type": "string", "minLength": 1, "description": "Active refresh token to revoke"}
+	},
+	"required": ["refresh_token"],
+	"description": "Revoke refresh token session",
+}
+_FORGOT = {
+	"type": "object",
+	"properties": {
+		"usr": {
+			"type": "string",
+			"minLength": 1,
+			"description": "Login handle (email or phone number) to initiate recovery",
+		}
+	},
+	"required": ["usr"],
+	"description": "Password recovery initiation request",
+}
+_RESET = {
+	"type": "object",
+	"properties": {
+		"new_password": {
+			"type": "string",
+			"format": "password",
+			"minLength": 8,
+			"maxLength": 128,
+			"description": "New account password (min 8 chars, letters, numbers, symbols)",
+		},
+		"key": {"type": "string", "nullable": True, "description": "Reset token key received via email link"},
+		"usr": {
+			"type": "string",
+			"nullable": True,
+			"description": "Login identifier (used alongside SMS OTP)",
+		},
+		"otp": {
+			"type": "string",
+			"nullable": True,
+			"description": "Numeric one-time verification code received via SMS",
+		},
+	},
+	"required": ["new_password"],
+	"description": "Password reset completion payload. Provide either `key` OR (`usr` and `otp`).",
+}
+_INITIAL = {
+	"type": "object",
+	"properties": {
+		"usr": {
+			"type": "string",
+			"minLength": 1,
+			"description": "Login identifier: email, mobile number, or User ID",
+		},
+		"current_password": {
+			"type": "string",
+			"format": "password",
+			"minLength": 1,
+			"description": "The temporary password",
+		},
+		"new_password": {
+			"type": "string",
+			"format": "password",
+			"minLength": 8,
+			"maxLength": 128,
+			"description": "The account holder's own password (min 8 chars, "
+			"letters, numbers, symbols). Must differ from the "
+			"temporary one.",
+		},
+	},
+	"required": ["usr", "current_password", "new_password"],
+	"description": "Replace a temporary password. No token is needed or issued; sign in afterwards.",
+}
+REQ["RegisterRequest"] = _REGISTER
+REQ["LoginRequest"] = _LOGIN
+REQ["TokenRefreshRequest"] = _REFRESH
+REQ["LogoutRequest"] = _LOGOUT_REQ
+REQ["ForgotPasswordRequest"] = _FORGOT
+REQ["ResetPasswordRequest"] = _RESET
+REQ["InitialPasswordRequest"] = _INITIAL
 REQ["ChangePasswordRequest"] = adapt_request_schema("ChangePasswordSchema")
 REQ["UpdateProfileRequest"] = adapt_request_schema("UpdateProfileSchema")
 
@@ -1194,8 +1409,8 @@ ROUTES = [
 		"Identity & Access",
 		"public",
 		"RegisterRequest",
-		response="MessageData",
-		legacy="oan_a2c.api.v1.auth.register_user",
+		response="TokenPairData",
+		legacy="oan_auth_service.api.v1.auth.register_user",
 	),
 	R(
 		"post",
@@ -1204,28 +1419,28 @@ ROUTES = [
 		"Identity & Access",
 		"public",
 		"LoginRequest",
-		response="LoginData",
-		legacy="oan_a2c.api.auth.login",
+		response="TokenPairData",
+		legacy="oan_auth_service.api.v1.auth.login",
 	),
 	R(
 		"post",
-		"/v1/auth/token/refresh",
+		"/v1/auth/refresh",
 		"Refresh an access token",
 		"Identity & Access",
 		"public",
 		"TokenRefreshRequest",
 		response="TokenPairData",
-		legacy="oan_a2c.api.auth.refresh",
+		legacy="oan_auth_service.api.v1.auth.refresh",
 	),
 	R(
 		"post",
 		"/v1/auth/logout",
 		"Log out",
 		"Identity & Access",
-		"bearer",
+		"public",
 		"LogoutRequest",
-		response="MessageData",
-		legacy="oan_a2c.api.auth.logout",
+		response="LogoutData",
+		legacy="oan_auth_service.api.v1.auth.logout",
 	),
 	R(
 		"post",
@@ -1235,7 +1450,7 @@ ROUTES = [
 		"public",
 		"ForgotPasswordRequest",
 		response="MessageData",
-		legacy="oan_a2c.api.auth.forgot_password",
+		legacy="oan_auth_service.api.v1.auth.forgot_password",
 	),
 	R(
 		"post",
@@ -1245,7 +1460,7 @@ ROUTES = [
 		"public",
 		"ResetPasswordRequest",
 		response="MessageData",
-		legacy="oan_a2c.api.auth.reset_password",
+		legacy="oan_auth_service.api.v1.auth.reset_password",
 	),
 	R(
 		"post",
@@ -1255,7 +1470,7 @@ ROUTES = [
 		"public",
 		"InitialPasswordRequest",
 		response="MessageData",
-		legacy="oan_a2c.api.auth.set_initial_password",
+		legacy="oan_auth_service.api.v1.auth.set_initial_password",
 	),
 	R(
 		"patch",
@@ -1269,12 +1484,12 @@ ROUTES = [
 	),
 	R(
 		"get",
-		"/v1/me",
+		"/v1/auth/me",
 		"Get the current user's identity",
 		"Identity & Access",
 		"bearer",
-		response="IdentityData",
-		legacy="oan_a2c.api.auth.get_me",
+		response="UserMeData",
+		legacy="oan_auth_service.api.v1.auth.get_me",
 	),
 	R(
 		"get",

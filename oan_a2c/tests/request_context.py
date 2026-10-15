@@ -6,33 +6,31 @@ what makes two feature branches collide at the end of the same file every time
 one of them adds a test — see `docs/merge-hygiene.md`.
 """
 
+import functools
+
 import frappe
-import jwt
-
-from oan_a2c.api.jwt_keys import get_signing_key
 
 
-def signing_secret() -> str:
-	"""The secret this site currently signs access tokens with.
+@functools.lru_cache(maxsize=1)
+def _test_signing_pem() -> str:
+	"""A throwaway RSA key, generated once per test process."""
+	from cryptography.hazmat.primitives import serialization
+	from cryptography.hazmat.primitives.asymmetric import rsa
 
-	Deliberately not `frappe.conf.encryption_key`. The signing secret comes from
-	`jwt_secrets` when that is configured (see `api/jwt_keys.py`), so a test that
-	hardcodes encryption_key passes only on a site that has never been given a
-	dedicated signing key — the configuration we are moving away from.
-	"""
-	_, secret = get_signing_key()
-	return secret
+	key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+	return key.private_bytes(
+		serialization.Encoding.PEM,
+		serialization.PrivateFormat.PKCS8,
+		serialization.NoEncryption(),
+	).decode()
 
 
-def sign_access_token(payload: dict, kid: str | None = None) -> str:
-	"""Mint an access token the middleware will accept.
+def sign_access_token(user: str, roles: list[str] | None = None) -> str:
+	"""Mint an access token the oan_auth_service middleware will accept."""
+	from oan_auth_service.api import tokens
 
-	Pass `kid` only to forge a token naming a key the site does not have.
-	"""
-	from oan_a2c.api.jwt_keys import get_signing_material
-
-	signing_kid, secret, alg = get_signing_material()
-	return jwt.encode(payload, secret, algorithm=alg, headers={"kid": kid or signing_kid})
+	token, _ttl = tokens.issue_access_token(user, roles or [])
+	return token
 
 
 class RequestContextMixin:
@@ -52,6 +50,12 @@ class RequestContextMixin:
 		# AttributeError that looks like their own bug.
 		frappe.local.response = frappe._dict()
 		frappe.set_user("Administrator")
+
+		# oan_auth_service signs RS256 and refuses to run without a key. Test sites
+		# are not given one, so supply a throwaway for the duration of the test.
+		self._original_private_keys = frappe.conf.get("jwt_private_keys")
+		if not self._original_private_keys:
+			frappe.conf["jwt_private_keys"] = {"v1": _test_signing_pem()}
 
 		# frappe.local.request_ip is normally set by HTTPRequest.set_request_ip() during
 		# the web request cycle. In unit tests HTTPRequest is never instantiated, so the
@@ -83,6 +87,9 @@ class RequestContextMixin:
 		self._mock_headers = {}
 
 	def tearDown(self):
+		if not self._original_private_keys:
+			frappe.conf.pop("jwt_private_keys", None)
+
 		frappe.get_request_header = self._original_get_request_header
 
 		# Restore original request

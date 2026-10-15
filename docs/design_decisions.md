@@ -70,10 +70,10 @@ Entries marked **Open** record a decision that shipped without its reason being 
 
 **Decision.** Frontends log in once and get two tokens:
 
-- a short-lived access token (JWT, HS256, about 15 minutes), sent on every request;
-- a long-lived refresh token (1 day, or 30 days with "remember me"), stored in the database only as a hash and replaced every time it is used.
+- a short-lived access token (JWT, RS256, about 15 minutes), sent on every request;
+- a long-lived refresh token (lifetime set by `jwt_refresh_token_ttl`, longer with "remember me"), stored in the database only as a hash and replaced every time it is used.
 
-A middleware reads the JWT and sets the Frappe user, so Frappe's own role and permission checks apply unchanged.
+Login, refresh, logout and the password flows, and the middleware that reads the JWT and sets the Frappe user, live in the shared `oan_auth_service` app, which `oan_a2c` requires. Frappe's own role and permission checks apply unchanged. a2c adds its user type and bank binding through the `on_user_profile` hook, returned under `profiles.a2c` by `GET /v1/auth/me`.
 
 **Why.**
 

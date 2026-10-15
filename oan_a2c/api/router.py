@@ -32,11 +32,10 @@ from functools import lru_cache, wraps
 from typing import Any
 
 import frappe
+from oan_auth_service.api.middleware import register_namespace
 from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound
 from werkzeug.routing import Map, Rule
 from werkzeug.wrappers import Request, Response
-
-from oan_a2c.api.middleware import register_namespace
 
 # The namespace this app owns. Registered with the middleware, which matches
 # incoming paths by longest prefix.
@@ -280,18 +279,6 @@ def _register_spec_routes():
 			if isinstance(details, dict) and is_guest_operation(details):
 				guest_paths.add(path)
 
-	# Guest endpoints fallback
-	for g_path in (
-		"/v1/auth/login",
-		"/v1/auth/register",
-		"/v1/auth/token/refresh",
-		"/v1/auth/logout",
-		"/v1/auth/password/forgot",
-		"/v1/auth/password/reset",
-		"/v1/auth/password/initial",
-	):
-		guest_paths.add(g_path)
-
 	# Gateway-authenticated paths: not guest, but not JWT either.
 	#
 	# Kong rewrites the Authorization header on these routes to a Frappe API
@@ -309,6 +296,11 @@ def _register_spec_routes():
 		_exempt_paths.add(f"/api{gw_path}")
 
 	for method, path, endpoint_str in routes:
+		# Auth endpoints are owned and registered by oan_auth_service. The spec still
+		# lists them so Kong and the docs know the paths.
+		if endpoint_str.startswith("oan_auth_service."):
+			continue
+
 		try:
 			fn = frappe.get_attr(endpoint_str)
 		except Exception as e:
@@ -336,6 +328,25 @@ def _register_spec_routes():
 			_exempt_paths.add(wz_path)
 
 
+_LEGACY_RPC_EXEMPT_PATHS = {
+	"/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
+	"/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
+}
+
+
+def _expand_chart_templates(paths: set[str]) -> set[str]:
+	"""Replace `<chart_id>` in exempt paths with each registered chart id."""
+	from oan_a2c.api.v1.dashboard import CHARTS
+
+	expanded = set()
+	for path in paths:
+		if "<chart_id>" in path:
+			expanded.update(path.replace("<chart_id>", chart_id) for chart_id in CHARTS)
+		else:
+			expanded.add(path)
+	return expanded
+
+
 _REGISTERED = False
 
 
@@ -357,11 +368,26 @@ def ensure_routes_registered() -> None:
 
 	_register_spec_routes()
 
+	from oan_a2c.api.auth import require_sso_for_development_agents
+
 	for rule in _rules:
 		if rule not in frappe.api.API_URL_MAP._rules:
 			frappe.api.API_URL_MAP.add(rule)
 
-	register_namespace(prefix=NAMESPACE, exempt_paths=sorted(_exempt_paths))
+	# oan_auth_service matches exempt paths exactly, with no `<param>` templates, so
+	# the templated chart path is expanded to the chart ids that exist.
+	register_namespace(
+		prefix=NAMESPACE,
+		exempt_paths=sorted(_expand_chart_templates(_exempt_paths)),
+		revocation_check=require_sso_for_development_agents,
+	)
+
+	# Legacy RPC paths keep the JWT check they had before auth moved to oan_auth_service.
+	register_namespace(
+		prefix="/api/method/oan_a2c.",
+		exempt_paths=sorted(_LEGACY_RPC_EXEMPT_PATHS),
+		revocation_check=require_sso_for_development_agents,
+	)
 	_REGISTERED = True
 
 
@@ -478,15 +504,7 @@ def dispatch_rest_request(request: Request) -> Response:
 # ---------------------------------------------------------------------------
 _FALLBACK_ROUTES = [
 	# Domain 01: Identity & Access
-	("POST", "/v1/auth/register", "oan_a2c.api.v1.auth.register_user"),
-	("POST", "/v1/auth/login", "oan_a2c.api.auth.login"),
-	("POST", "/v1/auth/token/refresh", "oan_a2c.api.auth.refresh"),
-	("POST", "/v1/auth/logout", "oan_a2c.api.auth.logout"),
-	("POST", "/v1/auth/password/forgot", "oan_a2c.api.auth.forgot_password"),
-	("POST", "/v1/auth/password/reset", "oan_a2c.api.auth.reset_password"),
-	("POST", "/v1/auth/password/initial", "oan_a2c.api.auth.set_initial_password"),
 	("PATCH", "/v1/me/password", "oan_a2c.api.auth.change_password"),
-	("GET", "/v1/me", "oan_a2c.api.auth.get_me"),
 	("GET", "/v1/me/profile", "oan_a2c.api.auth.get_user_profile"),
 	("POST", "/v1/images", "oan_a2c.api.v1.seller.onboarding.upload_image"),
 	("PATCH", "/v1/me/profile", "oan_a2c.api.auth.update_profile"),
