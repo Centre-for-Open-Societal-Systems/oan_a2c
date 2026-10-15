@@ -398,13 +398,15 @@ class TestDashboardApi(unittest.TestCase):
 		self.assertEqual(consumer["acls"], [{"group": "dashboards"}])
 		self.assertIn("DECK_OAN_DASHBOARDS_API_KEY", consumer["keyauth_credentials"][0]["key"])
 
-	def test_middleware_exempts_only_the_templated_chart_path(self):
-		"""A `<param>` in an exempt path matches exactly one segment, nothing wider."""
-		from oan_a2c.api.middleware import PUBLIC_EXEMPT_PATHS, _is_exempt
+	def test_chart_exempt_template_expands_to_registered_chart_ids(self):
+		"""oan_auth_service matches exempt paths exactly, so the template becomes one path per chart."""
+		from oan_a2c.api.router import _expand_chart_templates
+		from oan_a2c.api.v1.dashboard import CHARTS
 
-		self.assertTrue(_is_exempt("/api/v1/charts/a2cKpis", PUBLIC_EXEMPT_PATHS))
-		self.assertTrue(_is_exempt("/v1/charts/a2cKpis/", PUBLIC_EXEMPT_PATHS))
-		self.assertFalse(_is_exempt("/api/v1/charts/a2cKpis/extra", PUBLIC_EXEMPT_PATHS))
-		self.assertFalse(_is_exempt("/api/v1/charts/", PUBLIC_EXEMPT_PATHS))
-		self.assertFalse(_is_exempt("/api/v1/chartsX/a2cKpis", PUBLIC_EXEMPT_PATHS))
-		self.assertFalse(_is_exempt("/api/v1/loan-applications/APP-1", PUBLIC_EXEMPT_PATHS))
+		expanded = _expand_chart_templates({"/api/v1/charts/<chart_id>", "/api/v1/webhooks/leads"})
+
+		self.assertIn("/api/v1/webhooks/leads", expanded)
+		self.assertNotIn("/api/v1/charts/<chart_id>", expanded)
+		for chart_id in CHARTS:
+			self.assertIn(f"/api/v1/charts/{chart_id}", expanded)
+		self.assertNotIn("/api/v1/charts/unknownChart", expanded)

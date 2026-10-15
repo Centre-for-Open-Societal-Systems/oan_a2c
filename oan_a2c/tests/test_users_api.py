@@ -341,7 +341,7 @@ class TestInviteTeamMember(unittest.TestCase):
 		self.assertTrue(frappe.db.exists("User", invitee))
 		self.assertIn(BANK_AGENT_ROLE, frappe.get_roles(invitee))
 		# The admin chose this password, so it may not survive first use.
-		self.assertEqual(frappe.db.get_value("User", invitee, "a2c_must_change_password"), 1)
+		self.assertEqual(frappe.db.get_value("User", invitee, "oan_must_change_password"), 1)
 
 	def test_role_defaults_to_bank_agent_when_omitted(self):
 		invitee = self._invitee("default")
@@ -421,7 +421,7 @@ class TestResetMemberPassword(unittest.TestCase):
 	def tearDownClass(cls):
 		frappe.set_user("Administrator")
 		for email in cls._users:
-			frappe.db.delete("A2C User Refresh Token", {"user": email})
+			frappe.db.delete("OAN User Refresh Token", {"user": email})
 			for perm in frappe.get_all("User Permission", filters={"user": email}, pluck="name"):
 				frappe.delete_doc("User Permission", perm, force=True, ignore_permissions=True)
 			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
@@ -431,7 +431,7 @@ class TestResetMemberPassword(unittest.TestCase):
 	def setUp(self):
 		frappe.local.response = frappe._dict()
 		frappe.set_user("Administrator")
-		frappe.db.set_value("User", self.agent_a, "a2c_must_change_password", 0)
+		frappe.db.set_value("User", self.agent_a, "oan_must_change_password", 0)
 		for caller in (self.bank_admin_a, self.bank_admin_b, self.agent_a):
 			frappe.cache().delete_value(f"rl:reset_member_pwd:{caller}")
 
@@ -441,24 +441,24 @@ class TestResetMemberPassword(unittest.TestCase):
 		res = reset_member_password(email=self.agent_a, password="ReIssued99")
 
 		self.assertEqual(res.get("status"), "success")
-		self.assertEqual(frappe.db.get_value("User", self.agent_a, "a2c_must_change_password"), 1)
+		self.assertEqual(frappe.db.get_value("User", self.agent_a, "oan_must_change_password"), 1)
 
 	def test_reissuing_kills_any_live_session(self):
 		"""The reason to reset is often a compromise — the old session must die."""
 		frappe.set_user("Administrator")
 		frappe.get_doc(
 			{
-				"doctype": "A2C User Refresh Token",
+				"doctype": "OAN User Refresh Token",
 				"user": self.agent_a,
 				"token_hash": frappe.generate_hash(length=64),
-				"expiry": frappe.utils.add_days(frappe.utils.now_datetime(), 1),
+				"expires_at": frappe.utils.add_days(frappe.utils.now_datetime(), 1),
 			}
 		).insert(ignore_permissions=True)
 
 		frappe.set_user(self.bank_admin_a)
 		reset_member_password(email=self.agent_a, password="ReIssued99")
 
-		self.assertEqual(frappe.db.count("A2C User Refresh Token", {"user": self.agent_a}), 0)
+		self.assertEqual(frappe.db.count("OAN User Refresh Token", {"user": self.agent_a}), 0)
 
 	def test_bank_admin_cannot_reset_an_agent_from_another_bank(self):
 		frappe.set_user(self.bank_admin_a)
@@ -467,7 +467,7 @@ class TestResetMemberPassword(unittest.TestCase):
 
 		self.assertEqual(frappe.local.response.get("http_status_code"), 403)
 		self.assertEqual(res.get("status"), "error")
-		self.assertEqual(frappe.db.get_value("User", self.agent_b, "a2c_must_change_password"), 0)
+		self.assertEqual(frappe.db.get_value("User", self.agent_b, "oan_must_change_password"), 0)
 
 	def test_bank_admin_cannot_reset_another_bank_admin(self):
 		frappe.set_user(self.bank_admin_a)

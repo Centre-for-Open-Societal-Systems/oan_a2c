@@ -60,7 +60,8 @@ class TestApiDecoratorEnforcement(unittest.TestCase):
 	def test_all_spec_routes_have_handle_api_errors(self):
 		"""Assert that all routes defined in get_routes_spec() have the @handle_api_errors decorator."""
 		routes = get_routes_spec()
-		handlers = sorted(list(set(r[2] for r in routes)))
+		# Auth endpoints live in oan_auth_service, which owns their decorators.
+		handlers = sorted({r[2] for r in routes if not r[2].startswith("oan_auth_service.")})
 		base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 		missing_decorator = []

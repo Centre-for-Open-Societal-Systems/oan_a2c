@@ -72,7 +72,7 @@ paths:
                 - type: object
                   properties:
                     data:
-                      $ref: '#/components/schemas/MessageData'
+                      $ref: '#/components/schemas/TokenPairData'
         '400':
           $ref: '#/components/responses/400ValidationError'
         '401':
@@ -109,7 +109,7 @@ paths:
                 - type: object
                   properties:
                     data:
-                      $ref: '#/components/schemas/LoginData'
+                      $ref: '#/components/schemas/TokenPairData'
         '400':
           $ref: '#/components/responses/400ValidationError'
         '401':
@@ -129,12 +129,12 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/LoginRequest'
-  /v1/auth/token/refresh:
+  /v1/auth/refresh:
     post:
       summary: Refresh an access token
       tags:
       - Identity & Access
-      operationId: post_v1_auth_token_refresh
+      operationId: post_v1_auth_refresh
       responses:
         '200':
           description: Successful operation.
@@ -183,7 +183,7 @@ paths:
                 - type: object
                   properties:
                     data:
-                      $ref: '#/components/schemas/MessageData'
+                      $ref: '#/components/schemas/LogoutData'
         '400':
           $ref: '#/components/responses/400ValidationError'
         '401':
@@ -196,8 +196,7 @@ paths:
           $ref: '#/components/responses/429RateLimited'
         '500':
           $ref: '#/components/responses/500InternalError'
-      security:
-      - BearerAuth: []
+      security: []
       requestBody:
         required: true
         content:
@@ -353,12 +352,12 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/ChangePasswordRequest'
-  /v1/me:
+  /v1/auth/me:
     get:
       summary: Get the current user's identity
       tags:
       - Identity & Access
-      operationId: get_v1_me
+      operationId: get_v1_auth_me
       responses:
         '200':
           description: Successful operation.
@@ -370,7 +369,7 @@ paths:
                 - type: object
                   properties:
                     data:
-                      $ref: '#/components/schemas/IdentityData'
+                      $ref: '#/components/schemas/UserMeData'
         '400':
           $ref: '#/components/responses/400ValidationError'
         '401':
@@ -4442,110 +4441,153 @@ components:
     RegisterRequest:
       type: object
       properties:
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: Password meeting complexity requirements (at least 8 characters with letters, numbers,
+            and special characters)
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 140
+          description: Full name of user or organization
         email:
           type: string
+          format: email
           nullable: true
-        full_name:
-          minLength: 2
-          title: Full Name
-          type: string
-        password:
-          maxLength: 64
-          minLength: 8
-          title: Password
-          type: string
+          description: Login email address
         phone_number:
-          title: Phone Number
           type: string
+          nullable: true
+          description: Phone number. Can be full international E.164 format (e.g. +251911223344) or national
+            subscriber digits when country_code is provided.
+        country_code:
+          type: string
+          example: '+251'
+          nullable: true
+          description: Optional country dialing code (e.g. +251, +91). When provided, phone_number is treated
+            as national digits.
         role:
-          default: A2C Bank Admin
-          maxLength: 140
-          minLength: 2
-          title: Role
           type: string
+          nullable: true
+          description: Singular role to request
+        roles:
+          type: array
+          items:
+            type: string
+          nullable: true
+          description: Multiple roles to request
+      additionalProperties: true
       required:
-      - full_name
       - password
-      - phone_number
+      - full_name
+      description: Payload for registering a new user account with email or phone_number. When country_code
+        is provided, phone_number is treated as the national subscriber number; otherwise, it must be in full
+        international E.164 format.
     LoginRequest:
       type: object
       properties:
         usr:
-          minLength: 1
-          title: Usr
           type: string
+          minLength: 1
+          description: 'Login identifier: email, mobile number, or User ID'
         pwd:
-          minLength: 1
-          title: Pwd
           type: string
+          format: password
+          minLength: 1
+          description: Account password
         remember_me:
-          default: false
-          title: Remember Me
           type: boolean
+          default: false
+          description: Extend refresh token lifetime to 90 days
+        scope:
+          type: string
+          nullable: true
+          description: 'Optional scope narrowing: comma-separated list of roles'
       required:
       - usr
       - pwd
+      description: Credentials to authenticate and obtain token pair
     TokenRefreshRequest:
       type: object
       properties:
         refresh_token:
-          minLength: 1
-          title: Refresh Token
           type: string
+          minLength: 1
+          description: Active single-use refresh token
       required:
       - refresh_token
+      description: Refresh token exchange payload
     LogoutRequest:
       type: object
       properties:
         refresh_token:
-          minLength: 1
-          title: Refresh Token
           type: string
+          minLength: 1
+          description: Active refresh token to revoke
       required:
       - refresh_token
+      description: Revoke refresh token session
     ForgotPasswordRequest:
       type: object
       properties:
-        email:
+        usr:
           type: string
-          nullable: true
+          minLength: 1
+          description: Login handle (email or phone number) to initiate recovery
+      required:
+      - usr
+      description: Password recovery initiation request
     ResetPasswordRequest:
       type: object
       properties:
-        email:
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: New account password (min 8 chars, letters, numbers, symbols)
+        key:
           type: string
           nullable: true
-        key:
-          minLength: 1
-          title: Key
+          description: Reset token key received via email link
+        usr:
           type: string
-        new_password:
-          minLength: 1
-          title: New Password
+          nullable: true
+          description: Login identifier (used alongside SMS OTP)
+        otp:
           type: string
+          nullable: true
+          description: Numeric one-time verification code received via SMS
       required:
-      - key
       - new_password
+      description: Password reset completion payload. Provide either `key` OR (`usr` and `otp`).
     InitialPasswordRequest:
       type: object
       properties:
         usr:
-          minLength: 1
-          title: Usr
           type: string
+          minLength: 1
+          description: 'Login identifier: email, mobile number, or User ID'
         current_password:
+          type: string
+          format: password
           minLength: 1
-          title: Current Password
-          type: string
+          description: The temporary password
         new_password:
-          maxLength: 64
-          minLength: 8
-          title: New Password
           type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          description: The account holder's own password (min 8 chars, letters, numbers, symbols). Must differ
+            from the temporary one.
       required:
       - usr
       - current_password
       - new_password
+      description: Replace a temporary password. No token is needed or issued; sign in afterwards.
     ChangePasswordRequest:
       type: object
       properties:
@@ -5495,89 +5537,104 @@ components:
           type: string
       required:
       - message
-    UserSummary:
+    TokenPairData:
       type: object
       properties:
-        email:
-          type: string
-        full_name:
-          type: string
-        roles:
-          type: array
-          items:
-            type: string
-        user_type:
-          type: string
-          nullable: true
-        bank:
-          type: string
-          nullable: true
-        bank_id:
-          type: string
-          nullable: true
-        bank_code:
-          type: string
-          nullable: true
-        bank_name:
-          type: string
-          nullable: true
-        bank_status:
-          type: string
-          nullable: true
-    LoginData:
-      type: object
-      properties:
-        token:
+        access_token:
           type: string
           description: Short-lived JWT access token
         refresh_token:
           type: string
-          description: Long-lived refresh token; 1 day, or 30 with remember_me
+          description: Single-use cryptographically secure refresh token
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          example: 900
+          description: Access token expiration in seconds
         user:
-          $ref: '#/components/schemas/UserSummary'
-      required:
-      - token
-      - refresh_token
-      - user
-    TokenPairData:
-      type: object
-      properties:
-        token:
           type: string
-        refresh_token:
-          type: string
-      required:
-      - token
-      - refresh_token
-    IdentityData:
-      type: object
-      properties:
-        email:
-          type: string
-        full_name:
-          type: string
+          example: USR-0001
+          description: Canonical user ID or synthetic email
         roles:
           type: array
           items:
             type: string
-        user_type:
+          description: Roles assigned to this user
+        scope:
+          type: array
+          items:
+            type: string
+          nullable: true
+          description: Narrowed token scope if requested
+      required:
+      - access_token
+      - refresh_token
+      - token_type
+      - expires_in
+      - user
+      - roles
+      description: Access token and refresh token pair
+    UserMeData:
+      type: object
+      properties:
+        user:
+          type: string
+          description: Unique User ID / internal handle
+        first_name:
           type: string
           nullable: true
-        bank:
+        last_name:
           type: string
           nullable: true
-        bank_id:
+        full_name:
+          type: string
+          description: Full display name
+        login_email:
+          type: string
+          format: email
+          nullable: true
+          description: Authoritative login email
+        mobile_no:
           type: string
           nullable: true
-        bank_code:
+          description: Primary contact mobile number in E.164 format
+        country_code:
           type: string
+          example: '+251'
           nullable: true
-        bank_name:
+          description: E.164 country dialing code
+        phone_number:
           type: string
+          example: '911223344'
           nullable: true
-        bank_status:
-          type: string
-          nullable: true
+          description: National subscriber phone number
+        roles:
+          type: array
+          items:
+            type: string
+          description: List of assigned roles
+        profiles:
+          type: object
+          properties: {}
+          additionalProperties: true
+          description: App-specific profiles from on_user_profile hooks. a2c adds `profiles.a2c` with `user_type`
+            (bank_admin, bank_agent, dev_agent, marketplace, farmer, unknown) and, for bank users, `bank`, `bank_id`, `bank_code`, `bank_name`,
+            `bank_status`.
+      required:
+      - user
+      - full_name
+      - roles
+      description: Introspected user identity and profile claims
+    LogoutData:
+      type: object
+      properties:
+        revoked:
+          type: boolean
+          description: Whether the refresh token was revoked
+      required:
+      - revoked
     ProfileData:
       type: object
       properties:

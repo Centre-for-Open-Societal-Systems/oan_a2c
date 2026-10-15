@@ -219,13 +219,13 @@ TIER_OVERRIDES = {
 	# Domain 01: Identity & Access
 	("POST", "/v1/auth/register"): "public-auth",
 	("POST", "/v1/auth/login"): "public-auth",
-	("POST", "/v1/auth/token/refresh"): "public-auth",
-	("POST", "/v1/auth/logout"): "authenticated-core",
+	("POST", "/v1/auth/refresh"): "public-auth",
+	("POST", "/v1/auth/logout"): "public-auth",
 	("POST", "/v1/auth/password/forgot"): "public-auth",
 	("POST", "/v1/auth/password/reset"): "public-auth",
 	("POST", "/v1/auth/password/initial"): "public-auth",
 	("PATCH", "/v1/me/password"): "authenticated-core",
-	("GET", "/v1/me"): "authenticated-core",
+	("GET", "/v1/auth/me"): "authenticated-core",
 	("GET", "/v1/me/profile"): "authenticated-core",
 	("PATCH", "/v1/me/profile"): "authenticated-core",
 	# Domain 02: Bank Onboarding & Administration
@@ -586,6 +586,21 @@ def build_config(routes):
 					"algorithm": "RS256",
 					"key": "https://auth.a2c.openagrinet.org/",  # must equal the JWT `iss` claim
 					"rsa_public_key": "-----BEGIN PUBLIC KEY-----\nREPLACE_WITH_A2C_AUTH_SIGNING_PUBLIC_KEY\n-----END PUBLIC KEY-----",
+				}
+			],
+		},
+		{
+			# Development Agents sign in through the OpenG2P IAM service (SSO), so
+			# their access tokens are issued by IAM's identity provider (Keycloak),
+			# not by oan_auth_service. Kong only checks signature and expiry here;
+			# oan_auth_service validates the token with IAM and syncs its roles.
+			"username": "openg2p-iam-issuer",
+			"tags": ["issuer", "iam"],
+			"jwt_secrets": [
+				{
+					"algorithm": "RS256",
+					"key": "REPLACE_WITH_IAM_TOKEN_ISSUER",  # must equal the IAM token's `iss` claim
+					"rsa_public_key": "-----BEGIN PUBLIC KEY-----\nREPLACE_WITH_IAM_IDP_SIGNING_PUBLIC_KEY\n-----END PUBLIC KEY-----",
 				}
 			],
 		},

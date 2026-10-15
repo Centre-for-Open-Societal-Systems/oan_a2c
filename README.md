@@ -33,17 +33,38 @@ This application requires specific keys to be configured in your site's `site_co
 Used for securing authentication and session tokens:
 
 ```bash
-# Access-token signing keys: a map of key id ("kid") -> secret, plus the id that
-# new tokens are signed with. Rotate by adding a new id, pointing jwt_current_kid
-# at it, then dropping the old id once the longest-lived access token (15 min)
-# has expired. Every id still in the map is accepted on verification.
-bench --site mysite.localhost set-config jwt_secrets '{"v1": "your-jwt-signing-secret"}' --parse
+# Auth is served by oan_auth_service (install it first: it is a required app).
+# Access tokens are signed RS256. Generate a key with:
+#   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out sites/mysite.localhost/keys/jwt_v1.pem
+# jwt_private_keys maps key id ("kid") -> PEM path (or PEM text); jwt_current_kid is the
+# id new tokens are signed with. Rotate by adding a new id, pointing jwt_current_kid at
+# it, then dropping the old id once the longest-lived access token has expired.
+bench --site mysite.localhost set-config jwt_private_keys '{"v1": "keys/jwt_v1.pem"}' --parse
 bench --site mysite.localhost set-config jwt_current_kid "v1"
+
+# Must equal the `key` of the Kong issuer consumer (kong/kong.yml) and the token `iss` claim.
+bench --site mysite.localhost set-config jwt_issuer "https://auth.a2c.openagrinet.org/"
+
+# Refresh-token lifetimes in seconds. The frontend session cookies expect 1 day, or 30 days
+# with "remember me"; oan_auth_service defaults to 30 and 90 days.
+bench --site mysite.localhost set-config jwt_refresh_token_ttl 86400
+bench --site mysite.localhost set-config jwt_refresh_token_ttl_remember_me 2592000
+
+# Roles a caller may pick at POST /api/v1/auth/register without being an administrator.
+bench --site mysite.localhost set-config jwt_self_registerable_roles '["A2C Bank Admin", "A2C Farmer"]' --parse
+
+# Development Agents sign in only through the OpenG2P IAM service (SSO). oan_auth_service
+# validates IAM-issued tokens by asking IAM, creates the local user on first sign-in, and
+# sets its roles to the roles it holds on the IAM client named by iam_application. Give
+# Development Agents the client role `A2C Development Agent` (role names are used as-is).
+# iam_application must equal the frontend's IAM_APPLICATION. A local (password) account
+# holding that role is refused on every API call.
+bench --site mysite.localhost set-config iam_base_url "https://iam.example.org"
+bench --site mysite.localhost set-config iam_application "<iam client id for a2c>"
 
 # Frappe's Fernet key for data at rest (Password fieldtypes, 2FA secrets). Must
 # stay stable for the life of the site: rotate it and every previously encrypted
-# value becomes undecryptable. Used as the token-signing fallback when
-# jwt_secrets is unset, but the two should be configured separately.
+# value becomes undecryptable. Not used for token signing.
 bench --site mysite.localhost set-config encryption_key "your-encryption-key-here"
 
 # HMAC key for consent receipt signatures.
