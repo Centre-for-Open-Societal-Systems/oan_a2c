@@ -299,6 +299,8 @@ TIER_OVERRIDES = {
 	("GET", "/v1/loan-applications"): "bank-partner-standard",
 	("GET", "/v1/loan-applications/summary"): "bank-partner-standard",
 	("GET", "/v1/loan-applications/metadata"): "bank-partner-standard",
+	("GET", "/v1/loan-applications/basic-profile"): "crm-internal",
+	("PATCH", "/v1/loan-applications/basic-profile"): "crm-internal",
 	("GET", "/v1/loan-applications/{id}/full-profile"): "bank-partner-standard",
 	("GET", "/v1/loan-applications/{id}/basic-profile"): "crm-internal",
 	("PATCH", "/v1/loan-applications/{id}/basic-profile"): "crm-internal",
