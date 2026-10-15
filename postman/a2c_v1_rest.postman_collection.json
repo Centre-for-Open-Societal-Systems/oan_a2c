@@ -1,7 +1,7 @@
 {
   "info": {
     "_postman_id": "a2c-v1-rest-postman-collection",
-    "name": "OAN A2C — REST API v1 (Full Sequential Runner)",
+    "name": "OAN A2C \u2014 REST API v1 (Full Sequential Runner)",
     "description": "Production REST API v1 Postman Collection for OpenAgriNet Access to Credit (OAN A2C).\nStructured for sequential runner execution covering Admin Master Data, Bank Onboarding, Product Cataloging, Lead & Consent CRM, Underwriting Workflow, and Farmer Self-Service B2C.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -501,6 +501,11 @@
     {
       "key": "dashboard_woredas",
       "value": "Dale,Aleta Wendo",
+      "type": "string"
+    },
+    {
+      "key": "dashboard_api_key",
+      "value": "",
       "type": "string"
     }
   ],
@@ -1069,7 +1074,52 @@
               ]
             },
             {
-              "name": "6. Get Bank Profile",
+              "name": "6. Download KYC Document",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{jwt_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/v1/banks/me/kyc-documents?view=0",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "banks",
+                    "me",
+                    "kyc-documents"
+                  ],
+                  "query": [
+                    {
+                      "key": "view",
+                      "value": "0",
+                      "description": "1 to render inline; omit or 0 to download"
+                    }
+                  ]
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "pm.test(\"Status code is 200\", function () {",
+                      "    pm.response.to.have.status(200);",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "7. Get Bank Profile",
               "request": {
                 "method": "GET",
                 "header": [
@@ -1106,7 +1156,7 @@
               ]
             },
             {
-              "name": "7. Update Bank Profile",
+              "name": "8. Update Bank Profile",
               "request": {
                 "method": "PATCH",
                 "header": [
@@ -1156,7 +1206,7 @@
               ]
             },
             {
-              "name": "8. Upload Bank Image",
+              "name": "9. Upload Bank Image",
               "request": {
                 "method": "POST",
                 "header": [
@@ -1205,7 +1255,7 @@
               ]
             },
             {
-              "name": "9. Update Bank Status",
+              "name": "10. Update Bank Status",
               "request": {
                 "method": "PATCH",
                 "header": [
@@ -1256,7 +1306,7 @@
               ]
             },
             {
-              "name": "10. Invite Bank Agent",
+              "name": "11. Invite Bank Agent",
               "request": {
                 "method": "POST",
                 "header": [
@@ -4941,7 +4991,71 @@
               ]
             },
             {
-              "name": "10. Upload Supporting Documents",
+              "name": "10. Assign Loan Officer",
+              "request": {
+                "method": "PATCH",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{jwt_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/v1/loan-applications/:id/officer",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "v1",
+                    "loan-applications",
+                    ":id",
+                    "officer"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "{{loan_application}}",
+                      "description": "Application document ID"
+                    }
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n    \"loan_officer\": \"{{bank_agent_email}}\"\n}"
+                }
+              },
+              "response": [],
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "var responseJson = pm.response.json();",
+                      "var expectedStatus = pm.iterationData.get(\"expected_status\") || \"success\";",
+                      "",
+                      "pm.test(\"Response status check\", function () {",
+                      "    if (expectedStatus === \"error\") {",
+                      "        pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 429, 500]);",
+                      "    } else if (responseJson.message && responseJson.message.status) {",
+                      "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                      "    } else if (responseJson.status) {",
+                      "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                      "    } else {",
+                      "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                      "    }",
+                      "});"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ]
+            },
+            {
+              "name": "11. Upload Supporting Documents",
               "request": {
                 "method": "POST",
                 "header": [
@@ -5016,7 +5130,7 @@
               ]
             },
             {
-              "name": "11. Get Supporting Documents",
+              "name": "12. Get Supporting Documents",
               "request": {
                 "method": "GET",
                 "header": [
@@ -5100,7 +5214,7 @@
               ]
             },
             {
-              "name": "12. Download Supporting Document",
+              "name": "13. Download Supporting Document",
               "request": {
                 "method": "GET",
                 "header": [
@@ -5152,7 +5266,7 @@
               ]
             },
             {
-              "name": "13. Delete Supporting Document",
+              "name": "14. Delete Supporting Document",
               "request": {
                 "method": "DELETE",
                 "header": [
@@ -5212,7 +5326,7 @@
               ]
             },
             {
-              "name": "14. Login as Bank Agent (to approve)",
+              "name": "15. Login as Bank Agent (to approve)",
               "request": {
                 "method": "POST",
                 "header": [
@@ -5258,7 +5372,7 @@
               ]
             },
             {
-              "name": "15. Update Loan Status",
+              "name": "16. Update Loan Status",
               "request": {
                 "method": "PATCH",
                 "header": [
@@ -5337,7 +5451,7 @@
               ]
             },
             {
-              "name": "16. Get Loan Metadata",
+              "name": "17. Get Loan Metadata",
               "request": {
                 "method": "GET",
                 "header": [
@@ -5391,7 +5505,7 @@
               ]
             },
             {
-              "name": "17. Get All Loans",
+              "name": "18. Get All Loans",
               "request": {
                 "method": "GET",
                 "header": [
@@ -5462,7 +5576,7 @@
               ]
             },
             {
-              "name": "18. Get Loan Summary",
+              "name": "19. Get Loan Summary",
               "request": {
                 "method": "GET",
                 "header": [
@@ -5516,7 +5630,7 @@
               ]
             },
             {
-              "name": "19. Browse Products (Dev Agent)",
+              "name": "20. Browse Products (Dev Agent)",
               "request": {
                 "method": "GET",
                 "header": [
@@ -6163,7 +6277,101 @@
           ]
         },
         {
-          "name": "6. Browse Marketplace Catalog",
+          "name": "6. Get Farmer Basic Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications/basic-profile?include_consent_data=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications",
+                "basic-profile"
+              ],
+              "query": [
+                {
+                  "key": "include_consent_data",
+                  "value": "1",
+                  "description": "Include consent request data (1 or 0)"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    var data = jsonData.data || (jsonData.message && jsonData.message.data) || jsonData.message || jsonData;",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Update Farmer Basic Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications/basic-profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications",
+                "basic-profile"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"{{farmer_email}}\",\n    \"region\": \"Oromia\",\n    \"woreda\": \"Adama\",\n    \"kebele\": \"Kebele 01\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Browse Marketplace Catalog",
           "request": {
             "method": "GET",
             "header": [
@@ -6217,7 +6425,7 @@
           ]
         },
         {
-          "name": "7. Get Bank Storefront Detail",
+          "name": "9. Get Bank Storefront Detail",
           "request": {
             "method": "GET",
             "header": [
@@ -6267,7 +6475,7 @@
           ]
         },
         {
-          "name": "8. Get Catalog Facets",
+          "name": "10. Get Catalog Facets",
           "request": {
             "method": "GET",
             "header": [
@@ -6309,7 +6517,7 @@
           ]
         },
         {
-          "name": "9. Save Product to Bookmarks",
+          "name": "11. Save Product to Bookmarks",
           "request": {
             "method": "PUT",
             "header": [
@@ -6363,7 +6571,7 @@
           ]
         },
         {
-          "name": "10. List Saved Products",
+          "name": "12. List Saved Products",
           "request": {
             "method": "GET",
             "header": [
@@ -6405,7 +6613,59 @@
           ]
         },
         {
-          "name": "11. Get Farmer Dashboard Summary",
+          "name": "13. Remove Saved Product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{jwt_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/catalog/saved-products/:productId",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "catalog",
+                "saved-products",
+                ":productId"
+              ],
+              "variable": [
+                {
+                  "key": "productId",
+                  "value": "{{product_id}}",
+                  "description": "Product document ID"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.test(\"Product removed from saved list\", function () {",
+                  "        pm.expect(jsonData.status).to.eql(\"success\");",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14. Get Farmer Dashboard Summary",
           "request": {
             "method": "GET",
             "header": [
@@ -6447,7 +6707,7 @@
           ]
         },
         {
-          "name": "12. Create Draft Application",
+          "name": "15. Create Draft Application",
           "request": {
             "method": "POST",
             "header": [
@@ -6504,7 +6764,7 @@
           ]
         },
         {
-          "name": "13. List Farmer Applications",
+          "name": "16. List Farmer Applications",
           "request": {
             "method": "GET",
             "header": [
@@ -6545,7 +6805,7 @@
           ]
         },
         {
-          "name": "14. Get Application Details",
+          "name": "17. Get Application Details",
           "request": {
             "method": "GET",
             "header": [
@@ -6594,7 +6854,7 @@
           ]
         },
         {
-          "name": "15. Update Draft Application",
+          "name": "18. Update Draft Application",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6651,7 +6911,7 @@
           ]
         },
         {
-          "name": "16. Submit Application to Bank",
+          "name": "19. Submit Application to Bank",
           "request": {
             "method": "POST",
             "header": [
@@ -7727,6 +7987,19 @@
               }
             }
           ]
+        }
+      ],
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Sent only when set: public routes ignore it, the gateway needs it once it enforces keys.",
+              "const key = pm.variables.get(\"dashboard_api_key\");",
+              "if (key) pm.request.headers.upsert({ key: \"apikey\", value: key });"
+            ]
+          }
         }
       ]
     }

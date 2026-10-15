@@ -3352,6 +3352,83 @@ paths:
           $ref: '#/components/responses/500InternalError'
       security:
       - BearerAuth: []
+  /v1/loan-applications/basic-profile:
+    get:
+      summary: Get the basic profile
+      tags:
+      - Loan Underwriting
+      operationId: get_v1_loan-applications_basic-profile
+      parameters:
+      - name: include_consent_data
+        in: query
+        required: false
+        schema:
+          type: integer
+          nullable: true
+        description: Include consent request data (1 or 0)
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/LoanApplicationBasicProfileData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    patch:
+      summary: Update the basic profile
+      tags:
+      - Loan Underwriting
+      operationId: patch_v1_loan-applications_basic-profile
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/MessageData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBasicProfileRequest'
   /v1/loan-applications/{id}/basic-profile:
     get:
       summary: Get the applicant's basic profile

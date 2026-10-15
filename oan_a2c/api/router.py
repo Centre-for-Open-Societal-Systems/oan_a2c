@@ -565,6 +565,12 @@ _FALLBACK_ROUTES = [
 	("GET", "/v1/loan-applications", "oan_a2c.api.v1.loan_applications.get_all_loans"),
 	("GET", "/v1/loan-applications/summary", "oan_a2c.api.v1.loan_applications.get_loan_summary"),
 	("GET", "/v1/loan-applications/metadata", "oan_a2c.api.v1.loan_applications.get_loan_metadata"),
+	("GET", "/v1/loan-applications/basic-profile", "oan_a2c.api.v1.loan_applications.get_basic_profile"),
+	(
+		"PATCH",
+		"/v1/loan-applications/basic-profile",
+		"oan_a2c.api.v1.loan_applications.update_basic_profile",
+	),
 	("GET", "/v1/loan-applications/{id}/full-profile", "oan_a2c.api.v1.loan_applications.get_full_profile"),
 	("GET", "/v1/loan-applications/{id}/basic-profile", "oan_a2c.api.v1.loan_applications.get_basic_profile"),
 	(
