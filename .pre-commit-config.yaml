@@ -15,6 +15,7 @@ repos:
       - id: check-json
       - id: check-toml
       - id: check-yaml
+        exclude: ^apisix/k8s/templates/
       - id: debug-statements
       # A file with no newline on its last line makes every append to it a
       # conflict, because both sides have to rewrite that line. .editorconfig
