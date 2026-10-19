@@ -74,7 +74,7 @@ paths:
                 - type: object
                   properties:
                     data:
-                      $ref: '#/components/schemas/TokenPairData'
+                      $ref: '#/components/schemas/RegisterData'
         '400': &id001
           $ref: '#/components/responses/400ValidationError'
         '401': &id002
@@ -5144,6 +5144,22 @@ components:
       - full_name
       - roles
       description: Introspected user identity and profile claims
+    RegisterData:
+      type: object
+      properties:
+        user:
+          type: string
+          example: USR-0001
+          description: Canonical user ID or synthetic email
+        roles:
+          type: array
+          items:
+            type: string
+          description: Roles assigned to this user
+      required:
+      - user
+      - roles
+      description: The created account. No tokens are issued; sign in to obtain them.
     LogoutData:
       type: object
       properties:

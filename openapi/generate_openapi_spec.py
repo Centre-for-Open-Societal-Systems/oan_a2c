@@ -279,6 +279,26 @@ _USER_ME = {
 	"description": "Introspected user identity and profile claims",
 }
 data("TokenPairData", _TOKEN_PAIR)
+data(
+	"RegisterData",
+	{
+		"type": "object",
+		"properties": {
+			"user": {
+				"type": "string",
+				"example": "USR-0001",
+				"description": "Canonical user ID or synthetic email",
+			},
+			"roles": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Roles assigned to this user",
+			},
+		},
+		"required": ["user", "roles"],
+		"description": "The created account. No tokens are issued; sign in to obtain them.",
+	},
+)
 data("LogoutData", _LOGOUT)
 data("UserMeData", _USER_ME)
 data(
@@ -1409,7 +1429,7 @@ ROUTES = [
 		"Identity & Access",
 		"public",
 		"RegisterRequest",
-		response="TokenPairData",
+		response="RegisterData",
 		legacy="oan_auth_service.api.v1.auth.register_user",
 	),
 	R(
