@@ -30,8 +30,13 @@ pipeline {
                         git clone https://github.com/frappe/frappe_docker.git frappe_docker
 
                         # Prepare apps.json pointing to the deployed branch of the COSS repo
-                        printf '[{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_a2c.git","branch":"%s"}]' \
-                            "${APP_BRANCH}" > /tmp/apps.json
+                        AUTH_BRANCH="staging"
+                        if [ "${APP_BRANCH}" = "main" ]; then
+                            AUTH_BRANCH="main"
+                        fi
+
+                        printf '[{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_auth_service.git","branch":"%s"},{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_a2c.git","branch":"%s"}]' \
+                            "${AUTH_BRANCH}" "${APP_BRANCH}" > /tmp/apps.json
 
                         # Build from frappe_docker directory
                         cd frappe_docker
@@ -118,6 +123,10 @@ pipeline {
                             # "bench build" breaks the site: /assets/** 404s, and the
                             # frontend overrides the entrypoint with nginx-entrypoint.sh,
                             # so a frontend restart does not recreate the link.
+
+                            echo "=== Setting self-registerable roles and installing oan_auth_service ==="
+                            docker compose exec -T backend bench --site mysite.localhost set-config jwt_self_registerable_roles '["A2C Bank Admin", "A2C Farmer"]' --parse || true
+                            docker compose exec -T backend bench --site mysite.localhost install-app oan_auth_service || true
 
                             echo "=== Running migrations ==="
                             docker compose exec -T backend bench --site mysite.localhost migrate

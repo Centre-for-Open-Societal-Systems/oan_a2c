@@ -81,8 +81,15 @@ pipeline {
             rm -rf frappe_docker
             git clone --depth 1 https://github.com/frappe/frappe_docker.git frappe_docker
 
-            printf '[{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_a2c.git","branch":"%s"}]' \
-              "${BRANCH_NAME}" > /tmp/apps.json
+            AUTH_BRANCH="develop"
+            if [ "${BRANCH_NAME}" = "staging_aws" ] || [ "${BRANCH_NAME}" = "staging_ati" ]; then
+              AUTH_BRANCH="staging"
+            elif [ "${BRANCH_NAME}" = "main" ]; then
+              AUTH_BRANCH="main"
+            fi
+
+            printf '[{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_auth_service.git","branch":"%s"},{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_a2c.git","branch":"%s"}]' \
+              "${AUTH_BRANCH}" "${BRANCH_NAME}" > /tmp/apps.json
 
             cd frappe_docker
             DOCKER_BUILDKIT=1 docker buildx build \
@@ -221,12 +228,14 @@ pipeline {
               # ast.literal_eval and dies ("invalid decimal literal") unless JWT_SECRETS is a real
               # Python literal like {"v1": "..."} -- so each is non-fatal and warns. Fix the Jenkins
               # credential if a WARN appears in the build log.
-              echo "=== App secrets (secret_key, jwt_secrets) ==="
+              echo "=== App secrets (secret_key, jwt_secrets, jwt_self_registerable_roles) ==="
               docker compose exec -T backend bench set-config -g secret_key "${SECRET_KEY}" || echo "WARN: secret_key set-config failed (continuing)"
               docker compose exec -T backend bench --site mysite.localhost set-config jwt_secrets '${JWT_SECRETS}' --parse || echo "WARN: jwt_secrets set-config failed -- JWT_SECRETS not a valid literal? (continuing)"
               docker compose exec -T backend bench --site mysite.localhost set-config jwt_current_kid "v1" || echo "WARN: jwt_current_kid set-config failed (continuing)"
+              docker compose exec -T backend bench --site mysite.localhost set-config jwt_self_registerable_roles '["A2C Bank Admin", "A2C Farmer"]' --parse || echo "WARN: jwt_self_registerable_roles set-config failed (continuing)"
 
-              echo "=== Migrate (assets are baked, do NOT rebuild) ==="
+              echo "=== Install oan_auth_service (idempotent) + Migrate ==="
+              docker compose exec -T backend bench --site mysite.localhost install-app oan_auth_service || true
               docker compose exec -T backend bench --site mysite.localhost migrate
               docker compose restart frontend
               sleep 10
