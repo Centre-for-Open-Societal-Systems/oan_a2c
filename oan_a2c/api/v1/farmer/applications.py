@@ -64,10 +64,11 @@ def list_applications(**kwargs):
 	count_res = frappe.get_list(
 		"A2C Loan Application",
 		filters=filters,
-		fields=[{"COUNT": "*"}],
+		fields=[{"COUNT": "*", "as": "count"}],
+		order_by="",
 		ignore_permissions=False,
 	)
-	total_records = count_res[0].get("COUNT(*)") if count_res else 0
+	total_records = count_res[0].get("count") if count_res else 0
 
 	records = frappe.get_list(
 		"A2C Loan Application",

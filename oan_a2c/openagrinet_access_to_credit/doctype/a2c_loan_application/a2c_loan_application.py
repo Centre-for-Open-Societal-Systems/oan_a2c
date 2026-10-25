@@ -4,6 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.utils import get_first_day, now_datetime
 from oan_auth_service.api.v1.notifications import notify_users
 
 from oan_a2c.a2c_marketplace.permissions import get_bank_members
@@ -14,6 +15,11 @@ class A2CLoanApplication(Document):
 	def _bank_recipients(self):
 		"""Bank Admins + Agents of this application's bank (actor excluded downstream)."""
 		return get_bank_members(self.bank, roles=BANK_ROLES)
+
+	def before_insert(self):
+		# Stored, not derived at query time: month truncation is a different function on
+		# MariaDB and Postgres, and a plain Date column groups and indexes on both.
+		self.creation_month = get_first_day(self.creation or now_datetime())
 
 	def before_save(self):
 		if not self.is_new():

@@ -20,3 +20,4 @@ oan_a2c.patches.seed_default_stages_for_existing_banks
 oan_a2c.patches.backfill_processing_loan_stage
 oan_a2c.patches.migrate_must_change_password
 oan_a2c.patches.remove_legacy_auth_artifacts
+oan_a2c.patches.backfill_loan_application_creation_month

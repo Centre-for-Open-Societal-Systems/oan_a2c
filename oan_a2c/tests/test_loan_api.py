@@ -261,6 +261,22 @@ class TestLoansV1API(ApiTestCase):
 		self.assertEqual(status, 400)
 		self.assertEqual(body["code"], "VALIDATION_ERROR")
 
+	def test_2g_creation_month_is_set_on_insert_and_backfilled(self):
+		from oan_a2c.patches.backfill_loan_application_creation_month import execute
+
+		creation, month = frappe.db.get_value(
+			"A2C Loan Application", self.app_id, ["creation", "creation_month"]
+		)
+		self.assertEqual(month, frappe.utils.get_first_day(creation))
+
+		set_column("A2C Loan Application", "creation_month", None, name=self.app_id)
+		self.assertIsNone(frappe.db.get_value("A2C Loan Application", self.app_id, "creation_month"))
+		execute()
+		self.assertEqual(
+			frappe.db.get_value("A2C Loan Application", self.app_id, "creation_month"),
+			frappe.utils.get_first_day(creation),
+		)
+
 	def test_2a_get_all_loans_returns_applicant_and_location(self):
 		"""The list has to carry the columns every dashboard renders.
 

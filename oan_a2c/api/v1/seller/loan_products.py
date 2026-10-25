@@ -372,9 +372,10 @@ def list_products(
 	count_res = frappe.get_list(
 		"A2C Loan Product",
 		filters=base_filters,
-		fields=[{"COUNT": "*"}],
+		fields=[{"COUNT": "*", "as": "count"}],
+		order_by="",
 	)
-	total_records = count_res[0].get("COUNT(*)") if count_res else 0
+	total_records = count_res[0].get("count") if count_res else 0
 
 	# get_list (not get_all) enforces DocPerm AND runs the bank_scope_query hook,
 	# so callers without read permission (e.g. Development Agent, which has no
@@ -419,10 +420,10 @@ def list_products(
 		app_counts = frappe.get_list(
 			"A2C Loan Application",
 			filters={"loan_product": ["in", product_names]},
-			fields=["loan_product", {"COUNT": "*"}],
+			fields=["loan_product", {"COUNT": "*", "as": "count"}],
 			group_by="loan_product",
 		)
-		counts_map = {row.loan_product: row.get("COUNT(*)") for row in app_counts}
+		counts_map = {row.loan_product: row.get("count") for row in app_counts}
 
 		# Batch resolve bank display names for the result rows. A2C Participating Bank
 		# is the public lender directory (not bank-scoped), so get_all is fine.

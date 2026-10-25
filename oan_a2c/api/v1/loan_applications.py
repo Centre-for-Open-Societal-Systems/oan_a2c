@@ -473,7 +473,7 @@ def get_loan_summary():
 	meta = frappe.get_meta("A2C Loan Application")
 	has_loan_officer = meta.has_field("loan_officer")
 
-	fields = ["status", "stage_label", {"COUNT": "*"}]
+	fields = ["status", "stage_label", {"COUNT": "*", "as": "count"}]
 	group_by = "status, stage_label"
 	if has_loan_officer:
 		fields.insert(2, "loan_officer")
@@ -503,7 +503,7 @@ def get_loan_summary():
 	unassigned = 0
 
 	for row in counts:
-		count = row.get("COUNT(*)", 0)
+		count = row.get("count", 0)
 		summary["total"] += count
 
 		# If the bank has defined a stage, use it, else fallback to the archetype status
@@ -670,10 +670,11 @@ def get_all_loans(**kwargs):
 		"A2C Loan Application",
 		filters=filters,
 		or_filters=or_filters or None,
-		fields=[{"COUNT": "*"}],
+		fields=[{"COUNT": "*", "as": "count"}],
+		order_by="",
 		ignore_permissions=False,
 	)
-	total_records = count_res[0].get("COUNT(*)") if count_res else 0
+	total_records = count_res[0].get("count") if count_res else 0
 
 	user = frappe.session.user
 	can_see_step = can_see_onboarding_step(user)

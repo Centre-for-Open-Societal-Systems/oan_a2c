@@ -28,7 +28,6 @@ from frappe.query_builder import DocType
 from frappe.query_builder.functions import Coalesce, Count, Sum
 from frappe.utils import getdate, now_datetime
 from pypika.functions import NullIf, Trim
-from pypika.terms import Function
 
 from oan_a2c.a2c_marketplace.stages import get_stage_map
 
@@ -234,7 +233,7 @@ def _application_rows() -> list[dict]:
 	"""Applications by bank, outcome, place, product and the month they were lodged."""
 	region = _geo(LoanApplication.region, FarmerProfile.region)
 	woreda = _geo(LoanApplication.woreda, FarmerProfile.woreda)
-	month = Function("DATE_FORMAT", LoanApplication.creation, "%Y-%m-01")
+	month = LoanApplication.creation_month
 	product = Coalesce(
 		NullIf(Trim(LoanApplication.loan_product_name), ""), NullIf(Trim(LoanApplication.loan_type), "")
 	)
