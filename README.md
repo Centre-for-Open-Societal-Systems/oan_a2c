@@ -53,14 +53,12 @@ bench --site mysite.localhost set-config jwt_refresh_token_ttl_remember_me 25920
 # Roles a caller may pick at POST /api/v1/auth/register without being an administrator.
 bench --site mysite.localhost set-config jwt_self_registerable_roles '["A2C Bank Admin", "A2C Farmer"]' --parse
 
-# Development Agents sign in only through the OpenG2P IAM service (SSO). oan_auth_service
-# validates IAM-issued tokens by asking IAM, creates the local user on first sign-in, and
-# sets its roles to the roles it holds on the IAM client named by iam_application. Give
-# Development Agents the client role `A2C Development Agent` (role names are used as-is).
-# iam_application must equal the frontend's IAM_APPLICATION. A local (password) account
-# holding that role is refused on every API call.
-bench --site mysite.localhost set-config iam_base_url "https://iam.example.org"
-bench --site mysite.localhost set-config iam_application "<iam client id for a2c>"
+# Development Agents sign in only through the OpenG2P IAM service (SSO). IAM logins are
+# not site config: a System Manager adds one `OAN IAM Service` row per IAM login in the
+# desk (base URL, provider id, issuer, application, return origins). See "Delegated login"
+# in oan_auth_service's README. Give Development Agents the client role
+# `A2C Development Agent` on the row's `application` (role names are used as-is). A local
+# (password) account holding that role is refused on every API call.
 
 # Frappe's Fernet key for data at rest (Password fieldtypes, 2FA secrets). Must
 # stay stable for the life of the site: rotate it and every previously encrypted
@@ -96,8 +94,8 @@ bench --site mysite.localhost run-tests --app oan_a2c
 
 The A2C REST API is documented at three levels — a stakeholder-readable overview, a formal machine-readable contract, and the deployment/gateway setup:
 
-- **[`A2C_API_Specification.md`](docs/A2C_API_Specification.md)** — human-readable API reference: all 94 endpoints across the 10 resource domains (Identity & Access, Bank Onboarding & Administration, Bank Cataloging, Catalog Discovery, Applications, CRM/Leads & Field Ops, Loan Underwriting, Consent Management, Notifications, Inbound Webhooks), with a method/endpoint/description/access table per domain. Also covers authentication, gateway configuration, and response-format/pagination/rate-limiting appendices. Best starting point for anyone evaluating the API who isn't loading it into a tool.
-- **[`openapi/openapi_v1.public.yaml`](openapi/openapi_v1.public.yaml)** — the formal OpenAPI 3.0.3 contract: the same 94 endpoints with full request/response schemas and per-operation auth requirements. Load into Swagger UI, Postman, or a codegen tool.
+- **[`A2C_API_Specification.md`](docs/A2C_API_Specification.md)** — human-readable API reference: all 101 endpoints across the 10 resource domains (Identity & Access, Bank Onboarding & Administration, Bank Cataloging, Catalog Discovery, Applications, CRM/Leads & Field Ops, Loan Underwriting, Consent Management, Notifications, Inbound Webhooks), with a method/endpoint/description/access table per domain. Also covers authentication, gateway configuration, and response-format/pagination/rate-limiting appendices. Best starting point for anyone evaluating the API who isn't loading it into a tool.
+- **[`openapi/openapi_v1.public.yaml`](openapi/openapi_v1.public.yaml)** — the formal OpenAPI 3.0.3 contract: the same 101 endpoints with full request/response schemas and per-operation auth requirements. Load into Swagger UI, Postman, or a codegen tool.
 - **[`kong/README_kong_onboarding.md`](kong/README_kong_onboarding.md)** — how the API is deployed and secured behind Kong: authentication, throttling tiers, and onboarding a new external integration.
 
 ## Contributing

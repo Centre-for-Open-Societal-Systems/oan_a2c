@@ -2739,6 +2739,35 @@ services:
         key_claim_name: iss
         header_names:
         - Authorization
+  - name: patch-v1-notifications
+    methods:
+    - PATCH
+    paths:
+    - ~/v1/notifications$
+    strip_path: false
+    regex_priority: 2
+    tags:
+    - a2c
+    - v1
+    - d09
+    - authenticated-core
+    - bearer
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 120
+        hour: 4000
+        limit_by: consumer
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
+    - name: jwt
+      config:
+        claims_to_verify:
+        - exp
+        key_claim_name: iss
+        header_names:
+        - Authorization
   - name: delete-v1-notifications
     methods:
     - DELETE
@@ -2768,11 +2797,69 @@ services:
         key_claim_name: iss
         header_names:
         - Authorization
-  - name: patch-v1-notifications-read
+  - name: get-v1-notifications-notification_id
+    methods:
+    - GET
+    paths:
+    - ~/v1/notifications/(?<notification_id>[^/]+)$
+    strip_path: false
+    regex_priority: 3
+    tags:
+    - a2c
+    - v1
+    - d09
+    - authenticated-core
+    - bearer
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 120
+        hour: 4000
+        limit_by: consumer
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
+    - name: jwt
+      config:
+        claims_to_verify:
+        - exp
+        key_claim_name: iss
+        header_names:
+        - Authorization
+  - name: patch-v1-notifications-notification_id
     methods:
     - PATCH
     paths:
-    - ~/v1/notifications/read$
+    - ~/v1/notifications/(?<notification_id>[^/]+)$
+    strip_path: false
+    regex_priority: 3
+    tags:
+    - a2c
+    - v1
+    - d09
+    - authenticated-core
+    - bearer
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 120
+        hour: 4000
+        limit_by: consumer
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
+    - name: jwt
+      config:
+        claims_to_verify:
+        - exp
+        key_claim_name: iss
+        header_names:
+        - Authorization
+  - name: delete-v1-notifications-notification_id
+    methods:
+    - DELETE
+    paths:
+    - ~/v1/notifications/(?<notification_id>[^/]+)$
     strip_path: false
     regex_priority: 3
     tags:

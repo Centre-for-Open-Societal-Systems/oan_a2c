@@ -402,14 +402,14 @@ def create_lead(**kwargs):
 	lead_source = kwargs.get("lead_source", "Agent Entry")
 	external_id = kwargs.get("external_id")
 
-	# Acquire a database-level transaction row/gap lock via raw SQL FOR UPDATE to prevent TOCTOU
+	# Acquire a database-level transaction row/gap lock (get_value with for_update) to prevent TOCTOU
 	# race conditions during concurrent API requests.
 	# Alternative unique constraints cannot be enforced on the database layer because some values
 	# (such as external_id) are optional or may have blank/empty string values, which are not
 	# guaranteed to be unique under standard database unique index constraints (where empty strings
 	# trigger duplicate key errors in MariaDB/MySQL).
 	if phone_number:
-		frappe.db.sql("SELECT name FROM `tabA2C Lead` WHERE phone_number = %s FOR UPDATE", (phone_number,))
+		frappe.db.get_value("A2C Lead", {"phone_number": phone_number}, "name", for_update=True)
 		if frappe.db.exists("A2C Lead", {"phone_number": phone_number}):
 			frappe.throw(
 				_("Lead with phone number {0} already exists").format(phone_number),
@@ -417,7 +417,7 @@ def create_lead(**kwargs):
 			)
 
 	if external_id:
-		frappe.db.sql("SELECT name FROM `tabA2C Lead` WHERE external_id = %s FOR UPDATE", (external_id,))
+		frappe.db.get_value("A2C Lead", {"external_id": external_id}, "name", for_update=True)
 		if frappe.db.exists("A2C Lead", {"external_id": external_id}):
 			frappe.throw(
 				_("Lead with external ID {0} already exists").format(external_id), frappe.DuplicateEntryError

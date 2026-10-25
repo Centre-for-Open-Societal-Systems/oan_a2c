@@ -1,5 +1,5 @@
 # A2C API -- OpenAPI 3.0.3 (PUBLIC / partner-facing contract)
-# Same 95 routes and schemas as openapi_v1.yaml, with internal-only vendor extensions
+# Same 101 routes and schemas as openapi_v1.yaml, with internal-only vendor extensions
 # (x-legacy-rpc-method, x-schema-confidence) removed. Generated from generate_openapi_spec.py.
 openapi: 3.0.3
 info:
@@ -4104,39 +4104,39 @@ paths:
               $ref: '#/components/schemas/ReceiveConsentDataRequest'
   /v1/notifications:
     get:
-      summary: List notifications
+      summary: List my notifications
       tags:
       - Notifications
       operationId: get_v1_notifications
       parameters:
-      - name: read_status
+      - name: status
         in: query
         required: false
         schema:
-          default: all
-          pattern: ^(unread|read|all)$
-          title: Read Status
           type: string
-        description: ''
-      - name: limit
+          enum:
+          - unread
+          - read
+          - all
+          default: all
+        description: Filter by read state. `unread_count` ignores it.
+      - name: page
         in: query
         required: false
         schema:
-          default: 20
-          maximum: 100
+          type: integer
           minimum: 1
-          title: Limit
-          type: integer
-        description: ''
-      - name: start
+          default: 1
+        description: Page number.
+      - name: page_size
         in: query
         required: false
         schema:
-          default: 0
-          minimum: 0
-          title: Start
           type: integer
-        description: ''
+          minimum: 1
+          maximum: 100
+          default: 20
+        description: Items per page.
       responses:
         '200':
           description: Successful operation.
@@ -4165,8 +4165,45 @@ paths:
           $ref: '#/components/responses/500InternalError'
       security:
       - BearerAuth: []
+    patch:
+      summary: Mark many of my notifications read or unread
+      tags:
+      - Notifications
+      operationId: patch_v1_notifications
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/NotificationUpdateData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkUpdateNotificationsRequest'
     delete:
-      summary: Delete notifications
+      summary: Delete many of my notifications
       tags:
       - Notifications
       operationId: delete_v1_notifications
@@ -4201,13 +4238,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ClearNotificationsRequest'
-  /v1/notifications/read:
-    patch:
-      summary: Mark notifications read
+              $ref: '#/components/schemas/BulkDeleteNotificationsRequest'
+  /v1/notifications/{notification_id}:
+    get:
+      summary: Get one of my notifications
       tags:
       - Notifications
-      operationId: patch_v1_notifications_read
+      operationId: get_v1_notifications_notification_id
+      parameters:
+      - name: notification_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Notification Log id
       responses:
         '200':
           description: Successful operation.
@@ -4219,7 +4263,45 @@ paths:
                 - type: object
                   properties:
                     data:
-                      $ref: '#/components/schemas/NotificationUpdateData'
+                      $ref: '#/components/schemas/NotificationItem'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+    patch:
+      summary: Mark one of my notifications read or unread
+      tags:
+      - Notifications
+      operationId: patch_v1_notifications_notification_id
+      parameters:
+      - name: notification_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Notification Log id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/NotificationItem'
         '400':
           $ref: '#/components/responses/400ValidationError'
         '401':
@@ -4239,7 +4321,41 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/MarkNotificationsReadRequest'
+              $ref: '#/components/schemas/UpdateNotificationRequest'
+    delete:
+      summary: Delete one of my notifications
+      tags:
+      - Notifications
+      operationId: delete_v1_notifications_notification_id
+      parameters:
+      - name: notification_id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Notification Log id
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
   /v1/webhooks/leads:
     post:
       summary: Receive a lead referral
@@ -4297,8 +4413,7 @@ paths:
         schema:
           type: string
           nullable: true
-        description: Participating bank id to narrow every figure to. Omit or `all` for the whole
-          programme.
+        description: Participating bank id to narrow every figure to. Omit or `all` for the whole programme.
       - name: region
         in: query
         required: false
@@ -4467,8 +4582,8 @@ components:
           type: string
           example: '+251'
           nullable: true
-          description: Optional country dialing code (e.g. +251, +91). When provided, phone_number is treated
-            as national digits.
+          description: Optional country dialing code (e.g. +251, +91). When provided, phone_number is
+            treated as national digits.
         role:
           type: string
           nullable: true
@@ -4484,8 +4599,8 @@ components:
       - password
       - full_name
       description: Payload for registering a new user account with email or phone_number. When country_code
-        is provided, phone_number is treated as the national subscriber number; otherwise, it must be in full
-        international E.164 format.
+        is provided, phone_number is treated as the national subscriber number; otherwise, it must be
+        in full international E.164 format.
     LoginRequest:
       type: object
       properties:
@@ -4581,8 +4696,8 @@ components:
           format: password
           minLength: 8
           maxLength: 128
-          description: The account holder's own password (min 8 chars, letters, numbers, symbols). Must differ
-            from the temporary one.
+          description: The account holder's own password (min 8 chars, letters, numbers, symbols). Must
+            differ from the temporary one.
       required:
       - usr
       - current_password
@@ -5481,30 +5596,46 @@ components:
       required:
       - consent
       - farmer
-    MarkNotificationsReadRequest:
+    UpdateNotificationRequest:
       type: object
       properties:
-        notification_ids:
-          items:
-            type: string
-          type: array
-          nullable: true
-        mark_all:
-          default: false
-          title: Mark All
+        read:
           type: boolean
-    ClearNotificationsRequest:
+          description: true marks read, false marks unread
+      required:
+      - read
+    BulkUpdateNotificationsRequest:
       type: object
       properties:
-        notification_ids:
-          items:
-            type: string
-          type: array
-          nullable: true
-        clear_all:
-          default: false
-          title: Clear All
+        ids:
+          oneOf:
+          - type: array
+            items:
+              type: string
+          - type: string
+          description: Notification ids, a list or comma-separated (at most 500). Send this or `all`.
+        all:
           type: boolean
+          default: false
+          description: true acts on all of the caller's notifications
+        read:
+          type: boolean
+          default: true
+          description: true marks read, false marks unread
+    BulkDeleteNotificationsRequest:
+      type: object
+      properties:
+        ids:
+          oneOf:
+          - type: array
+            items:
+              type: string
+          - type: string
+          description: Notification ids, a list or comma-separated (at most 500). Send this or `all`.
+        all:
+          type: boolean
+          default: false
+          description: true acts on all of the caller's notifications
     LeadInboundRequest:
       type: object
       properties:
@@ -5523,13 +5654,6 @@ components:
       - phone_number
       description: Not documented with a request example; inferred from the endpoint's idempotency contract
         (dedupe by external_id, then by phone_number).
-    DashboardChartRows:
-      type: array
-      items:
-        type: object
-        additionalProperties: true
-      description: Aggregate rows for one chart. Columns depend on the chart; no row carries a record
-        identifier or personal data.
     MessageData:
       type: object
       properties:
@@ -5537,6 +5661,13 @@ components:
           type: string
       required:
       - message
+    DashboardChartRows:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+      description: Aggregate rows for one chart. Columns depend on the chart; no row carries a record
+        identifier or personal data.
     TokenPairData:
       type: object
       properties:
@@ -5576,6 +5707,30 @@ components:
       - user
       - roles
       description: Access token and refresh token pair
+    RegisterData:
+      type: object
+      properties:
+        user:
+          type: string
+          example: USR-0001
+          description: Canonical user ID or synthetic email
+        roles:
+          type: array
+          items:
+            type: string
+          description: Roles assigned to this user
+      required:
+      - user
+      - roles
+      description: The created account. No tokens are issued; sign in to obtain them.
+    LogoutData:
+      type: object
+      properties:
+        revoked:
+          type: boolean
+          description: Whether the refresh token was revoked
+      required:
+      - revoked
     UserMeData:
       type: object
       properties:
@@ -5619,38 +5774,14 @@ components:
           type: object
           properties: {}
           additionalProperties: true
-          description: App-specific profiles from on_user_profile hooks. a2c adds `profiles.a2c` with `user_type`
-            (bank_admin, bank_agent, dev_agent, marketplace, farmer, unknown) and, for bank users, `bank`, `bank_id`, `bank_code`, `bank_name`,
-            `bank_status`.
+          description: App-specific profiles from on_user_profile hooks. a2c adds `profiles.a2c` with
+            `user_type` (bank_admin, bank_agent, dev_agent, marketplace, farmer, unknown) and, for bank
+            users, `bank`, `bank_id`, `bank_code`, `bank_name`, `bank_status`.
       required:
       - user
       - full_name
       - roles
       description: Introspected user identity and profile claims
-    RegisterData:
-      type: object
-      properties:
-        user:
-          type: string
-          example: USR-0001
-          description: Canonical user ID or synthetic email
-        roles:
-          type: array
-          items:
-            type: string
-          description: Roles assigned to this user
-      required:
-      - user
-      - roles
-      description: The created account. No tokens are issued; sign in to obtain them.
-    LogoutData:
-      type: object
-      properties:
-        revoked:
-          type: boolean
-          description: Whether the refresh token was revoked
-      required:
-      - revoked
     ProfileData:
       type: object
       properties:
@@ -6960,9 +7091,12 @@ components:
           type: string
         subject:
           type: string
-        email_content:
+        message:
           type: string
           nullable: true
+          description: 'May contain HTML: sanitize before rendering.'
+        type:
+          type: string
         document_type:
           type: string
           nullable: true
@@ -6970,13 +7104,15 @@ components:
           type: string
           nullable: true
         read:
-          type: integer
-          enum:
-          - 0
-          - 1
-        creation:
+          type: boolean
+        created_at:
           type: string
           format: date-time
+      required:
+      - id
+      - subject
+      - read
+      - created_at
     NotificationListData:
       type: object
       properties:

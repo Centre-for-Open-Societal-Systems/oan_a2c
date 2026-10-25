@@ -822,5 +822,5 @@ themselves. Fix is one line — `{"Processing"}` — plus a `test_stats_cache.py
 | `farmer_profile` is assigned but never persisted                           | `api/v1/loan_applications.py:866`, absent from `a2c_loan_application.json` |
 | `Draft → Processing` is Development-Agent-only                             | `fixtures/workflow.json:295`                                               |
 | Consent is Fayda/OTP and lead-anchored                                     | `api/v1/consent/consent.py:27-49`                                          |
-| Notification infrastructure already exists                                 | `api/v1/notifications.py:17`                                               |
+| Notification infrastructure already exists                                 | `oan_auth_service.api.v1.notifications.notify_users`                       |
 | `lead_source` has no self-service option                                   | `a2c_lead.json:65-70`                                                      |

@@ -1,9 +1,10 @@
 import unittest
 
 import frappe
+from oan_auth_service.api.v1 import notifications as notif_api
 
 from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, BANK_AGENT_ROLE
-from oan_a2c.api.v1 import notifications as notif_api
+from oan_a2c.tests.api_case import set_column
 
 BANK = "TEST_NOTIF_BANK"
 ADMIN_USER = "notif_admin@example.com"
@@ -58,7 +59,7 @@ class TestNotifications(unittest.TestCase):
 					"registered_country": "Ethiopia",
 				}
 			).insert(ignore_permissions=True)
-			frappe.db.sql("UPDATE `tabA2C Participating Bank` SET name=%s WHERE name=%s", (BANK, bank.name))
+			set_column("A2C Participating Bank", "name", BANK, name=bank.name)
 		_ensure_user(ADMIN_USER, BANK_ADMIN_ROLE)
 		_ensure_user(AGENT_USER, BANK_AGENT_ROLE)
 		frappe.db.commit()
@@ -142,7 +143,7 @@ class TestNotifications(unittest.TestCase):
 		# Agent (a different bank member) is unaffected by exclusion of the actor —
 		# but agents are not on the Draft-insert list anyway, so nobody is notified.
 
-	# --- API endpoints -----------------------------------------------------
+	# --- API endpoints (served by oan_auth_service) --------------------------
 
 	def test_get_mark_read_and_clear(self):
 		frappe.set_user("Administrator")
@@ -151,16 +152,16 @@ class TestNotifications(unittest.TestCase):
 
 		frappe.set_user(AGENT_USER)
 		# Endpoints return the handle_api_errors envelope: payload lives under "data".
-		data = notif_api.get_notifications(read_status="all", limit=20, start=0)["data"]
+		data = notif_api.list_notifications(status="all")["data"]
 		self.assertEqual(data["unread_count"], 1)
 		self.assertEqual(len(data["notifications"]), 1)
 		nid = data["notifications"][0]["id"]
 
-		notif_api.mark_read(notification_ids=[nid], mark_all=False)
-		data = notif_api.get_notifications(read_status="unread", limit=20, start=0)["data"]
+		notif_api.bulk_update_notifications(ids=[nid], read=True)
+		data = notif_api.list_notifications(status="unread")["data"]
 		self.assertEqual(data["unread_count"], 0)
 
-		notif_api.clear(notification_ids=[nid], clear_all=False)
-		data = notif_api.get_notifications(read_status="all", limit=20, start=0)["data"]
+		notif_api.bulk_delete_notifications(ids=[nid])
+		data = notif_api.list_notifications(status="all")["data"]
 		self.assertEqual(len(data["notifications"]), 0)
 		frappe.set_user("Administrator")

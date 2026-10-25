@@ -26,6 +26,7 @@ Both are marked with the vendor extension `x-schema-confidence` so the
 distinction survives in the generated file, not just in this script.
 """
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -909,18 +910,21 @@ data(
 data("ConsentWebhookAckData", OBJ({"message": S()}, required=["message"], confidence="inferred"))
 
 # --- Domain 09: Notifications ---
+# Notification endpoints are served by oan_auth_service; these mirror its contract.
 data(
 	"NotificationItem",
 	OBJ(
 		{
 			"id": S(),
 			"subject": S(),
-			"email_content": S(nullable=True),
+			"message": S(nullable=True, description="May contain HTML: sanitize before rendering."),
+			"type": S(),
 			"document_type": S(nullable=True),
 			"document_name": S(nullable=True),
-			"read": I(enum=[0, 1]),
-			"creation": S(format="date-time"),
-		}
+			"read": B(),
+			"created_at": S(format="date-time"),
+		},
+		required=["id", "subject", "read", "created_at"],
 	),
 )
 data(
@@ -1205,8 +1209,23 @@ REQ["VerifyOtpRequest"] = adapt_request_schema("VerifyOTPSchema")
 REQ["SubmitConsentRequest"] = adapt_request_schema("SubmitConsentSchema")
 REQ["ReceiveConsentDataRequest"] = adapt_request_schema("ReceiveConsentDataSchema")
 
-REQ["MarkNotificationsReadRequest"] = adapt_request_schema("MarkReadSchema")
-REQ["ClearNotificationsRequest"] = adapt_request_schema("ClearSchema")
+_NOTIFICATION_IDS = {
+	"ids": {
+		"oneOf": [ARR(S()), S()],
+		"description": "Notification ids, a list or comma-separated (at most 500). Send this or `all`.",
+	},
+	"all": B(default=False, description="true acts on all of the caller's notifications"),
+}
+REQ["UpdateNotificationRequest"] = OBJ(
+	{"read": B(description="true marks read, false marks unread")}, required=["read"]
+)
+REQ["BulkUpdateNotificationsRequest"] = OBJ(
+	{
+		**copy.deepcopy(_NOTIFICATION_IDS),
+		"read": B(default=True, description="true marks read, false marks unread"),
+	}
+)
+REQ["BulkDeleteNotificationsRequest"] = OBJ(copy.deepcopy(_NOTIFICATION_IDS))
 
 REQ["LeadInboundRequest"] = OBJ(
 	{
@@ -1323,7 +1342,25 @@ QP["GetBankDetails"] = []  # bank id moves to path
 QP["ListLeads"] = query_params_from_schema("GetLeadsSchema")
 QP["ListVisitSchedules"] = query_params_from_schema("GetVisitSchedulesSchema")
 QP["AssignableUsers"] = query_params_from_schema("GetAssignableUsersSchema")
-QP["GetNotifications"] = query_params_from_schema("GetNotificationsSchema")
+QP["BasicProfile"] = [
+	{
+		"name": "include_consent_data",
+		"in": "query",
+		"required": False,
+		"schema": I(nullable=True),
+		"description": "Include consent request data (1 or 0)",
+	}
+]
+QP["ListNotifications"] = [
+	{
+		"name": "status",
+		"in": "query",
+		"required": False,
+		"schema": S(enum=["unread", "read", "all"], default="all"),
+		"description": "Filter by read state. `unread_count` ignores it.",
+	},
+	*copy.deepcopy(PAGE_PARAMS),
+]
 QP["ConsentFarmerSearch"] = [
 	{
 		"name": "fayda_id",
@@ -1386,7 +1423,7 @@ QP["GetBasicProfile"] = [
 
 
 # ---------------------------------------------------------------------------
-# The 96 routes.
+# The 101 routes.
 # ---------------------------------------------------------------------------
 def R(
 	method,
@@ -2171,6 +2208,26 @@ ROUTES = [
 	),
 	R(
 		"get",
+		"/v1/loan-applications/basic-profile",
+		"Get the basic profile",
+		"Loan Underwriting",
+		"bearer",
+		query="BasicProfile",
+		response="LoanApplicationBasicProfileData",
+		legacy="oan_a2c.api.v1.loan_applications.get_basic_profile",
+	),
+	R(
+		"patch",
+		"/v1/loan-applications/basic-profile",
+		"Update the basic profile",
+		"Loan Underwriting",
+		"bearer",
+		"UpdateBasicProfileRequest",
+		response="MessageData",
+		legacy="oan_a2c.api.v1.loan_applications.update_basic_profile",
+	),
+	R(
+		"get",
 		"/v1/loan-applications/{id}/basic-profile",
 		"Get the applicant's basic profile",
 		"Loan Underwriting",
@@ -2346,33 +2403,63 @@ ROUTES = [
 	R(
 		"get",
 		"/v1/notifications",
-		"List notifications",
+		"List my notifications",
 		"Notifications",
 		"bearer",
-		query="GetNotifications",
+		query="ListNotifications",
 		response="NotificationListData",
 		paginated=True,
-		legacy="oan_a2c.api.v1.notifications.get_notifications",
+		legacy="oan_auth_service.api.v1.notifications.list_notifications",
 	),
 	R(
 		"patch",
-		"/v1/notifications/read",
-		"Mark notifications read",
+		"/v1/notifications",
+		"Mark many of my notifications read or unread",
 		"Notifications",
 		"bearer",
-		"MarkNotificationsReadRequest",
+		"BulkUpdateNotificationsRequest",
 		response="NotificationUpdateData",
-		legacy="oan_a2c.api.v1.notifications.mark_read",
+		legacy="oan_auth_service.api.v1.notifications.bulk_update_notifications",
 	),
 	R(
 		"delete",
 		"/v1/notifications",
-		"Delete notifications",
+		"Delete many of my notifications",
 		"Notifications",
 		"bearer",
-		"ClearNotificationsRequest",
+		"BulkDeleteNotificationsRequest",
 		response="NotificationDeleteData",
-		legacy="oan_a2c.api.v1.notifications.clear",
+		legacy="oan_auth_service.api.v1.notifications.bulk_delete_notifications",
+	),
+	R(
+		"get",
+		"/v1/notifications/{notification_id}",
+		"Get one of my notifications",
+		"Notifications",
+		"bearer",
+		response="NotificationItem",
+		path_params=[("notification_id", "Notification Log id")],
+		legacy="oan_auth_service.api.v1.notifications.get_notification",
+	),
+	R(
+		"patch",
+		"/v1/notifications/{notification_id}",
+		"Mark one of my notifications read or unread",
+		"Notifications",
+		"bearer",
+		"UpdateNotificationRequest",
+		response="NotificationItem",
+		path_params=[("notification_id", "Notification Log id")],
+		legacy="oan_auth_service.api.v1.notifications.update_notification",
+	),
+	R(
+		"delete",
+		"/v1/notifications/{notification_id}",
+		"Delete one of my notifications",
+		"Notifications",
+		"bearer",
+		path_params=[("notification_id", "Notification Log id")],
+		legacy="oan_auth_service.api.v1.notifications.delete_notification",
 	),
 	# --- 10 Inbound Webhooks ---
 	R(
@@ -2391,14 +2478,14 @@ ROUTES = [
 		"/v1/charts/{chart_id}",
 		"Get aggregate data for a dashboard chart",
 		"Programme Dashboards",
-		"public",
+		"dashboard-key",
 		query="DashboardChart",
 		response="DashboardChartRows",
 		path_params=[("chart_id", "Chart identifier, e.g. a2cKpis.")],
 		legacy="oan_a2c.api.v1.dashboard.get_chart",
 	),
 ]
-assert len(ROUTES) == 96, f"expected 96 routes, got {len(ROUTES)}"
+assert len(ROUTES) == 101, f"expected 101 routes, got {len(ROUTES)}"
 
 data(
 	"ConsentReasonListData",
@@ -2518,6 +2605,8 @@ for r in ROUTES:
 		op["security"] = []
 	elif r["security"] == "partner-key":
 		op["security"] = [{"PartnerApiKeyAuth": []}]
+	elif r["security"] == "dashboard-key":
+		op["security"] = [{"DashboardKeyAuth": []}]
 	else:
 		op["security"] = [{"BearerAuth": []}]
 
@@ -2650,6 +2739,12 @@ doc = {
 				"name": "Authorization",
 				"description": "Format: `token <api_key>:<api_secret>`. Used only by the two inbound webhook receivers; issued per partner and paired with IP allowlisting at the gateway.",
 			},
+			"DashboardKeyAuth": {
+				"type": "apiKey",
+				"in": "header",
+				"name": "apikey",
+				"description": "API key of the OAN dashboards (Kong consumer `oan-dashboards`, group `dashboards`). Checked and stripped by the gateway; the platform itself treats the route as public, so today, before the gateway enforces keys, the header is simply ignored.",
+			},
 		},
 		"schemas": components_schemas,
 		"responses": components_responses,
@@ -2672,7 +2767,7 @@ print(
 )
 
 # ---------------------------------------------------------------------------
-# Public variant: same 95 routes, same schemas -- with the two internal-only
+# Public variant: same 101 routes, same schemas -- with the two internal-only
 # vendor extensions (x-legacy-rpc-method, x-schema-confidence) stripped, since
 # they leak Frappe implementation details a third-party partner has no need
 # of. Everything else (paths, verbs, request/response shapes, security,
@@ -2705,7 +2800,7 @@ public_doc["info"]["description"] = (
 
 with open(PUBLIC_SPEC_OUTPUT, "w") as f:  # nosemgrep: frappe-security-file-traversal
 	f.write("# A2C API -- OpenAPI 3.0.3 (PUBLIC / partner-facing contract)\n")
-	f.write("# Same 95 routes and schemas as openapi_v1.yaml, with internal-only vendor extensions\n")
+	f.write("# Same 101 routes and schemas as openapi_v1.yaml, with internal-only vendor extensions\n")
 	f.write(
 		"# (x-legacy-rpc-method, x-schema-confidence) removed. Generated from generate_openapi_spec.py.\n"
 	)

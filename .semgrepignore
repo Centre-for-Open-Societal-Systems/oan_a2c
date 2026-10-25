@@ -1,0 +1,3 @@
+# A custom file replaces semgrep default ignores, which skip tests/. Tests are scanned on purpose.
+node_modules/
+.git/

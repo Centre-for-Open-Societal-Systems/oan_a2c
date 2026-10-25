@@ -1722,15 +1722,18 @@ The loan processing dashboard where underwriting officers review applicant detai
 
 **GET** `/v1/notifications`
 
-Retrieves in-app notifications for the authenticated user along with the total unread badge count.
+Retrieves in-app notifications for the authenticated user along with the total unread badge count. Served by
+`oan_auth_service`.
 
 #### Query Parameters
 
-| Parameter     | Type    | Required | Description                                                    | Example  |
-| :------------ | :------ | :------- | :------------------------------------------------------------- | :------- |
-| `read_status` | string  | No       | Filter by read state (`unread`, `read`, `all`; default: `all`) | `unread` |
-| `limit`       | integer | No       | Max notifications to return (1-100; default: `20`)             | `20`     |
-| `start`       | integer | No       | Offset index (default: `0`)                                    | `0`      |
+| Parameter   | Type    | Required | Description                                                    | Example  |
+| :---------- | :------ | :------- | :------------------------------------------------------------- | :------- |
+| `status`    | string  | No       | Filter by read state (`unread`, `read`, `all`; default: `all`) | `unread` |
+| `page`      | integer | No       | Page number, 1-indexed (default: `1`)                          | `1`      |
+| `page_size` | integer | No       | Items per page (1-100; default: `20`)                          | `20`     |
+
+`unread_count` ignores the `status` filter. `message` may contain HTML: sanitize it before rendering.
 
 #### Success Response
 
@@ -1744,20 +1747,22 @@ Retrieves in-app notifications for the authenticated user along with the total u
       {
         "id": "NOTIF-0001",
         "subject": "New Loan Application Submitted",
-        "email_content": "Abebe Bikila has submitted application APP-2026-0001 for Smallholder Agricultural Loan.",
+        "message": "Abebe Bikila has submitted application APP-2026-0001 for Smallholder Agricultural Loan.",
+        "type": "Alert",
         "document_type": "A2C Loan Application",
         "document_name": "APP-2026-0001",
-        "read": 0,
-        "creation": "2026-08-28T10:30:00Z"
+        "read": false,
+        "created_at": "2026-08-28T10:30:00+03:00"
       }
     ]
   },
   "pagination": {
     "page": 1,
-    "limit": 20,
-    "total": 3,
+    "page_size": 20,
+    "total_count": 3,
     "total_pages": 1,
-    "has_next": false
+    "has_next": false,
+    "has_prev": false
   }
 }
 ```
@@ -1766,16 +1771,18 @@ Retrieves in-app notifications for the authenticated user along with the total u
 
 ### Step 38: Mark Notifications Read
 
-**PATCH** `/v1/notifications/read`
+**PATCH** `/v1/notifications`
 
-Marks specific notification records as read, or marks all unread notifications read when `mark_all: true`.
+Marks the given notifications read (or unread with `"read": false`), or all of the caller's when `"all": true`.
+Send either `ids` (at most 500) or `all`. One notification: `PATCH /v1/notifications/{notification_id}` with
+`{"read": true}`.
 
 #### Expected Request Body
 
 ```json
 {
-  "notification_ids": ["NOTIF-0001", "NOTIF-0002"],
-  "mark_all": false
+  "ids": ["NOTIF-0001", "NOTIF-0002"],
+  "read": true
 }
 ```
 
@@ -1784,7 +1791,7 @@ Marks specific notification records as read, or marks all unread notifications r
 ```json
 {
   "status": "success",
-  "message": "Notifications marked as read",
+  "message": "Notifications updated",
   "data": {
     "updated": 2
   }
@@ -1797,14 +1804,14 @@ Marks specific notification records as read, or marks all unread notifications r
 
 **DELETE** `/v1/notifications`
 
-Permanently deletes selected notifications or clears all user notifications.
+Permanently deletes the given notifications, or all of the caller's when `"all": true`. Send either `ids` or
+`all`. One notification: `DELETE /v1/notifications/{notification_id}`.
 
 #### Expected Request Body
 
 ```json
 {
-  "notification_ids": ["NOTIF-0001"],
-  "clear_all": false
+  "ids": ["NOTIF-0001"]
 }
 ```
 
@@ -1813,7 +1820,7 @@ Permanently deletes selected notifications or clears all user notifications.
 ```json
 {
   "status": "success",
-  "message": "Notifications cleared",
+  "message": "Notifications deleted",
   "data": {
     "deleted": 1
   }
@@ -1876,7 +1883,7 @@ Every endpoint below is callable by a bank user. The **Role** column gives the m
 | **Underwriting**  | `GET`       | `/v1/loan-applications/{id}/documents/{docId}/content` | Both   | Download document attachment                                  |
 | **Underwriting**  | `PATCH`     | `/v1/loan-applications/{id}/status`                    | Both   | Move pipeline stage / complete / reject                       |
 | **Notifications** | `GET`       | `/v1/notifications`                                    | Both   | List user notifications & unread count                        |
-| **Notifications** | `PATCH`     | `/v1/notifications/read`                               | Both   | Mark notifications as read                                    |
+| **Notifications** | `PATCH`     | `/v1/notifications`                                    | Both   | Mark notifications as read                                    |
 | **Notifications** | `DELETE`    | `/v1/notifications`                                    | Both   | Delete / clear notifications                                  |
 
 ¹ `set_product_status` is callable by both roles, but transitions to `Active`, `Rejected`, or `Archived` require `A2C Bank Admin` and a non-empty `reason`.
@@ -3897,7 +3904,7 @@ The complete catalog of all 95 marketplace API endpoints across all platform fun
 | **Underwriting**      | `PATCH`     | `/v1/loan-applications/{id}/officer`                   | Bank Admin / Agent          | Assign loan officer / underwriter         |
 | **Underwriting**      | `PATCH`     | `/v1/loan-applications/{id}/status`                    | Bank Admin / Agent          | Move pipeline stage / complete / reject   |
 | **Notifications**     | `GET`       | `/v1/notifications`                                    | Authenticated               | List user notifications & unread count    |
-| **Notifications**     | `PATCH`     | `/v1/notifications/read`                               | Authenticated               | Mark notifications as read                |
+| **Notifications**     | `PATCH`     | `/v1/notifications`                                    | Authenticated               | Mark notifications as read                |
 | **Notifications**     | `DELETE`    | `/v1/notifications`                                    | Authenticated               | Delete / clear notifications              |
 | **Leads / CRM**       | `POST`      | `/v1/leads`                                            | Dev Agent / Admin           | Manually create prospective lead          |
 | **Leads / CRM**       | `GET`       | `/v1/leads`                                            | Dev Agent / Admin           | List & filter borrower leads              |

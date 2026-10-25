@@ -7,7 +7,7 @@ REST API Reference for Third-Party Integration
 Version 1.0 (Draft for stakeholder review) · September 2026
 Prepared by the A2C Architecture Team
 
-**95 endpoints across 10 resource domains**
+**101 endpoints across 10 resource domains**
 
 ---
 
@@ -300,13 +300,17 @@ Fayda national ID consent capture — locating the farmer, verifying identity by
 
 `/v1/notifications`
 
-In-app notifications for the signed-in user, shared across every role.
+In-app notifications for the signed-in user, shared across every role. Served by `oan_auth_service`; the full
+contract is in its `docs/API_DOCUMENTATION.md`.
 
-| Method   | Endpoint                 | Description                                        | Access       |
-| -------- | ------------------------ | -------------------------------------------------- | ------------ |
-| `GET`    | `/v1/notifications`      | Lists the caller's notifications and unread count. | Bearer Token |
-| `PATCH`  | `/v1/notifications/read` | Marks one or more notifications as read.           | Bearer Token |
-| `DELETE` | `/v1/notifications`      | Deletes one or more notifications.                 | Bearer Token |
+| Method   | Endpoint                              | Description                                                       | Access       |
+| -------- | ------------------------------------- | ----------------------------------------------------------------- | ------------ |
+| `GET`    | `/v1/notifications`                   | Lists the caller's notifications and unread count.                | Bearer Token |
+| `PATCH`  | `/v1/notifications`                   | Marks many notifications read or unread (`ids` or `all`, `read`). | Bearer Token |
+| `DELETE` | `/v1/notifications`                   | Deletes many notifications (`ids` or `all`).                      | Bearer Token |
+| `GET`    | `/v1/notifications/{notification_id}` | Gets one notification.                                            | Bearer Token |
+| `PATCH`  | `/v1/notifications/{notification_id}` | Marks one notification read or unread.                            | Bearer Token |
+| `DELETE` | `/v1/notifications/{notification_id}` | Deletes one notification.                                         | Bearer Token |
 
 ---
 

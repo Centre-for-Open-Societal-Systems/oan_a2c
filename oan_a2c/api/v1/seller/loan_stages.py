@@ -243,13 +243,12 @@ def sync_stages(bank: str | None = None, **kwargs):
 
 			# Keep denormalized stage_label on existing loans in sync
 			if old_label != label:
-				frappe.db.sql(
-					"""
-					UPDATE `tabA2C Loan Application`
-					SET `stage_label` = %(new_label)s
-					WHERE `bank` = %(bank)s AND `stage_id` = %(stage_id)s
-					""",
-					{"new_label": label, "bank": effective_bank, "stage_id": stg_id},
+				frappe.db.set_value(
+					"A2C Loan Application",
+					{"bank": effective_bank, "stage_id": stg_id},
+					"stage_label",
+					label,
+					update_modified=False,
 				)
 		else:
 			# New stage within sync list

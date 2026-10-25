@@ -18,10 +18,10 @@ def execute():
 	):
 		return
 
-	frappe.db.sql(
-		"""
-		UPDATE `tabUser`
-		SET oan_must_change_password = 1
-		WHERE a2c_must_change_password = 1
-		"""
+	frappe.db.set_value(
+		"User",
+		{"a2c_must_change_password": 1},
+		"oan_must_change_password",
+		1,
+		update_modified=False,
 	)

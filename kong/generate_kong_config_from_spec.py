@@ -130,8 +130,8 @@ TIERS = {
 # key/secret pair, which Frappe validates natively in
 # frappe.auth.validate_auth_via_api_keys() -- that runs before auth_hooks, so
 # frappe.session.user is already the service user by the time oan_a2c's JWT
-# middleware fires. Those paths stay in the middleware's exempt list, so the
-# two schemes do not collide.
+# middleware fires. Those paths are declared API-key paths to that middleware,
+# which then requires the `token` credential and refuses a Bearer JWT.
 #
 # `remove` + `add`, NOT `replace`. This is the easy thing to get wrong: the
 # plugin's `replace` acts only on headers that are already present -- with no
@@ -322,8 +322,11 @@ TIER_OVERRIDES = {
 	("POST", "/v1/webhooks/consent-data"): "webhooks-inbound",
 	# Domain 09: Notifications
 	("GET", "/v1/notifications"): "authenticated-core",
-	("PATCH", "/v1/notifications/read"): "authenticated-core",
+	("PATCH", "/v1/notifications"): "authenticated-core",
 	("DELETE", "/v1/notifications"): "authenticated-core",
+	("GET", "/v1/notifications/{notification_id}"): "authenticated-core",
+	("PATCH", "/v1/notifications/{notification_id}"): "authenticated-core",
+	("DELETE", "/v1/notifications/{notification_id}"): "authenticated-core",
 	# Domain 10: Inbound Webhooks
 	("POST", "/v1/webhooks/leads"): "webhooks-inbound",
 	# Programme Dashboards (public)

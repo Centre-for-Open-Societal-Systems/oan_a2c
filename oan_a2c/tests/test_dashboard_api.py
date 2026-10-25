@@ -3,6 +3,7 @@ import unittest
 from unittest.mock import patch
 
 import frappe
+from frappe.query_builder.functions import Sum
 from werkzeug.test import EnvironBuilder
 from werkzeug.wrappers import Request
 
@@ -10,6 +11,7 @@ from oan_a2c.a2c_marketplace import dashboard_rollup
 from oan_a2c.a2c_marketplace.stages import get_stage_map
 from oan_a2c.api.router import _load_openapi_spec, dispatch_rest_request
 from oan_a2c.api.v1 import dashboard
+from oan_a2c.tests.api_case import ApiTestCase
 
 
 class TestDashboardApi(unittest.TestCase):
@@ -305,10 +307,20 @@ class TestDashboardApi(unittest.TestCase):
 
 	def test_refresh_is_idempotent(self):
 		def totals():
-			return frappe.db.sql(
-				"""SELECT family, SUM(total), SUM(records), SUM(requested_value), SUM(approved_value)
-				FROM `tabA2C Dashboard Snapshot` WHERE snapshot_date = CURDATE()
-				GROUP BY family ORDER BY family"""
+			snapshot = frappe.qb.DocType("A2C Dashboard Snapshot")
+			return (
+				frappe.qb.from_(snapshot)
+				.select(
+					snapshot.family,
+					Sum(snapshot.total),
+					Sum(snapshot.records),
+					Sum(snapshot.requested_value),
+					Sum(snapshot.approved_value),
+				)
+				.where(snapshot.snapshot_date == frappe.utils.getdate())
+				.groupby(snapshot.family)
+				.orderby(snapshot.family)
+				.run()
 			)
 
 		dashboard_rollup.refresh()
@@ -317,22 +329,12 @@ class TestDashboardApi(unittest.TestCase):
 		self.assertEqual(totals(), first)
 
 	def test_overlapping_refresh_is_skipped(self):
-		import pymysql
-
-		lock = f"{frappe.local.site}:{dashboard_rollup.LOCK_KEY}"
-		other = pymysql.connect(
-			host=frappe.conf.db_host or "localhost",
-			port=int(frappe.conf.db_port or 3306),
-			user=frappe.conf.db_user or frappe.conf.db_name,
-			password=frappe.conf.db_password,
-			database=frappe.conf.db_name,
-		)
+		held = frappe.cache.lock(f"{frappe.local.site}:{dashboard_rollup.LOCK_KEY}", timeout=60)
+		self.assertTrue(held.acquire(blocking=False))
 		try:
-			with other.cursor() as cursor:
-				cursor.execute("SELECT GET_LOCK(%s, 0)", (lock,))
 			self.assertIsNone(dashboard_rollup.refresh())
 		finally:
-			other.close()
+			held.release()
 
 	def test_past_snapshots_are_kept(self):
 		yesterday = frappe.utils.add_days(frappe.utils.getdate(), -1)
@@ -352,16 +354,15 @@ class TestDashboardApi(unittest.TestCase):
 			frappe.db.delete("A2C Dashboard Snapshot", {"name": doc.name})
 
 	def test_guest_can_call_the_rest_route(self):
-		builder = EnvironBuilder(
-			path="/v1/charts/a2cKpis", method="GET", query_string={"provider": self.bank}
-		)
-		req = Request(builder.get_environ())
-		frappe.local.request = req
-		response = dispatch_rest_request(req)
-		self.assertEqual(response.status_code, 200)
-		body = json.loads(response.get_data(as_text=True))
+		status, body = ApiTestCase.api(self, "GET", "/v1/charts/a2cKpis", query={"provider": self.bank})
+		self.assertEqual(status, 200)
 		self.assertEqual(body["status"], "success")
 		self.assertEqual(body["data"][0]["applications_total"], 4)
+
+	def test_protected_route_rejects_a_request_without_a_token(self):
+		status, body = ApiTestCase.api(self, "GET", "/api/v1/catalog/facets")
+		self.assertEqual(status, 401)
+		self.assertEqual(body["status"], "error")
 
 	def test_route_needs_the_dashboard_key_at_the_gateway_only(self):
 		"""The spec asks the gateway for the dashboards' key; the platform treats the route as public."""
@@ -398,15 +399,21 @@ class TestDashboardApi(unittest.TestCase):
 		self.assertEqual(consumer["acls"], [{"group": "dashboards"}])
 		self.assertIn("DECK_OAN_DASHBOARDS_API_KEY", consumer["keyauth_credentials"][0]["key"])
 
-	def test_chart_exempt_template_expands_to_registered_chart_ids(self):
-		"""oan_auth_service matches exempt paths exactly, so the template becomes one path per chart."""
-		from oan_a2c.api.router import _expand_chart_templates
+	def test_namespace_declares_one_scheme_per_path(self):
+		"""Charts are public, inbound webhooks take an API key, everything else a JWT."""
+		from oan_auth_service.api import middleware
+
+		from oan_a2c.api.router import ensure_routes_registered
 		from oan_a2c.api.v1.dashboard import CHARTS
 
-		expanded = _expand_chart_templates({"/api/v1/charts/<chart_id>", "/api/v1/webhooks/leads"})
+		ensure_routes_registered()
 
-		self.assertIn("/api/v1/webhooks/leads", expanded)
-		self.assertNotIn("/api/v1/charts/<chart_id>", expanded)
+		def kind(path):
+			return middleware.path_auth(middleware._match_namespace(path), path)[0]
+
 		for chart_id in CHARTS:
-			self.assertIn(f"/api/v1/charts/{chart_id}", expanded)
-		self.assertNotIn("/api/v1/charts/unknownChart", expanded)
+			self.assertEqual(kind(f"/api/v1/charts/{chart_id}"), middleware.AUTH_PUBLIC)
+		self.assertEqual(kind("/api/v1/webhooks/leads"), middleware.AUTH_API_KEY)
+		self.assertEqual(kind("/api/v1/webhooks/consent-data"), middleware.AUTH_API_KEY)
+		self.assertEqual(kind("/api/method/oan_a2c.api.v1.webhooks.lead_inbound"), middleware.AUTH_API_KEY)
+		self.assertEqual(kind("/api/v1/me/profile"), middleware.AUTH_JWT)

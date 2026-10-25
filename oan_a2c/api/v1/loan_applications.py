@@ -935,15 +935,13 @@ def create_loan_application(**kwargs):
 	frappe.has_permission("A2C Loan Application", "create", throw=True)
 	lead_doc = _get_lead(lead_id)
 
-	# Acquire a database-level transaction row/gap lock via raw SQL FOR UPDATE to prevent TOCTOU
+	# Acquire a database-level transaction row/gap lock (get_value with for_update) to prevent TOCTOU
 	# race conditions during concurrent API requests.
 	# Alternative unique constraints cannot be enforced on the database layer because some values
 	# (such as lead_id) are not guaranteed to be unique under database schemas without custom migration scripts.
 	# Lock-only query (returns nothing to the caller); the permission-checked read
 	# is the frappe.get_list below. Locking across banks is safe. bank-scope-exempt
-	frappe.db.sql(
-		"SELECT name FROM `tabA2C Loan Application` WHERE lead_id = %s FOR UPDATE", (lead_id,)
-	)  # bank-scope-exempt
+	frappe.db.get_value("A2C Loan Application", {"lead_id": lead_id}, "name", for_update=True)
 	existing = frappe.get_list(
 		"A2C Loan Application",
 		filters={"lead_id": lead_id},

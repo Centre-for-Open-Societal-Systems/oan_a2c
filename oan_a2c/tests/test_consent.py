@@ -5,17 +5,17 @@ from unittest.mock import MagicMock, patch
 import frappe
 
 from oan_a2c.api.v1.consent.consent import request_otp, submit_consent, verify_otp
+from oan_a2c.tests.api_case import set_column
 
 
 class TestConsentAPI(unittest.TestCase):
 	@classmethod
 	def setUpClass(cls):
 		frappe.set_user("Administrator")
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Consent Request` "
-			"WHERE reference_doctype='A2C Lead' AND reference_name='TEST-LEAD-CONSENT'"
+		frappe.db.delete(
+			"A2C Consent Request", {"reference_doctype": "A2C Lead", "reference_name": "TEST-LEAD-CONSENT"}
 		)
-		frappe.db.sql("DELETE FROM `tabA2C Lead` WHERE name='TEST-LEAD-CONSENT'")
+		frappe.db.delete("A2C Lead", {"name": "TEST-LEAD-CONSENT"})
 		frappe.db.commit()
 
 	def setUp(self):
@@ -32,15 +32,14 @@ class TestConsentAPI(unittest.TestCase):
 				{"doctype": "A2C Lead", "phone_number": "+251911123456", "status": "Active"}
 			)
 			lead.insert(ignore_permissions=True)
-			frappe.db.sql("UPDATE `tabA2C Lead` SET name='TEST-LEAD-CONSENT' WHERE name=%s", lead.name)
+			set_column("A2C Lead", "name", "TEST-LEAD-CONSENT", name=lead.name)
 			frappe.db.commit()
 
 		frappe.conf.secret_key = "test_secret_key"
 
 	def tearDown(self):
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Consent Request` "
-			"WHERE reference_doctype='A2C Lead' AND reference_name='TEST-LEAD-CONSENT'"
+		frappe.db.delete(
+			"A2C Consent Request", {"reference_doctype": "A2C Lead", "reference_name": "TEST-LEAD-CONSENT"}
 		)
 		frappe.db.commit()
 
