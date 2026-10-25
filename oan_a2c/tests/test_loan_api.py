@@ -23,6 +23,7 @@ from oan_a2c.tests.api_case import ApiTestCase, force_delete_loan, set_column
 class TestLoansV1API(ApiTestCase):
 	@classmethod
 	def setUpClass(cls):
+		super().setUpClass()
 		frappe.set_user("Administrator")
 		# Leftovers from runs made before these tests rolled back.
 		for stale in frappe.get_all(  # bank-scope-exempt: test cleanup, all banks
@@ -66,6 +67,7 @@ class TestLoansV1API(ApiTestCase):
 			_seed_default_stages()
 
 	def setUp(self):
+		super().setUp()
 		frappe.set_user("Administrator")
 
 		# Create Lead
@@ -155,6 +157,7 @@ class TestLoansV1API(ApiTestCase):
 		self.app_id = doc.name
 
 	def tearDown(self):
+		super().tearDown()
 		if hasattr(self, "app_id") and frappe.db.exists("A2C Loan Application", self.app_id):
 			force_delete_loan(self.app_id)
 		frappe.db.delete(
@@ -758,6 +761,7 @@ class TestLoansV1API(ApiTestCase):
 class TestLoanStatusReadPath(ApiTestCase):
 	@classmethod
 	def setUpClass(cls):
+		super().setUpClass()
 		frappe.set_user("Administrator")
 		cls.h = frappe.generate_hash(length=6)
 
@@ -904,6 +908,7 @@ class TestLoanStatusReadPath(ApiTestCase):
 
 	@classmethod
 	def tearDownClass(cls):
+		super().tearDownClass()
 		frappe.set_user("Administrator")
 		frappe.db.delete("A2C Loan Application", {"bank": ["in", [cls.bank_1.name, cls.bank_2.name]]})
 		frappe.db.delete("A2C Loan Status Stage", {"bank": ["in", [cls.bank_1.name, cls.bank_2.name]]})

@@ -33,18 +33,14 @@ def force_delete_loan(name):
 
 
 class ApiTestCase(IntegrationTestCase):
-	def setUp(self):
-		super().setUp()
-		keys = configured_keys()
-		keys.__enter__()
-		self.addCleanup(keys.__exit__, None, None, None)
-
 	def api(self, method: str, path: str, **kwargs):
 		"""Send a request; returns `(status_code, body)` with the JSON body decoded."""
 		# A worker registers the routes and the JWT namespace on its first request;
 		# a test process has to do the same before the middleware can see the path.
 		ensure_routes_registered()
-		response = api_request(dispatch_rest_request, method, path, **kwargs)
+		# Keys are set here, not in setUp: subclasses define their own setUp.
+		with configured_keys():
+			response = api_request(dispatch_rest_request, method, path, **kwargs)
 		return response.status_code, json.loads(response.get_data(as_text=True))
 
 	def make_user(self, email: str, roles: list[str]) -> str:
