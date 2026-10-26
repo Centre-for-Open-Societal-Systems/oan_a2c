@@ -1,4 +1,5 @@
 import frappe
+from frappe.query_builder.functions import Count, IfNull
 
 # Counters are split by value shape because the all-banks view aggregates them
 # differently: scalars sum, maps merge key-wise. Adding a counter to the wrong
@@ -201,21 +202,19 @@ def _platform_distinct_applicants() -> int:
 	Applications with no farmer_profile are not a person we can count; DISTINCT
 	drops the NULLs, and the ifnull guard drops empty strings too.
 	"""
-	conditions = ["ifnull(`farmer_profile`, '') != ''"]
-	values: list = []
+	applications = frappe.qb.DocType("A2C Loan Application")
+	query = (
+		frappe.qb.from_(applications)
+		.select(Count(applications.farmer_profile).distinct())
+		.where(IfNull(applications.farmer_profile, "") != "")
+	)
 	if _EXCLUDED_APPLICATION_STATUSES:
-		excluded = sorted(_EXCLUDED_APPLICATION_STATUSES)
-		conditions.append("ifnull(`status`, '') not in ({})".format(", ".join(["%s"] * len(excluded))))
-		values.extend(excluded)
+		query = query.where(IfNull(applications.status, "").notin(sorted(_EXCLUDED_APPLICATION_STATUSES)))
 
 	# bank-scope-exempt: this is the platform-wide aggregate for the all-banks admin
 	# view, so spanning tenants is the entire point. Only reachable from
 	# get_dashboard_stats(bank=None), which is gated on an unbound admin.
-	row = frappe.db.sql(
-		"SELECT COUNT(DISTINCT `farmer_profile`) FROM `tabA2C Loan Application` WHERE "
-		+ " and ".join(conditions),
-		values,
-	)
+	row = query.run()
 	return int(row[0][0]) if row and row[0] and row[0][0] is not None else 0
 
 

@@ -19,23 +19,10 @@ migrate is safe.
 
 from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
-CUSTOM_FIELDS = {
-	"User": [
-		{
-			"fieldname": "a2c_must_change_password",
-			"label": "A2C: Must Change Password",
-			"fieldtype": "Check",
-			"insert_after": "send_welcome_email",
-			"default": "0",
-			"read_only": 1,
-			"no_copy": 1,
-			"description": (
-				"Set when an admin issues a temporary password. "
-				"Cleared once the user sets a password of their own."
-			),
-		}
-	],
-}
+# `User.oan_must_change_password` is owned by oan_auth_service. The old
+# `a2c_must_change_password` field is no longer created; the migrate_must_change_password
+# patch copies its values across.
+CUSTOM_FIELDS: dict = {}
 
 
 def setup_custom_fields():

@@ -276,9 +276,13 @@ def get_leads(**kwargs):
 
 	# 5. Fetch Total Record Count (Respecting RBAC and User Permissions via get_list counted select)
 	count_res = frappe.get_list(
-		"A2C Lead", filters=filters, or_filters=or_filters or None, fields=[{"COUNT": "*"}]
+		"A2C Lead",
+		filters=filters,
+		or_filters=or_filters or None,
+		fields=[{"COUNT": "*", "as": "count"}],
+		order_by="",
 	)
-	total_count = count_res[0].get("COUNT(*)") if count_res else 0
+	total_count = count_res[0].get("count") if count_res else 0
 
 	# 6. Fetch Paginated Records
 	leads = frappe.get_list(
@@ -402,14 +406,14 @@ def create_lead(**kwargs):
 	lead_source = kwargs.get("lead_source", "Agent Entry")
 	external_id = kwargs.get("external_id")
 
-	# Acquire a database-level transaction row/gap lock via raw SQL FOR UPDATE to prevent TOCTOU
+	# Acquire a database-level transaction row/gap lock (get_value with for_update) to prevent TOCTOU
 	# race conditions during concurrent API requests.
 	# Alternative unique constraints cannot be enforced on the database layer because some values
 	# (such as external_id) are optional or may have blank/empty string values, which are not
 	# guaranteed to be unique under standard database unique index constraints (where empty strings
 	# trigger duplicate key errors in MariaDB/MySQL).
 	if phone_number:
-		frappe.db.sql("SELECT name FROM `tabA2C Lead` WHERE phone_number = %s FOR UPDATE", (phone_number,))
+		frappe.db.get_value("A2C Lead", {"phone_number": phone_number}, "name", for_update=True)
 		if frappe.db.exists("A2C Lead", {"phone_number": phone_number}):
 			frappe.throw(
 				_("Lead with phone number {0} already exists").format(phone_number),
@@ -417,7 +421,7 @@ def create_lead(**kwargs):
 			)
 
 	if external_id:
-		frappe.db.sql("SELECT name FROM `tabA2C Lead` WHERE external_id = %s FOR UPDATE", (external_id,))
+		frappe.db.get_value("A2C Lead", {"external_id": external_id}, "name", for_update=True)
 		if frappe.db.exists("A2C Lead", {"external_id": external_id}):
 			frappe.throw(
 				_("Lead with external ID {0} already exists").format(external_id), frappe.DuplicateEntryError
@@ -478,12 +482,12 @@ def get_lead_summary():
 	grouped = frappe.get_list(
 		"A2C Lead",
 		filters={"status": ["in", list(allowed_statuses)]},
-		fields=["status", {"COUNT": "*"}],
+		fields=["status", {"COUNT": "*", "as": "count"}],
 		group_by="status",
 	)
 	for row in grouped:
 		st = row.get("status")
-		cnt = row.get("COUNT(*)", 0)
+		cnt = row.get("count", 0)
 		if st in counts_by_status:
 			counts_by_status[st] = cnt
 			total_count += cnt
@@ -494,16 +498,18 @@ def get_lead_summary():
 	my_res = frappe.get_list(
 		"A2C Lead",
 		filters={"status": ["in", list(allowed_statuses)], "assigned_to": user},
-		fields=[{"COUNT": "*"}],
+		fields=[{"COUNT": "*", "as": "count"}],
+		order_by="",
 	)
-	my_count = my_res[0].get("COUNT(*)") if my_res else 0
+	my_count = my_res[0].get("count") if my_res else 0
 
 	unassigned_res = frappe.get_list(
 		"A2C Lead",
 		filters={"status": ["in", list(allowed_statuses)], "assigned_to": ["in", ["", None]]},
-		fields=[{"COUNT": "*"}],
+		fields=[{"COUNT": "*", "as": "count"}],
+		order_by="",
 	)
-	unassigned_count = unassigned_res[0].get("COUNT(*)") if unassigned_res else 0
+	unassigned_count = unassigned_res[0].get("count") if unassigned_res else 0
 
 	return success_response(
 		data={
@@ -781,10 +787,11 @@ def get_assignable_users(**kwargs):
 		"User",
 		filters=user_filters,
 		or_filters=or_filters or None,
-		fields=[{"COUNT": "*"}],
+		fields=[{"COUNT": "*", "as": "count"}],
+		order_by="",
 		ignore_permissions=True,
 	)
-	total_count = count_res[0].get("COUNT(*)") if count_res else 0
+	total_count = count_res[0].get("count") if count_res else 0
 
 	# Query Users.
 	# ignore_permissions=True is required because standard users lack permissions to query the system User table.
@@ -1083,8 +1090,10 @@ def get_visit_schedules(**kwargs):
 	elif end_date:
 		filters.append(["visit_date", "<=", end_date])
 
-	count_res = frappe.get_list("A2C Visit Schedule", filters=filters, fields=[{"COUNT": "*"}])
-	total_count = count_res[0].get("COUNT(*)") if count_res else 0
+	count_res = frappe.get_list(
+		"A2C Visit Schedule", filters=filters, fields=[{"COUNT": "*", "as": "count"}], order_by=""
+	)
+	total_count = count_res[0].get("count") if count_res else 0
 
 	schedules = frappe.get_list(
 		"A2C Visit Schedule",

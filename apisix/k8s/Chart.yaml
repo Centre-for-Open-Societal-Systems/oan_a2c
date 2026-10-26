@@ -1,0 +1,5 @@
+apiVersion: v2
+name: oan-a2c-gateway
+description: APISIX Ingress Controller routes for the A2C REST API
+type: application
+version: 0.1.0

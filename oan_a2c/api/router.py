@@ -16,9 +16,9 @@ Three things Frappe does *not* do for a custom rule, which is all this module is
 2. Leave a returned dict alone. Frappe nests it under `frappe.response["data"]`,
    which would double-wrap the envelope `handle_api_errors` builds. Returning a
    Response avoids that.
-3. Tell the JWT middleware which paths are reachable without a token. Routes
-   declared `allow_guest=True` are registered as exempt paths, so the two can
-   never drift apart.
+3. Tell oan_auth_service's middleware which scheme each path takes. Routes
+   declared `allow_guest=True` are registered as public paths and the inbound
+   webhooks as API-key paths, so the two can never drift apart.
 
 TLS, HSTS and transport security headers belong to nginx. 404/405 belong to
 Frappe's matcher. Neither appears here.
@@ -32,11 +32,10 @@ from functools import lru_cache, wraps
 from typing import Any
 
 import frappe
+from oan_auth_service.api.middleware import register_namespace
 from werkzeug.exceptions import HTTPException, MethodNotAllowed, NotFound
 from werkzeug.routing import Map, Rule
 from werkzeug.wrappers import Request, Response
-
-from oan_a2c.api.middleware import register_namespace
 
 # The namespace this app owns. Registered with the middleware, which matches
 # incoming paths by longest prefix.
@@ -44,6 +43,16 @@ NAMESPACE = "/api/v1"
 
 _rules: list[Rule] = []
 _exempt_paths: set[str] = set()
+
+# Inbound webhooks: called by a partner through Kong, which rewrites the
+# Authorization header to `token <key>:<secret>` of a dedicated Frappe service
+# user. Frappe validates that credential before auth_hooks run, and the
+# middleware then requires it: a Bearer token, a desk `sid` or no credential at
+# all is refused on these paths.
+_API_KEY_PATHS = (
+	"/v1/webhooks/consent-data",
+	"/v1/webhooks/leads",
+)
 
 
 def expand_path_param_aliases(values: dict[str, Any]) -> dict[str, Any]:
@@ -126,10 +135,9 @@ def create_endpoint_wrapper(
 
 		# These rules dispatch through frappe.call, which does not apply the
 		# @frappe.whitelist guest gate -- so allow_guest has to be enforced here
-		# or it is only bookkeeping. For JWT routes the middleware has already
-		# rejected anonymous callers; this is the backstop for the routes it
-		# deliberately exempts (gateway-authenticated webhooks), where the only
-		# thing standing between Guest and the controller is this check.
+		# or it is only bookkeeping. The middleware already rejects anonymous
+		# callers on JWT and API-key paths; this is the backstop if a path is
+		# ever left out of its registration.
 		if not allow_guest and frappe.session.user == "Guest":
 			raise frappe.AuthenticationError(frappe._("Authentication required"))
 
@@ -280,35 +288,12 @@ def _register_spec_routes():
 			if isinstance(details, dict) and is_guest_operation(details):
 				guest_paths.add(path)
 
-	# Guest endpoints fallback
-	for g_path in (
-		"/v1/auth/login",
-		"/v1/auth/register",
-		"/v1/auth/token/refresh",
-		"/v1/auth/logout",
-		"/v1/auth/password/forgot",
-		"/v1/auth/password/reset",
-		"/v1/auth/password/initial",
-	):
-		guest_paths.add(g_path)
-
-	# Gateway-authenticated paths: not guest, but not JWT either.
-	#
-	# Kong rewrites the Authorization header on these routes to a Frappe API
-	# key/secret for a dedicated service user, which Frappe validates natively
-	# in validate_auth_via_api_keys() before auth_hooks run. So they must be
-	# exempt from the JWT middleware (it would reject a non-Bearer header)
-	# while still being closed to guests -- otherwise the credential enforces
-	# nothing and an anonymous caller that reaches the origin directly is
-	# accepted. The two gates want opposite answers here.
-	for gw_path in (
-		"/v1/webhooks/consent-data",
-		"/v1/webhooks/leads",
-	):
-		_exempt_paths.add(gw_path)
-		_exempt_paths.add(f"/api{gw_path}")
-
 	for method, path, endpoint_str in routes:
+		# Auth endpoints are owned and registered by oan_auth_service. The spec still
+		# lists them so Kong and the docs know the paths.
+		if endpoint_str.startswith("oan_auth_service."):
+			continue
+
 		try:
 			fn = frappe.get_attr(endpoint_str)
 		except Exception as e:
@@ -336,6 +321,12 @@ def _register_spec_routes():
 			_exempt_paths.add(wz_path)
 
 
+_LEGACY_RPC_API_KEY_PATHS = (
+	"/api/method/oan_a2c.api.v1.webhook_consent_data.receive_consent_data",
+	"/api/method/oan_a2c.api.v1.webhooks.lead_inbound",
+)
+
+
 _REGISTERED = False
 
 
@@ -357,11 +348,27 @@ def ensure_routes_registered() -> None:
 
 	_register_spec_routes()
 
+	from oan_a2c.api.auth import require_sso_for_development_agents
+
 	for rule in _rules:
 		if rule not in frappe.api.API_URL_MAP._rules:
 			frappe.api.API_URL_MAP.add(rule)
 
-	register_namespace(prefix=NAMESPACE, exempt_paths=sorted(_exempt_paths))
+	# Every other path in the namespace takes a JWT. `<param>` templates in the
+	# public paths (the chart ids) are matched by the middleware.
+	register_namespace(
+		prefix=NAMESPACE,
+		exempt_paths=sorted(_exempt_paths),
+		api_key_paths=sorted({p for gw in _API_KEY_PATHS for p in (gw, f"/api{gw}")}),
+		revocation_check=require_sso_for_development_agents,
+	)
+
+	# Legacy RPC paths keep the JWT check they had before auth moved to oan_auth_service.
+	register_namespace(
+		prefix="/api/method/oan_a2c.",
+		api_key_paths=list(_LEGACY_RPC_API_KEY_PATHS),
+		revocation_check=require_sso_for_development_agents,
+	)
 	_REGISTERED = True
 
 
@@ -478,15 +485,7 @@ def dispatch_rest_request(request: Request) -> Response:
 # ---------------------------------------------------------------------------
 _FALLBACK_ROUTES = [
 	# Domain 01: Identity & Access
-	("POST", "/v1/auth/register", "oan_a2c.api.v1.auth.register_user"),
-	("POST", "/v1/auth/login", "oan_a2c.api.auth.login"),
-	("POST", "/v1/auth/token/refresh", "oan_a2c.api.auth.refresh"),
-	("POST", "/v1/auth/logout", "oan_a2c.api.auth.logout"),
-	("POST", "/v1/auth/password/forgot", "oan_a2c.api.auth.forgot_password"),
-	("POST", "/v1/auth/password/reset", "oan_a2c.api.auth.reset_password"),
-	("POST", "/v1/auth/password/initial", "oan_a2c.api.auth.set_initial_password"),
 	("PATCH", "/v1/me/password", "oan_a2c.api.auth.change_password"),
-	("GET", "/v1/me", "oan_a2c.api.auth.get_me"),
 	("GET", "/v1/me/profile", "oan_a2c.api.auth.get_user_profile"),
 	("POST", "/v1/images", "oan_a2c.api.v1.seller.onboarding.upload_image"),
 	("PATCH", "/v1/me/profile", "oan_a2c.api.auth.update_profile"),
@@ -614,10 +613,6 @@ _FALLBACK_ROUTES = [
 	("POST", "/v1/consent/otp/verify", "oan_a2c.api.v1.consent.consent.verify_otp"),
 	("POST", "/v1/consent/requests", "oan_a2c.api.v1.consent.consent.submit_consent"),
 	("POST", "/v1/webhooks/consent-data", "oan_a2c.api.v1.webhook_consent_data.receive_consent_data"),
-	# Domain 09: Notifications
-	("GET", "/v1/notifications", "oan_a2c.api.v1.notifications.get_notifications"),
-	("PATCH", "/v1/notifications/read", "oan_a2c.api.v1.notifications.mark_read"),
-	("DELETE", "/v1/notifications", "oan_a2c.api.v1.notifications.clear"),
 	# Domain 10: Inbound Webhooks
 	("POST", "/v1/webhooks/leads", "oan_a2c.api.v1.webhooks.lead_inbound"),
 ]

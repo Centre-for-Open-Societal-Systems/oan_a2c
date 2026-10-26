@@ -473,7 +473,7 @@ def get_loan_summary():
 	meta = frappe.get_meta("A2C Loan Application")
 	has_loan_officer = meta.has_field("loan_officer")
 
-	fields = ["status", "stage_label", {"COUNT": "*"}]
+	fields = ["status", "stage_label", {"COUNT": "*", "as": "count"}]
 	group_by = "status, stage_label"
 	if has_loan_officer:
 		fields.insert(2, "loan_officer")
@@ -503,7 +503,7 @@ def get_loan_summary():
 	unassigned = 0
 
 	for row in counts:
-		count = row.get("COUNT(*)", 0)
+		count = row.get("count", 0)
 		summary["total"] += count
 
 		# If the bank has defined a stage, use it, else fallback to the archetype status
@@ -670,10 +670,11 @@ def get_all_loans(**kwargs):
 		"A2C Loan Application",
 		filters=filters,
 		or_filters=or_filters or None,
-		fields=[{"COUNT": "*"}],
+		fields=[{"COUNT": "*", "as": "count"}],
+		order_by="",
 		ignore_permissions=False,
 	)
-	total_records = count_res[0].get("COUNT(*)") if count_res else 0
+	total_records = count_res[0].get("count") if count_res else 0
 
 	user = frappe.session.user
 	can_see_step = can_see_onboarding_step(user)
@@ -935,15 +936,13 @@ def create_loan_application(**kwargs):
 	frappe.has_permission("A2C Loan Application", "create", throw=True)
 	lead_doc = _get_lead(lead_id)
 
-	# Acquire a database-level transaction row/gap lock via raw SQL FOR UPDATE to prevent TOCTOU
+	# Acquire a database-level transaction row/gap lock (get_value with for_update) to prevent TOCTOU
 	# race conditions during concurrent API requests.
 	# Alternative unique constraints cannot be enforced on the database layer because some values
 	# (such as lead_id) are not guaranteed to be unique under database schemas without custom migration scripts.
 	# Lock-only query (returns nothing to the caller); the permission-checked read
 	# is the frappe.get_list below. Locking across banks is safe. bank-scope-exempt
-	frappe.db.sql(
-		"SELECT name FROM `tabA2C Loan Application` WHERE lead_id = %s FOR UPDATE", (lead_id,)
-	)  # bank-scope-exempt
+	frappe.db.get_value("A2C Loan Application", {"lead_id": lead_id}, "name", for_update=True)
 	existing = frappe.get_list(
 		"A2C Loan Application",
 		filters={"lead_id": lead_id},

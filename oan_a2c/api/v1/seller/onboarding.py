@@ -669,11 +669,11 @@ def invite_team_member(email: str, full_name: str, password: str, role: str = BA
 	"""Add a Bank Agent to the caller's bank with a temporary password.
 
 	Bank Agent only: a Bank Admin cannot mint another Bank Admin. New admins come
-	from self-registration (api.v1.auth.register_user, which pairs with
-	register_bank) or from a platform admin promoting an agent via update_user.
+	from self-registration (oan_auth_service's POST /api/v1/auth/register, which
+	pairs with register_bank) or from a platform admin promoting an agent via update_user.
 
 	The password is admin-chosen, so it is flagged must-change — the agent cannot
-	open a session with it, only rotate it (api.auth.set_initial_password).
+	open a session with it, only rotate it (oan_auth_service's POST /api/v1/auth/password/initial).
 	"""
 	role = resolve_assignable_role(role, {BANK_AGENT_ROLE})
 
@@ -761,7 +761,7 @@ def list_users():
 	users = frappe.get_all(
 		"User",
 		filters={"name": ("in", bank_users)},
-		fields=["name", "email", "first_name", "enabled", "last_active", "a2c_must_change_password"],
+		fields=["name", "email", "first_name", "enabled", "last_active", "oan_must_change_password"],
 	)
 
 	roles = frappe.get_all(
@@ -776,7 +776,7 @@ def list_users():
 		u["role"] = user_role_map.get(u.name)
 		# Surfaced so the team list can flag members who have not yet set their own
 		# password — the ones whose credential the admin still knows.
-		u["must_change_password"] = bool(u.pop("a2c_must_change_password", 0))
+		u["must_change_password"] = bool(u.pop("oan_must_change_password", 0))
 
 	return success_response(data={"users": users})
 
@@ -900,7 +900,7 @@ def reset_member_password(email: str, password: str):
 
 	The agent cannot sign in with it — it is flagged must-change, so login returns
 	PASSWORD_CHANGE_REQUIRED until they set their own through
-	api.auth.set_initial_password.
+	oan_auth_service's /auth/password/initial.
 
 	Any session the agent currently holds dies immediately: the refresh tokens are
 	deleted here and the JWT middleware rejects access tokens for a flagged user.
@@ -911,11 +911,10 @@ def reset_member_password(email: str, password: str):
 
 	_assert_can_manage_member(email)
 
-	from frappe.utils.password import update_password as update_password_db
+	from oan_auth_service.api.v1.auth import issue_temporary_password
 
-	update_password_db(user=email, pwd=password, logout_all_sessions=True)
-	frappe.db.set_value("User", email, "a2c_must_change_password", 1)
-	frappe.db.delete("A2C User Refresh Token", {"user": email})
+	# Sets the password, flags it must-change and revokes the user's refresh tokens.
+	issue_temporary_password(email, password)
 
 	frappe.logger("oan_a2c").info(f"temporary password reissued by={frappe.session.user} for={email}")
 

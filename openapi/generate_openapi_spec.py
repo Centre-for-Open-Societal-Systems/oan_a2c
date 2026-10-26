@@ -26,6 +26,7 @@ Both are marked with the vendor extension `x-schema-confidence` so the
 distinction survives in the generated file, not just in this script.
 """
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -198,31 +199,109 @@ data(
 )
 
 # --- Domain 01: Identity & Access ---
-user_summary_props = {
-	"email": S(),
-	"full_name": S(),
-	"roles": ARR(S()),
-	"user_type": S(nullable=True),
-	"bank": S(nullable=True),
-	"bank_id": S(nullable=True),
-	"bank_code": S(nullable=True),
-	"bank_name": S(nullable=True),
-	"bank_status": S(nullable=True),
-}
-data("UserSummary", OBJ(user_summary_props))
-data(
-	"LoginData",
-	OBJ(
-		{
-			"token": S(description="Short-lived JWT access token"),
-			"refresh_token": S(description="Long-lived refresh token; 1 day, or 30 with remember_me"),
-			"user": REF("UserSummary"),
+# Auth endpoints are served by oan_auth_service; these mirror its contract.
+_TOKEN_PAIR = {
+	"type": "object",
+	"properties": {
+		"access_token": {"type": "string", "description": "Short-lived JWT access token"},
+		"refresh_token": {
+			"type": "string",
+			"description": "Single-use cryptographically secure refresh token",
 		},
-		required=["token", "refresh_token", "user"],
-	),
+		"token_type": {"type": "string", "example": "Bearer"},
+		"expires_in": {
+			"type": "integer",
+			"example": 900,
+			"description": "Access token expiration in seconds",
+		},
+		"user": {
+			"type": "string",
+			"example": "USR-0001",
+			"description": "Canonical user ID or synthetic email",
+		},
+		"roles": {"type": "array", "items": {"type": "string"}, "description": "Roles assigned to this user"},
+		"scope": {
+			"type": "array",
+			"items": {"type": "string"},
+			"nullable": True,
+			"description": "Narrowed token scope if requested",
+		},
+	},
+	"required": ["access_token", "refresh_token", "token_type", "expires_in", "user", "roles"],
+	"description": "Access token and refresh token pair",
+}
+_LOGOUT = {
+	"type": "object",
+	"properties": {"revoked": {"type": "boolean", "description": "Whether the refresh token was revoked"}},
+	"required": ["revoked"],
+}
+_USER_ME = {
+	"type": "object",
+	"properties": {
+		"user": {"type": "string", "description": "Unique User ID / internal handle"},
+		"first_name": {"type": "string", "nullable": True},
+		"last_name": {"type": "string", "nullable": True},
+		"full_name": {"type": "string", "description": "Full display name"},
+		"login_email": {
+			"type": "string",
+			"format": "email",
+			"nullable": True,
+			"description": "Authoritative login email",
+		},
+		"mobile_no": {
+			"type": "string",
+			"nullable": True,
+			"description": "Primary contact mobile number in E.164 format",
+		},
+		"country_code": {
+			"type": "string",
+			"example": "+251",
+			"nullable": True,
+			"description": "E.164 country dialing code",
+		},
+		"phone_number": {
+			"type": "string",
+			"example": "911223344",
+			"nullable": True,
+			"description": "National subscriber phone number",
+		},
+		"roles": {"type": "array", "items": {"type": "string"}, "description": "List of assigned roles"},
+		"profiles": {
+			"type": "object",
+			"properties": {},
+			"additionalProperties": True,
+			"description": "App-specific profiles from on_user_profile hooks. a2c "
+			"adds `profiles.a2c` with `user_type` (bank_admin, "
+			"bank_agent, dev_agent, marketplace, farmer, unknown) and, for bank users, `bank`, "
+			"`bank_id`, `bank_code`, `bank_name`, `bank_status`.",
+		},
+	},
+	"required": ["user", "full_name", "roles"],
+	"description": "Introspected user identity and profile claims",
+}
+data("TokenPairData", _TOKEN_PAIR)
+data(
+	"RegisterData",
+	{
+		"type": "object",
+		"properties": {
+			"user": {
+				"type": "string",
+				"example": "USR-0001",
+				"description": "Canonical user ID or synthetic email",
+			},
+			"roles": {
+				"type": "array",
+				"items": {"type": "string"},
+				"description": "Roles assigned to this user",
+			},
+		},
+		"required": ["user", "roles"],
+		"description": "The created account. No tokens are issued; sign in to obtain them.",
+	},
 )
-data("TokenPairData", OBJ({"token": S(), "refresh_token": S()}, required=["token", "refresh_token"]))
-data("IdentityData", OBJ(user_summary_props))
+data("LogoutData", _LOGOUT)
+data("UserMeData", _USER_ME)
 data(
 	"ProfileData",
 	OBJ(
@@ -831,18 +910,21 @@ data(
 data("ConsentWebhookAckData", OBJ({"message": S()}, required=["message"], confidence="inferred"))
 
 # --- Domain 09: Notifications ---
+# Notification endpoints are served by oan_auth_service; these mirror its contract.
 data(
 	"NotificationItem",
 	OBJ(
 		{
 			"id": S(),
 			"subject": S(),
-			"email_content": S(nullable=True),
+			"message": S(nullable=True, description="May contain HTML: sanitize before rendering."),
+			"type": S(),
 			"document_type": S(nullable=True),
 			"document_name": S(nullable=True),
-			"read": I(enum=[0, 1]),
-			"creation": S(format="date-time"),
-		}
+			"read": B(),
+			"created_at": S(format="date-time"),
+		},
+		required=["id", "subject", "read", "created_at"],
 	),
 )
 data(
@@ -866,13 +948,170 @@ data(
 # stripped since they move into the URL under the REST design.
 # ---------------------------------------------------------------------------
 REQ = {}
-REQ["RegisterRequest"] = adapt_request_schema("RegisterUserSchema")
-REQ["LoginRequest"] = adapt_request_schema("LoginSchema")
-REQ["TokenRefreshRequest"] = adapt_request_schema("RefreshTokenSchema")
-REQ["LogoutRequest"] = adapt_request_schema("LogoutSchema")
-REQ["ForgotPasswordRequest"] = adapt_request_schema("ForgotPasswordSchema")
-REQ["ResetPasswordRequest"] = adapt_request_schema("ResetPasswordSchema")
-REQ["InitialPasswordRequest"] = adapt_request_schema("SetInitialPasswordSchema")
+# Auth request bodies mirror oan_auth_service.
+_REGISTER = {
+	"type": "object",
+	"properties": {
+		"password": {
+			"type": "string",
+			"format": "password",
+			"minLength": 8,
+			"maxLength": 128,
+			"description": "Password meeting complexity requirements (at least 8 "
+			"characters with letters, numbers, and special "
+			"characters)",
+		},
+		"full_name": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 140,
+			"description": "Full name of user or organization",
+		},
+		"email": {
+			"type": "string",
+			"format": "email",
+			"nullable": True,
+			"description": "Login email address",
+		},
+		"phone_number": {
+			"type": "string",
+			"nullable": True,
+			"description": "Phone number. Can be full international E.164 "
+			"format (e.g. +251911223344) or national "
+			"subscriber digits when country_code is provided.",
+		},
+		"country_code": {
+			"type": "string",
+			"example": "+251",
+			"nullable": True,
+			"description": "Optional country dialing code (e.g. +251, +91). "
+			"When provided, phone_number is treated as "
+			"national digits.",
+		},
+		"role": {"type": "string", "nullable": True, "description": "Singular role to request"},
+		"roles": {
+			"type": "array",
+			"items": {"type": "string"},
+			"nullable": True,
+			"description": "Multiple roles to request",
+		},
+	},
+	"additionalProperties": True,
+	"required": ["password", "full_name"],
+	"description": "Payload for registering a new user account with email or phone_number. When "
+	"country_code is provided, phone_number is treated as the national subscriber "
+	"number; otherwise, it must be in full international E.164 format.",
+}
+_LOGIN = {
+	"type": "object",
+	"properties": {
+		"usr": {
+			"type": "string",
+			"minLength": 1,
+			"description": "Login identifier: email, mobile number, or User ID",
+		},
+		"pwd": {"type": "string", "format": "password", "minLength": 1, "description": "Account password"},
+		"remember_me": {
+			"type": "boolean",
+			"default": False,
+			"description": "Extend refresh token lifetime to 90 days",
+		},
+		"scope": {
+			"type": "string",
+			"nullable": True,
+			"description": "Optional scope narrowing: comma-separated list of roles",
+		},
+	},
+	"required": ["usr", "pwd"],
+	"description": "Credentials to authenticate and obtain token pair",
+}
+_REFRESH = {
+	"type": "object",
+	"properties": {
+		"refresh_token": {"type": "string", "minLength": 1, "description": "Active single-use refresh token"}
+	},
+	"required": ["refresh_token"],
+	"description": "Refresh token exchange payload",
+}
+_LOGOUT_REQ = {
+	"type": "object",
+	"properties": {
+		"refresh_token": {"type": "string", "minLength": 1, "description": "Active refresh token to revoke"}
+	},
+	"required": ["refresh_token"],
+	"description": "Revoke refresh token session",
+}
+_FORGOT = {
+	"type": "object",
+	"properties": {
+		"usr": {
+			"type": "string",
+			"minLength": 1,
+			"description": "Login handle (email or phone number) to initiate recovery",
+		}
+	},
+	"required": ["usr"],
+	"description": "Password recovery initiation request",
+}
+_RESET = {
+	"type": "object",
+	"properties": {
+		"new_password": {
+			"type": "string",
+			"format": "password",
+			"minLength": 8,
+			"maxLength": 128,
+			"description": "New account password (min 8 chars, letters, numbers, symbols)",
+		},
+		"key": {"type": "string", "nullable": True, "description": "Reset token key received via email link"},
+		"usr": {
+			"type": "string",
+			"nullable": True,
+			"description": "Login identifier (used alongside SMS OTP)",
+		},
+		"otp": {
+			"type": "string",
+			"nullable": True,
+			"description": "Numeric one-time verification code received via SMS",
+		},
+	},
+	"required": ["new_password"],
+	"description": "Password reset completion payload. Provide either `key` OR (`usr` and `otp`).",
+}
+_INITIAL = {
+	"type": "object",
+	"properties": {
+		"usr": {
+			"type": "string",
+			"minLength": 1,
+			"description": "Login identifier: email, mobile number, or User ID",
+		},
+		"current_password": {
+			"type": "string",
+			"format": "password",
+			"minLength": 1,
+			"description": "The temporary password",
+		},
+		"new_password": {
+			"type": "string",
+			"format": "password",
+			"minLength": 8,
+			"maxLength": 128,
+			"description": "The account holder's own password (min 8 chars, "
+			"letters, numbers, symbols). Must differ from the "
+			"temporary one.",
+		},
+	},
+	"required": ["usr", "current_password", "new_password"],
+	"description": "Replace a temporary password. No token is needed or issued; sign in afterwards.",
+}
+REQ["RegisterRequest"] = _REGISTER
+REQ["LoginRequest"] = _LOGIN
+REQ["TokenRefreshRequest"] = _REFRESH
+REQ["LogoutRequest"] = _LOGOUT_REQ
+REQ["ForgotPasswordRequest"] = _FORGOT
+REQ["ResetPasswordRequest"] = _RESET
+REQ["InitialPasswordRequest"] = _INITIAL
 REQ["ChangePasswordRequest"] = adapt_request_schema("ChangePasswordSchema")
 REQ["UpdateProfileRequest"] = adapt_request_schema("UpdateProfileSchema")
 
@@ -970,8 +1209,23 @@ REQ["VerifyOtpRequest"] = adapt_request_schema("VerifyOTPSchema")
 REQ["SubmitConsentRequest"] = adapt_request_schema("SubmitConsentSchema")
 REQ["ReceiveConsentDataRequest"] = adapt_request_schema("ReceiveConsentDataSchema")
 
-REQ["MarkNotificationsReadRequest"] = adapt_request_schema("MarkReadSchema")
-REQ["ClearNotificationsRequest"] = adapt_request_schema("ClearSchema")
+_NOTIFICATION_IDS = {
+	"ids": {
+		"oneOf": [ARR(S()), S()],
+		"description": "Notification ids, a list or comma-separated (at most 500). Send this or `all`.",
+	},
+	"all": B(default=False, description="true acts on all of the caller's notifications"),
+}
+REQ["UpdateNotificationRequest"] = OBJ(
+	{"read": B(description="true marks read, false marks unread")}, required=["read"]
+)
+REQ["BulkUpdateNotificationsRequest"] = OBJ(
+	{
+		**copy.deepcopy(_NOTIFICATION_IDS),
+		"read": B(default=True, description="true marks read, false marks unread"),
+	}
+)
+REQ["BulkDeleteNotificationsRequest"] = OBJ(copy.deepcopy(_NOTIFICATION_IDS))
 
 REQ["LeadInboundRequest"] = OBJ(
 	{
@@ -1088,7 +1342,25 @@ QP["GetBankDetails"] = []  # bank id moves to path
 QP["ListLeads"] = query_params_from_schema("GetLeadsSchema")
 QP["ListVisitSchedules"] = query_params_from_schema("GetVisitSchedulesSchema")
 QP["AssignableUsers"] = query_params_from_schema("GetAssignableUsersSchema")
-QP["GetNotifications"] = query_params_from_schema("GetNotificationsSchema")
+QP["BasicProfile"] = [
+	{
+		"name": "include_consent_data",
+		"in": "query",
+		"required": False,
+		"schema": I(nullable=True),
+		"description": "Include consent request data (1 or 0)",
+	}
+]
+QP["ListNotifications"] = [
+	{
+		"name": "status",
+		"in": "query",
+		"required": False,
+		"schema": S(enum=["unread", "read", "all"], default="all"),
+		"description": "Filter by read state. `unread_count` ignores it.",
+	},
+	*copy.deepcopy(PAGE_PARAMS),
+]
 QP["ConsentFarmerSearch"] = [
 	{
 		"name": "fayda_id",
@@ -1151,7 +1423,7 @@ QP["GetBasicProfile"] = [
 
 
 # ---------------------------------------------------------------------------
-# The 96 routes.
+# The 101 routes.
 # ---------------------------------------------------------------------------
 def R(
 	method,
@@ -1194,8 +1466,8 @@ ROUTES = [
 		"Identity & Access",
 		"public",
 		"RegisterRequest",
-		response="MessageData",
-		legacy="oan_a2c.api.v1.auth.register_user",
+		response="RegisterData",
+		legacy="oan_auth_service.api.v1.auth.register_user",
 	),
 	R(
 		"post",
@@ -1204,28 +1476,28 @@ ROUTES = [
 		"Identity & Access",
 		"public",
 		"LoginRequest",
-		response="LoginData",
-		legacy="oan_a2c.api.auth.login",
+		response="TokenPairData",
+		legacy="oan_auth_service.api.v1.auth.login",
 	),
 	R(
 		"post",
-		"/v1/auth/token/refresh",
+		"/v1/auth/refresh",
 		"Refresh an access token",
 		"Identity & Access",
 		"public",
 		"TokenRefreshRequest",
 		response="TokenPairData",
-		legacy="oan_a2c.api.auth.refresh",
+		legacy="oan_auth_service.api.v1.auth.refresh",
 	),
 	R(
 		"post",
 		"/v1/auth/logout",
 		"Log out",
 		"Identity & Access",
-		"bearer",
+		"public",
 		"LogoutRequest",
-		response="MessageData",
-		legacy="oan_a2c.api.auth.logout",
+		response="LogoutData",
+		legacy="oan_auth_service.api.v1.auth.logout",
 	),
 	R(
 		"post",
@@ -1235,7 +1507,7 @@ ROUTES = [
 		"public",
 		"ForgotPasswordRequest",
 		response="MessageData",
-		legacy="oan_a2c.api.auth.forgot_password",
+		legacy="oan_auth_service.api.v1.auth.forgot_password",
 	),
 	R(
 		"post",
@@ -1245,7 +1517,7 @@ ROUTES = [
 		"public",
 		"ResetPasswordRequest",
 		response="MessageData",
-		legacy="oan_a2c.api.auth.reset_password",
+		legacy="oan_auth_service.api.v1.auth.reset_password",
 	),
 	R(
 		"post",
@@ -1255,7 +1527,7 @@ ROUTES = [
 		"public",
 		"InitialPasswordRequest",
 		response="MessageData",
-		legacy="oan_a2c.api.auth.set_initial_password",
+		legacy="oan_auth_service.api.v1.auth.set_initial_password",
 	),
 	R(
 		"patch",
@@ -1269,12 +1541,12 @@ ROUTES = [
 	),
 	R(
 		"get",
-		"/v1/me",
+		"/v1/auth/me",
 		"Get the current user's identity",
 		"Identity & Access",
 		"bearer",
-		response="IdentityData",
-		legacy="oan_a2c.api.auth.get_me",
+		response="UserMeData",
+		legacy="oan_auth_service.api.v1.auth.get_me",
 	),
 	R(
 		"get",
@@ -1936,6 +2208,26 @@ ROUTES = [
 	),
 	R(
 		"get",
+		"/v1/loan-applications/basic-profile",
+		"Get the basic profile",
+		"Loan Underwriting",
+		"bearer",
+		query="BasicProfile",
+		response="LoanApplicationBasicProfileData",
+		legacy="oan_a2c.api.v1.loan_applications.get_basic_profile",
+	),
+	R(
+		"patch",
+		"/v1/loan-applications/basic-profile",
+		"Update the basic profile",
+		"Loan Underwriting",
+		"bearer",
+		"UpdateBasicProfileRequest",
+		response="MessageData",
+		legacy="oan_a2c.api.v1.loan_applications.update_basic_profile",
+	),
+	R(
+		"get",
 		"/v1/loan-applications/{id}/basic-profile",
 		"Get the applicant's basic profile",
 		"Loan Underwriting",
@@ -2111,33 +2403,63 @@ ROUTES = [
 	R(
 		"get",
 		"/v1/notifications",
-		"List notifications",
+		"List my notifications",
 		"Notifications",
 		"bearer",
-		query="GetNotifications",
+		query="ListNotifications",
 		response="NotificationListData",
 		paginated=True,
-		legacy="oan_a2c.api.v1.notifications.get_notifications",
+		legacy="oan_auth_service.api.v1.notifications.list_notifications",
 	),
 	R(
 		"patch",
-		"/v1/notifications/read",
-		"Mark notifications read",
+		"/v1/notifications",
+		"Mark many of my notifications read or unread",
 		"Notifications",
 		"bearer",
-		"MarkNotificationsReadRequest",
+		"BulkUpdateNotificationsRequest",
 		response="NotificationUpdateData",
-		legacy="oan_a2c.api.v1.notifications.mark_read",
+		legacy="oan_auth_service.api.v1.notifications.bulk_update_notifications",
 	),
 	R(
 		"delete",
 		"/v1/notifications",
-		"Delete notifications",
+		"Delete many of my notifications",
 		"Notifications",
 		"bearer",
-		"ClearNotificationsRequest",
+		"BulkDeleteNotificationsRequest",
 		response="NotificationDeleteData",
-		legacy="oan_a2c.api.v1.notifications.clear",
+		legacy="oan_auth_service.api.v1.notifications.bulk_delete_notifications",
+	),
+	R(
+		"get",
+		"/v1/notifications/{notification_id}",
+		"Get one of my notifications",
+		"Notifications",
+		"bearer",
+		response="NotificationItem",
+		path_params=[("notification_id", "Notification Log id")],
+		legacy="oan_auth_service.api.v1.notifications.get_notification",
+	),
+	R(
+		"patch",
+		"/v1/notifications/{notification_id}",
+		"Mark one of my notifications read or unread",
+		"Notifications",
+		"bearer",
+		"UpdateNotificationRequest",
+		response="NotificationItem",
+		path_params=[("notification_id", "Notification Log id")],
+		legacy="oan_auth_service.api.v1.notifications.update_notification",
+	),
+	R(
+		"delete",
+		"/v1/notifications/{notification_id}",
+		"Delete one of my notifications",
+		"Notifications",
+		"bearer",
+		path_params=[("notification_id", "Notification Log id")],
+		legacy="oan_auth_service.api.v1.notifications.delete_notification",
 	),
 	# --- 10 Inbound Webhooks ---
 	R(
@@ -2156,14 +2478,14 @@ ROUTES = [
 		"/v1/charts/{chart_id}",
 		"Get aggregate data for a dashboard chart",
 		"Programme Dashboards",
-		"public",
+		"dashboard-key",
 		query="DashboardChart",
 		response="DashboardChartRows",
 		path_params=[("chart_id", "Chart identifier, e.g. a2cKpis.")],
 		legacy="oan_a2c.api.v1.dashboard.get_chart",
 	),
 ]
-assert len(ROUTES) == 96, f"expected 96 routes, got {len(ROUTES)}"
+assert len(ROUTES) == 101, f"expected 101 routes, got {len(ROUTES)}"
 
 data(
 	"ConsentReasonListData",
@@ -2283,6 +2605,8 @@ for r in ROUTES:
 		op["security"] = []
 	elif r["security"] == "partner-key":
 		op["security"] = [{"PartnerApiKeyAuth": []}]
+	elif r["security"] == "dashboard-key":
+		op["security"] = [{"DashboardKeyAuth": []}]
 	else:
 		op["security"] = [{"BearerAuth": []}]
 
@@ -2415,6 +2739,12 @@ doc = {
 				"name": "Authorization",
 				"description": "Format: `token <api_key>:<api_secret>`. Used only by the two inbound webhook receivers; issued per partner and paired with IP allowlisting at the gateway.",
 			},
+			"DashboardKeyAuth": {
+				"type": "apiKey",
+				"in": "header",
+				"name": "apikey",
+				"description": "API key of the OAN dashboards (Kong consumer `oan-dashboards`, group `dashboards`). Checked and stripped by the gateway; the platform itself treats the route as public, so today, before the gateway enforces keys, the header is simply ignored.",
+			},
 		},
 		"schemas": components_schemas,
 		"responses": components_responses,
@@ -2437,7 +2767,7 @@ print(
 )
 
 # ---------------------------------------------------------------------------
-# Public variant: same 95 routes, same schemas -- with the two internal-only
+# Public variant: same 101 routes, same schemas -- with the two internal-only
 # vendor extensions (x-legacy-rpc-method, x-schema-confidence) stripped, since
 # they leak Frappe implementation details a third-party partner has no need
 # of. Everything else (paths, verbs, request/response shapes, security,
@@ -2470,7 +2800,7 @@ public_doc["info"]["description"] = (
 
 with open(PUBLIC_SPEC_OUTPUT, "w") as f:  # nosemgrep: frappe-security-file-traversal
 	f.write("# A2C API -- OpenAPI 3.0.3 (PUBLIC / partner-facing contract)\n")
-	f.write("# Same 95 routes and schemas as openapi_v1.yaml, with internal-only vendor extensions\n")
+	f.write("# Same 101 routes and schemas as openapi_v1.yaml, with internal-only vendor extensions\n")
 	f.write(
 		"# (x-legacy-rpc-method, x-schema-confidence) removed. Generated from generate_openapi_spec.py.\n"
 	)

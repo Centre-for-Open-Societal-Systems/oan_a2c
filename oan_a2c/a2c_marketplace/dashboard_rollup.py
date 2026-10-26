@@ -28,13 +28,13 @@ from frappe.query_builder import DocType
 from frappe.query_builder.functions import Coalesce, Count, Sum
 from frappe.utils import getdate, now_datetime
 from pypika.functions import NullIf, Trim
-from pypika.terms import Function
 
 from oan_a2c.a2c_marketplace.stages import get_stage_map
 
 SNAPSHOT = "A2C Dashboard Snapshot"
 AS_OF_DEFAULT = "a2c_dashboard_as_of"
 LOCK_KEY = "a2c_dashboard_rollup"
+LOCK_TIMEOUT = 30 * 60  # seconds; longer than any healthy refresh
 
 APPROVED = "APPROVED"
 IN_PROGRESS = "IN_PROGRESS"
@@ -109,10 +109,10 @@ def label(value) -> str:
 
 def refresh():
 	"""Rebuild today's snapshot. Returns what it did, or None if a refresh was already running."""
-	# A database named lock: held by this connection, so a worker that dies
-	# mid-run releases it with its connection instead of blocking later runs.
-	lock_name = f"{frappe.local.site}:{LOCK_KEY}"
-	if not frappe.db.sql("SELECT GET_LOCK(%s, 0)", lock_name)[0][0]:
+	# A Redis lock with a timeout: a worker that dies mid-run lets it expire
+	# instead of blocking later runs. The raw client does not prefix keys by site.
+	lock = frappe.cache.lock(f"{frappe.local.site}:{LOCK_KEY}", timeout=LOCK_TIMEOUT)
+	if not lock.acquire(blocking=False):
 		frappe.logger().info("A2C dashboard rollup skipped: another refresh is running")
 		return None
 	try:
@@ -133,7 +133,10 @@ def refresh():
 		frappe.db.set_default(AS_OF_DEFAULT, str(now))
 		return {"as_of": now, "rows": len(rows)}
 	finally:
-		frappe.db.sql("SELECT RELEASE_LOCK(%s)", lock_name)
+		try:
+			lock.release()
+		except Exception:  # expired while running; nothing left to release
+			pass
 
 
 def as_of():
@@ -230,7 +233,7 @@ def _application_rows() -> list[dict]:
 	"""Applications by bank, outcome, place, product and the month they were lodged."""
 	region = _geo(LoanApplication.region, FarmerProfile.region)
 	woreda = _geo(LoanApplication.woreda, FarmerProfile.woreda)
-	month = Function("DATE_FORMAT", LoanApplication.creation, "%Y-%m-01")
+	month = LoanApplication.creation_month
 	product = Coalesce(
 		NullIf(Trim(LoanApplication.loan_product_name), ""), NullIf(Trim(LoanApplication.loan_type), "")
 	)

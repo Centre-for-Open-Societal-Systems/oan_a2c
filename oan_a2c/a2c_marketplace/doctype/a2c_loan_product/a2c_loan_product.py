@@ -3,11 +3,11 @@
 
 import frappe
 from frappe.model.document import Document
+from oan_auth_service.api.v1.notifications import notify_users
 
 from oan_a2c.a2c_marketplace.lookups import refresh_product_lookups
 from oan_a2c.a2c_marketplace.permissions import get_bank_members
 from oan_a2c.a2c_marketplace.roles import ADMIN_ROLE, BANK_ADMIN_ROLE, BANK_ROLES
-from oan_a2c.api.v1.notifications import notify_users
 
 
 class A2CLoanProduct(Document):

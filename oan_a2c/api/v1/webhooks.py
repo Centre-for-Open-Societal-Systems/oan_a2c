@@ -25,9 +25,9 @@ def lead_inbound(
 	The partner authenticates to Kong with a `key-auth` credential. Kong then
 	rewrites the Authorization header to a Frappe API key/secret for a dedicated
 	service user (`Authorization: token <key>:<secret>`), which Frappe validates
-	in validate_auth_via_api_keys() before auth_hooks run — so this route is in
-	the JWT middleware's exempt list, and frappe.session.user is the service user
-	rather than Guest by the time we get here.
+	in validate_auth_via_api_keys() before auth_hooks run. The route is declared
+	an API-key path to oan_auth_service's middleware, which refuses any other
+	credential, so frappe.session.user is the service user by the time we get here.
 
 	The route is deliberately *not* registered as a guest route: without that
 	credential the request is rejected before reaching this function, so a caller

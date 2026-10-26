@@ -110,8 +110,10 @@ ssh -i "${SSH_KEY}" \
     docker compose exec -T backend bench --site mysite.localhost set-config encryption_key "${ENCRYPTION_KEY}" || echo "WARN: encryption_key set-config failed (continuing)"
     docker compose exec -T backend bench --site mysite.localhost set-config jwt_secrets '${JWT_SECRETS}' --parse || echo "WARN: jwt_secrets set-config failed -- JWT_SECRETS not a valid literal? (continuing)"
     docker compose exec -T backend bench --site mysite.localhost set-config jwt_current_kid "${JWT_CURRENT_KID}" || echo "WARN: jwt_current_kid set-config failed (continuing)"
+    docker compose exec -T backend bench --site mysite.localhost set-config jwt_self_registerable_roles '["A2C Bank Admin", "A2C Farmer"]' --parse || echo "WARN: jwt_self_registerable_roles set-config failed (continuing)"
 
     echo "=== Running migrations ==="
+    docker compose exec -T backend bench --site mysite.localhost install-app oan_auth_service || true
     docker compose exec -T backend bench --site mysite.localhost migrate
 
     echo "=== Restarting frontend ==="

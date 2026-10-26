@@ -290,10 +290,10 @@ def _enrich_products_with_application_counts(products: list[dict]) -> None:
 	app_counts = frappe.get_list(
 		"A2C Loan Application",
 		filters={"loan_product": ["in", product_names]},
-		fields=["loan_product", {"COUNT": "*"}],
+		fields=["loan_product", {"COUNT": "*", "as": "count"}],
 		group_by="loan_product",
 	)
-	counts_map = {row.loan_product: row.get("COUNT(*)") for row in app_counts}
+	counts_map = {row.loan_product: row.get("count") for row in app_counts}
 
 	for p in products:
 		p["applications_count"] = counts_map.get(p.get("name"), 0)
@@ -429,10 +429,11 @@ def list_catalog(**kwargs):
 	count_res = frappe.get_list(
 		"A2C Loan Product",
 		filters=filters,
-		fields=[{"COUNT": "*"}],
+		fields=[{"COUNT": "*", "as": "count"}],
+		order_by="",
 		ignore_permissions=False,
 	)
-	total = count_res[0].get("COUNT(*)") if count_res else 0
+	total = count_res[0].get("count") if count_res else 0
 	pagination = {
 		"page": (start // limit) + 1,
 		"limit": limit,

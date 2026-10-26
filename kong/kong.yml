@@ -91,13 +91,13 @@ services:
         policy: redis
         fault_tolerant: true
         hide_client_headers: false
-  - name: post-v1-auth-token-refresh
+  - name: post-v1-auth-refresh
     methods:
     - POST
     paths:
-    - ~/v1/auth/token/refresh$
+    - ~/v1/auth/refresh$
     strip_path: false
-    regex_priority: 4
+    regex_priority: 3
     tags:
     - a2c
     - v1
@@ -124,24 +124,17 @@ services:
     - a2c
     - v1
     - d01
-    - authenticated-core
-    - bearer
+    - public-auth
+    - public
     plugins:
     - name: rate-limiting
       config:
-        minute: 120
-        hour: 4000
-        limit_by: consumer
+        minute: 5
+        hour: 30
+        limit_by: ip
         policy: redis
         fault_tolerant: true
         hide_client_headers: false
-    - name: jwt
-      config:
-        claims_to_verify:
-        - exp
-        key_claim_name: iss
-        header_names:
-        - Authorization
   - name: post-v1-auth-password-forgot
     methods:
     - POST
@@ -237,13 +230,13 @@ services:
         key_claim_name: iss
         header_names:
         - Authorization
-  - name: get-v1-me
+  - name: get-v1-auth-me
     methods:
     - GET
     paths:
-    - ~/v1/me$
+    - ~/v1/auth/me$
     strip_path: false
-    regex_priority: 2
+    regex_priority: 3
     tags:
     - a2c
     - v1
@@ -2746,6 +2739,35 @@ services:
         key_claim_name: iss
         header_names:
         - Authorization
+  - name: patch-v1-notifications
+    methods:
+    - PATCH
+    paths:
+    - ~/v1/notifications$
+    strip_path: false
+    regex_priority: 2
+    tags:
+    - a2c
+    - v1
+    - d09
+    - authenticated-core
+    - bearer
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 120
+        hour: 4000
+        limit_by: consumer
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
+    - name: jwt
+      config:
+        claims_to_verify:
+        - exp
+        key_claim_name: iss
+        header_names:
+        - Authorization
   - name: delete-v1-notifications
     methods:
     - DELETE
@@ -2775,11 +2797,69 @@ services:
         key_claim_name: iss
         header_names:
         - Authorization
-  - name: patch-v1-notifications-read
+  - name: get-v1-notifications-notification_id
+    methods:
+    - GET
+    paths:
+    - ~/v1/notifications/(?<notification_id>[^/]+)$
+    strip_path: false
+    regex_priority: 3
+    tags:
+    - a2c
+    - v1
+    - d09
+    - authenticated-core
+    - bearer
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 120
+        hour: 4000
+        limit_by: consumer
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
+    - name: jwt
+      config:
+        claims_to_verify:
+        - exp
+        key_claim_name: iss
+        header_names:
+        - Authorization
+  - name: patch-v1-notifications-notification_id
     methods:
     - PATCH
     paths:
-    - ~/v1/notifications/read$
+    - ~/v1/notifications/(?<notification_id>[^/]+)$
+    strip_path: false
+    regex_priority: 3
+    tags:
+    - a2c
+    - v1
+    - d09
+    - authenticated-core
+    - bearer
+    plugins:
+    - name: rate-limiting
+      config:
+        minute: 120
+        hour: 4000
+        limit_by: consumer
+        policy: redis
+        fault_tolerant: true
+        hide_client_headers: false
+    - name: jwt
+      config:
+        claims_to_verify:
+        - exp
+        key_claim_name: iss
+        header_names:
+        - Authorization
+  - name: delete-v1-notifications-notification_id
+    methods:
+    - DELETE
+    paths:
+    - ~/v1/notifications/(?<notification_id>[^/]+)$
     strip_path: false
     regex_priority: 3
     tags:
@@ -2918,6 +2998,18 @@ consumers:
     rsa_public_key: '-----BEGIN PUBLIC KEY-----
 
       REPLACE_WITH_A2C_AUTH_SIGNING_PUBLIC_KEY
+
+      -----END PUBLIC KEY-----'
+- username: openg2p-iam-issuer
+  tags:
+  - issuer
+  - iam
+  jwt_secrets:
+  - algorithm: RS256
+    key: REPLACE_WITH_IAM_TOKEN_ISSUER
+    rsa_public_key: '-----BEGIN PUBLIC KEY-----
+
+      REPLACE_WITH_IAM_IDP_SIGNING_PUBLIC_KEY
 
       -----END PUBLIC KEY-----'
 - username: openg2p-consent-webhook

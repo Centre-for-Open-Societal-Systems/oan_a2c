@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import frappe
 
@@ -16,24 +17,25 @@ from oan_a2c.api.v1.loan_applications import (
 	update_loan_status,
 	update_loan_step,
 )
+from oan_a2c.tests.api_case import ApiTestCase, force_delete_loan, set_column
 
 
-class TestLoansV1API(unittest.TestCase):
+class TestLoansV1API(ApiTestCase):
 	@classmethod
 	def setUpClass(cls):
+		super().setUpClass()
 		frappe.set_user("Administrator")
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Loan Application` WHERE lead_id='TEST_LEAD_999' OR first_name='API_TEST_FARMER'"
-		)
-		frappe.db.sql("DELETE FROM `tabA2C Farmer Profile` WHERE phone_number='+251999888777'")
-		frappe.db.sql("DELETE FROM `tabA2C Lead` WHERE name='TEST_LEAD_999'")
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Consent Request` "
-			"WHERE reference_doctype='A2C Lead' AND reference_name='TEST_LEAD_999'"
-		)
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Loan Application Audit Event` WHERE loan_application IN "
-			"(SELECT name FROM `tabA2C Loan Application` WHERE lead_id='TEST_LEAD_999')"
+		# Leftovers from runs made before these tests rolled back.
+		for stale in frappe.get_all(  # bank-scope-exempt: test cleanup, all banks
+			"A2C Loan Application",
+			or_filters={"lead_id": "TEST_LEAD_999", "first_name": "API_TEST_FARMER"},
+			pluck="name",
+		):
+			force_delete_loan(stale)
+		frappe.db.delete("A2C Farmer Profile", {"phone_number": "+251999888777"})
+		frappe.db.delete("A2C Lead", {"name": "TEST_LEAD_999"})
+		frappe.db.delete(
+			"A2C Consent Request", {"reference_doctype": "A2C Lead", "reference_name": "TEST_LEAD_999"}
 		)
 
 		if not frappe.db.exists("A2C Participating Bank", "Test Bank"):
@@ -55,19 +57,17 @@ class TestLoansV1API(unittest.TestCase):
 				}
 			)
 			bank_doc.insert(ignore_permissions=True)
-			frappe.db.sql(
-				"UPDATE `tabA2C Participating Bank` SET name='Test Bank' WHERE name=%s", bank_doc.name
-			)
-			frappe.db.sql(
-				"UPDATE `tabA2C Loan Status Stage` SET bank='Test Bank' WHERE bank=%s", bank_doc.name
-			)
+			set_column("A2C Participating Bank", "name", "Test Bank", name=bank_doc.name)
+			set_column("A2C Loan Status Stage", "bank", "Test Bank", bank=bank_doc.name)
 
 		from oan_a2c.patches.create_lead_loan_workflows import _seed_default_stages
 
-		_seed_default_stages()
-		frappe.db.commit()
+		# The patch commits when it finishes, which would keep every row below.
+		with patch.object(frappe.db, "commit"):
+			_seed_default_stages()
 
 	def setUp(self):
+		super().setUp()
 		frappe.set_user("Administrator")
 
 		# Create Lead
@@ -81,15 +81,13 @@ class TestLoansV1API(unittest.TestCase):
 				}
 			)
 			lead.insert(ignore_permissions=True)
-			frappe.db.sql("UPDATE `tabA2C Lead` SET name='TEST_LEAD_999' WHERE name=%s", lead.name)
-			frappe.db.commit()
+			set_column("A2C Lead", "name", "TEST_LEAD_999", name=lead.name)
 		else:
 			# Reset workflow_state too: a Completed/Rejected loan moves the lead through the
 			# workflow, and the next transition reads workflow_state first.
 			frappe.db.set_value(
 				"A2C Lead", "TEST_LEAD_999", {"status": "Verified", "workflow_state": "Verified"}
 			)
-			frappe.db.commit()
 
 		# Create Farmer Profile and link to Lead
 		if not frappe.db.get_value("A2C Lead", "TEST_LEAD_999", "farmer_profile"):
@@ -106,7 +104,6 @@ class TestLoansV1API(unittest.TestCase):
 			)
 			farmer.insert(ignore_permissions=True)
 			frappe.db.set_value("A2C Lead", "TEST_LEAD_999", "farmer_profile", farmer.name)
-			frappe.db.commit()
 
 		farmer_profile_name = frappe.db.get_value("A2C Lead", "TEST_LEAD_999", "farmer_profile")
 
@@ -138,7 +135,6 @@ class TestLoansV1API(unittest.TestCase):
 			)
 			consent.insert(ignore_permissions=True)
 			frappe.db.set_value("A2C Farmer Profile", farmer_profile_name, "consent_id", consent.name)
-			frappe.db.commit()
 
 		doc = frappe.get_doc(
 			{
@@ -159,17 +155,13 @@ class TestLoansV1API(unittest.TestCase):
 		)
 		doc.insert(ignore_permissions=True)
 		self.app_id = doc.name
-		frappe.db.commit()
 
 	def tearDown(self):
+		super().tearDown()
 		if hasattr(self, "app_id") and frappe.db.exists("A2C Loan Application", self.app_id):
-			# Loan is submittable; clear docstatus so a submitted (Approved/Rejected) test record
-			# can be force-deleted without the cancel-first guard.
-			frappe.db.sql("UPDATE `tabA2C Loan Application` SET docstatus=0 WHERE name=%s", self.app_id)
-			frappe.delete_doc("A2C Loan Application", self.app_id, ignore_permissions=True, force=True)
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Consent Request` "
-			"WHERE reference_doctype='A2C Lead' AND reference_name='TEST_LEAD_999'"
+			force_delete_loan(self.app_id)
+		frappe.db.delete(
+			"A2C Consent Request", {"reference_doctype": "A2C Lead", "reference_name": "TEST_LEAD_999"}
 		)
 
 		# Reset response state to avoid test pollution
@@ -178,8 +170,6 @@ class TestLoansV1API(unittest.TestCase):
 			frappe.local.response.filename = None
 			frappe.local.response.filecontent = None
 			frappe.local.response.display_content_as = None
-
-		frappe.db.commit()
 
 	def test_1_get_loan_summary(self):
 		res = get_loan_summary()
@@ -244,7 +234,6 @@ class TestLoansV1API(unittest.TestCase):
 
 		# Test filtering by loan_officer (assignee)
 		frappe.db.set_value("A2C Loan Application", self.app_id, "loan_officer", "Administrator")
-		frappe.db.commit()
 		res_officer = get_all_loans(loan_officer="Administrator")
 		self.assertEqual(res_officer["status"], "success")
 		self.assertTrue(any(r["application_id"] == self.app_id for r in res_officer["data"]))
@@ -253,6 +242,40 @@ class TestLoansV1API(unittest.TestCase):
 		res_unassigned = get_all_loans(loan_officer="unassigned")
 		self.assertEqual(res_unassigned["status"], "success")
 		self.assertFalse(any(r["application_id"] == self.app_id for r in res_unassigned["data"]))
+
+	def test_2f_list_over_http_needs_a_token_and_returns_the_envelope(self):
+		status, _body = self.api("GET", "/api/v1/loan-applications")
+		self.assertEqual(status, 401)
+
+		admin = self.make_user("api_loan_admin@example.com", ["A2C Administrator"])
+		status, body = self.api(
+			"GET", "/api/v1/loan-applications", user=admin, query={"lead_id": "TEST_LEAD_999"}
+		)
+		self.assertEqual(status, 200)
+		self.assertEqual(body["status"], "success")
+		self.assertEqual([r["application_id"] for r in body["data"]], [self.app_id])
+
+		status, body = self.api(
+			"GET", "/api/v1/loan-applications", user=admin, query={"status": "NO-SUCH-STAGE"}
+		)
+		self.assertEqual(status, 400)
+		self.assertEqual(body["code"], "VALIDATION_ERROR")
+
+	def test_2g_creation_month_is_set_on_insert_and_backfilled(self):
+		from oan_a2c.patches.backfill_loan_application_creation_month import execute
+
+		creation, month = frappe.db.get_value(
+			"A2C Loan Application", self.app_id, ["creation", "creation_month"]
+		)
+		self.assertEqual(month, frappe.utils.get_first_day(creation))
+
+		set_column("A2C Loan Application", "creation_month", None, name=self.app_id)
+		self.assertIsNone(frappe.db.get_value("A2C Loan Application", self.app_id, "creation_month"))
+		execute()
+		self.assertEqual(
+			frappe.db.get_value("A2C Loan Application", self.app_id, "creation_month"),
+			frappe.utils.get_first_day(creation),
+		)
 
 	def test_2a_get_all_loans_returns_applicant_and_location(self):
 		"""The list has to carry the columns every dashboard renders.
@@ -365,17 +388,14 @@ class TestLoansV1API(unittest.TestCase):
 				}
 			)
 			lead.insert(ignore_permissions=True)
-			frappe.db.sql("UPDATE `tabA2C Lead` SET name=%s WHERE name=%s", (lead_name, lead.name))
-			frappe.db.commit()
+			set_column("A2C Lead", "name", lead_name, name=lead.name)
 
 		# Ensure no farmer profile is linked
 		frappe.db.set_value("A2C Lead", lead_name, "farmer_profile", None)
 		# Delete any existing consent requests for this test lead
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Consent Request` WHERE reference_doctype='A2C Lead' AND reference_name=%s",
-			(lead_name,),
+		frappe.db.delete(
+			"A2C Consent Request", {"reference_doctype": "A2C Lead", "reference_name": lead_name}
 		)
-		frappe.db.commit()
 
 		# 2. Call get_basic_profile - should return 400 ValidationError response
 		res_error = get_basic_profile(lead_id=lead_name)
@@ -398,7 +418,6 @@ class TestLoansV1API(unittest.TestCase):
 			}
 		)
 		consent.insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		# 4. Call get_basic_profile again - should return 200 with farmer_profile_created: False
 		res = get_basic_profile(lead_id=lead_name)
@@ -410,7 +429,6 @@ class TestLoansV1API(unittest.TestCase):
 		# Clean up
 		frappe.delete_doc("A2C Consent Request", consent.name, ignore_permissions=True, force=True)
 		frappe.delete_doc("A2C Lead", lead_name, ignore_permissions=True, force=True)
-		frappe.db.commit()
 
 	def test_3b_update_basic_profile(self):
 		res = update_basic_profile(
@@ -455,7 +473,6 @@ class TestLoansV1API(unittest.TestCase):
 			}
 		)
 		file_doc.insert(ignore_permissions=True)
-		frappe.db.commit()
 		file_id = file_doc.name
 
 		# 1. Get supporting documents
@@ -513,7 +530,6 @@ class TestLoansV1API(unittest.TestCase):
 	def test_6_update_loan_step(self):
 		# Ensure it starts at 1
 		frappe.db.set_value("A2C Loan Application", self.app_id, "current_step", 1)
-		frappe.db.commit()
 
 		# 1. Invalid jump: 1 to 3 should raise ValidationError
 		res = update_loan_step(application_id=self.app_id, step=3)
@@ -552,11 +568,7 @@ class TestLoansV1API(unittest.TestCase):
 		# submit action, so the record ends at docstatus 1 (frozen).
 
 		# Clean up any pre-existing audit events for this application
-		frappe.db.sql(
-			"DELETE FROM `tabA2C Loan Application Audit Event` WHERE loan_application=%s",
-			self.app_id,
-		)
-		frappe.db.commit()
+		frappe.db.delete("A2C Loan Application Audit Event", {"loan_application": self.app_id})
 
 		res = update_loan_status(application_id=self.app_id, status="In Transition")
 		self.assertEqual(res["status"], "success")
@@ -664,11 +676,10 @@ class TestLoansV1API(unittest.TestCase):
 		# 1. Clean up any existing loan application for TEST_LEAD_999 first (since setUp creates one)
 		app_name = frappe.db.exists("A2C Loan Application", {"lead_id": "TEST_LEAD_999"})
 		if app_name:
-			frappe.db.sql("UPDATE `tabA2C Loan Application` SET docstatus=0 WHERE name=%s", app_name)
-			frappe.delete_doc("A2C Loan Application", app_name, ignore_permissions=True, force=True)
+			force_delete_loan(app_name)
 
 		# Clean up existing credit info
-		frappe.db.sql("DELETE FROM `tabA2C Credit Information` WHERE lead='TEST_LEAD_999'")
+		frappe.db.delete("A2C Credit Information", {"lead": "TEST_LEAD_999"})
 
 		# 2. Setup Farmer Profile details
 		farmer_profile_name = frappe.db.get_value("A2C Lead", "TEST_LEAD_999", "farmer_profile")
@@ -717,7 +728,6 @@ class TestLoansV1API(unittest.TestCase):
 				}
 			).insert(ignore_permissions=True)
 			test_product = prod_doc.name
-		frappe.db.commit()
 
 		# 3. Create Credit Info with loan_product so bank can be resolved
 		credit_info = frappe.get_doc(
@@ -731,7 +741,6 @@ class TestLoansV1API(unittest.TestCase):
 			}
 		)
 		credit_info.insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		# 4. Call create_loan_application API
 		res = create_loan_application(lead_id="TEST_LEAD_999")
@@ -763,12 +772,12 @@ class TestLoansV1API(unittest.TestCase):
 		# Clean up
 		frappe.delete_doc("A2C Loan Application", app_id, ignore_permissions=True, force=True)
 		frappe.delete_doc("A2C Credit Information", credit_info.name, ignore_permissions=True, force=True)
-		frappe.db.commit()
 
 
-class TestLoanStatusReadPath(unittest.TestCase):
+class TestLoanStatusReadPath(ApiTestCase):
 	@classmethod
 	def setUpClass(cls):
+		super().setUpClass()
 		frappe.set_user("Administrator")
 		cls.h = frappe.generate_hash(length=6)
 
@@ -913,10 +922,9 @@ class TestLoanStatusReadPath(unittest.TestCase):
 			}
 		).insert(ignore_permissions=True, ignore_mandatory=True)
 
-		frappe.db.commit()
-
 	@classmethod
 	def tearDownClass(cls):
+		super().tearDownClass()
 		frappe.set_user("Administrator")
 		frappe.db.delete("A2C Loan Application", {"bank": ["in", [cls.bank_1.name, cls.bank_2.name]]})
 		frappe.db.delete("A2C Loan Status Stage", {"bank": ["in", [cls.bank_1.name, cls.bank_2.name]]})
@@ -925,7 +933,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		frappe.delete_doc("A2C Participating Bank", cls.bank_2.name, force=True)
 		frappe.delete_doc("A2C Farmer Profile", cls.profile.name, force=True)
 		frappe.delete_doc("A2C Consent Request", cls.consent.name, force=True)
-		frappe.db.commit()
 
 	def test_farmer_list_and_detail_status_progression(self):
 		"""1. Farmer list + detail return Submitted (not In Transition) for a submitted application, and Active before submission."""
@@ -950,7 +957,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"owner": self.farmer_user,
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		frappe.set_user(self.farmer_user)
 
@@ -987,7 +993,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		# Clean up
 		frappe.set_user("Administrator")
 		frappe.delete_doc("A2C Loan Application", app.name, force=True)
-		frappe.db.commit()
 
 	def test_get_all_loans_status_filter_resolves_stage_labels(self):
 		"""2. get_all_loans(status="Verified") returns rows instead of 400."""
@@ -1012,7 +1017,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"phone_number": "+251911888111",
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		frappe.set_user(self.dev_agent_user)
 		res = get_all_loans(status="Verified")
@@ -1022,7 +1026,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		# Clean up
 		frappe.set_user("Administrator")
 		frappe.delete_doc("A2C Loan Application", app.name, force=True)
-		frappe.db.commit()
 
 	def test_farmer_list_applications_status_filter_resolves_stage_labels(self):
 		"""3. Farmer list_applications(status="Verified") returns rows instead of silently empty."""
@@ -1048,7 +1051,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"owner": self.farmer_user,
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		frappe.set_user(self.farmer_user)
 		res = list_applications(status="Verified")
@@ -1058,7 +1060,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		# Clean up
 		frappe.set_user("Administrator")
 		frappe.delete_doc("A2C Loan Application", app.name, force=True)
-		frappe.db.commit()
 
 	def test_dev_agent_filters_across_banks(self):
 		"""4. A Development Agent filtering status="Verified" across two banks whose Verified stages have different stage_ids gets both banks' rows."""
@@ -1103,7 +1104,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"phone_number": "+251911888222",
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		frappe.set_user(self.dev_agent_user)
 		res = get_all_loans(status="Verified")
@@ -1117,7 +1117,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		frappe.set_user("Administrator")
 		frappe.delete_doc("A2C Loan Application", app_1.name, force=True)
 		frappe.delete_doc("A2C Loan Application", app_2.name, force=True)
-		frappe.db.commit()
 
 	def test_sync_stages_rename_propagates_to_read_path(self):
 		"""5. Renaming a stage through sync_stages changes what the farmer sees on an existing application."""
@@ -1145,7 +1144,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"owner": self.farmer_user,
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		# Rename Verified -> Field Check using sync_stages
 		new_stages_payload = [
@@ -1188,7 +1186,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		]
 		frappe.set_user(self.bank_admin_user)
 		sync_stages(stages=new_stages_payload)
-		frappe.db.commit()
 
 		# Read application as farmer
 		frappe.set_user(self.farmer_user)
@@ -1206,7 +1203,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		sync_stages(stages=new_stages_payload)
 		frappe.set_user("Administrator")
 		frappe.delete_doc("A2C Loan Application", app.name, force=True)
-		frappe.db.commit()
 
 	def test_no_consumer_response_contains_in_transition(self):
 		"""6. No consumer response contains the string 'In Transition' — assert over full JSON of each read endpoint."""
@@ -1261,7 +1257,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"owner": self.farmer_user,
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		# 1. get_all_loans
 		frappe.set_user(self.dev_agent_user)
@@ -1304,7 +1299,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		frappe.set_user("Administrator")
 		frappe.delete_doc("A2C Loan Application", app_agent.name, force=True)
 		frappe.delete_doc("A2C Loan Application", app_farmer.name, force=True)
-		frappe.db.commit()
 
 	def test_get_loan_metadata_caller_scoping(self):
 		"""Bank users do not receive 'Active' in loan metadata; farmers and bank-unbound users do."""
@@ -1377,7 +1371,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"owner": self.dev_agent_user,
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		# Bank Admin caller (step omitted from get_full_profile and get_all_loans)
 		frappe.set_user(self.bank_admin_user)
@@ -1416,7 +1409,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 		frappe.set_user("Administrator")
 		frappe.delete_doc("A2C Loan Application", app_farmer.name, force=True)
 		frappe.delete_doc("A2C Loan Application", app_agent.name, force=True)
-		frappe.db.commit()
 
 	def test_dynamic_farmer_json_webhook_and_profile_integration(self):
 		"""Dynamic farmer data is saved as JSON and preserved across profiles and loan applications."""
@@ -1449,7 +1441,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"status": "Pending OTP",
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		# Dynamic webhook payload with arbitrary dynamic fields
 		webhook_payload = {
@@ -1477,7 +1468,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 
 		# Process the webhook
 		process_consent_data(webhook_payload, consent_req.name, consent_uuid)
-		frappe.db.commit()
 
 		# Verify Consent Request stored raw_consent_data
 		updated_consent = frappe.get_doc("A2C Consent Request", consent_req.name)
@@ -1525,7 +1515,6 @@ class TestLoanStatusReadPath(unittest.TestCase):
 				"owner": self.farmer_user,
 			}
 		).insert(ignore_permissions=True)
-		frappe.db.commit()
 
 		frappe.set_user(self.farmer_user)
 		full_res = get_full_profile(application_id=app.name)
@@ -1545,4 +1534,3 @@ class TestLoanStatusReadPath(unittest.TestCase):
 			{**profile_snapshot, "farmer_data_json": None},
 		)
 		frappe.delete_doc("A2C Consent Request", consent_req.name, force=True)
-		frappe.db.commit()

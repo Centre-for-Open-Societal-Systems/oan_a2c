@@ -15,7 +15,7 @@ an `A2C Farmer Profile`.
 
 **Authentication is OAuth against the Fayda farmer registry.** The registry asserts the farmer's
 identity; the platform does not hold a farmer credential of its own. Until that integration lands,
-development uses ordinary email + password through the existing `oan_a2c.api.auth.login`, and every
+development uses ordinary email + password through the existing `oan_auth_service.api.v1.auth.login`, and every
 part of this document that mentions a farmer password is describing that stand-in.
 
 A phone number is still collected and stored on the `User` — it is how the consent webhook matches an
@@ -23,7 +23,7 @@ account to an `A2C Farmer Profile` — but it is **not** an identity. Nothing de
 
 ```
 register (email + password)     →  User only. No profile, no phone claim, no link.
-login  (email + password)       →  existing oan_a2c.api.auth.login — DEV STAND-IN;
+login  (email + password)       →  existing oan_auth_service.api.v1.auth.login — DEV STAND-IN;
                                    production is OAuth against the Fayda registry
 browse catalog (authenticated)  →  new farmer catalog endpoint, Active products, all banks
 start application               →  hidden A2C Lead + A2C Credit Information + Draft application
@@ -36,15 +36,15 @@ the data-protection record, and the moment the account becomes a farmer profile.
 
 ### 1.1 What is reused unchanged
 
-| Component                             | Why it needs no change                                                |
-| ------------------------------------- | --------------------------------------------------------------------- |
-| `oan_a2c.api.auth.login`              | email + password works unchanged; it is the development stand-in only |
-| `oan_a2c.api.auth.refresh` / `logout` | token lifecycle is role-agnostic                                      |
-| `_classify_user_type`                 | already returns `"farmer"` for `FARMER_ROLE`                          |
-| `src/features/auth/rbac.ts`           | `farmer` kind and its three routes already exist                      |
-| `apply_status_transition`             | `("Draft", "Processing") → "Send for Review"` already mapped          |
-| `notify_users()`                      | existing writer over Frappe's `Notification Log`                      |
-| `api/v1/consent/*`                    | consent runs on its existing lead-anchored path                       |
+| Component                                         | Why it needs no change                                                |
+| ------------------------------------------------- | --------------------------------------------------------------------- |
+| `oan_auth_service.api.v1.auth.login`              | email + password works unchanged; it is the development stand-in only |
+| `oan_auth_service.api.v1.auth.refresh` / `logout` | token lifecycle is role-agnostic                                      |
+| `_classify_user_type`                             | already returns `"farmer"` for `FARMER_ROLE`                          |
+| `src/features/auth/rbac.ts`                       | `farmer` kind and its three routes already exist                      |
+| `apply_status_transition`                         | `("Draft", "Processing") → "Send for Review"` already mapped          |
+| `notify_users()`                                  | existing writer over Frappe's `Notification Log`                      |
+| `api/v1/consent/*`                                | consent runs on its existing lead-anchored path                       |
 
 ---
 
@@ -699,8 +699,8 @@ SELF_REGISTERABLE_ROLES = {BANK_ADMIN_ROLE, DEVELOPMENT_AGENT_ROLE, FARMER_ROLE}
 
 With no delivery channel, a farmer who forgets their password is locked out permanently. Mirror
 `seller.onboarding.reset_member_password`: an admin sets a temporary password with
-`a2c_must_change_password = 1`, and the farmer rotates it through the existing
-`api.auth.set_initial_password`. Both halves of that handshake already exist and are tested — this is
+`oan_must_change_password = 1`, and the farmer rotates it through the existing
+oan_auth_service's `POST /v1/auth/password/initial`. Both halves of that handshake already exist and are tested — this is
 a new caller, not a new mechanism.
 
 ---
@@ -822,5 +822,5 @@ themselves. Fix is one line — `{"Processing"}` — plus a `test_stats_cache.py
 | `farmer_profile` is assigned but never persisted                           | `api/v1/loan_applications.py:866`, absent from `a2c_loan_application.json` |
 | `Draft → Processing` is Development-Agent-only                             | `fixtures/workflow.json:295`                                               |
 | Consent is Fayda/OTP and lead-anchored                                     | `api/v1/consent/consent.py:27-49`                                          |
-| Notification infrastructure already exists                                 | `api/v1/notifications.py:17`                                               |
+| Notification infrastructure already exists                                 | `oan_auth_service.api.v1.notifications.notify_users`                       |
 | `lead_source` has no self-service option                                   | `a2c_lead.json:65-70`                                                      |

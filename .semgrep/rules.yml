@@ -1,0 +1,14 @@
+rules:
+  - id: oan-no-raw-sql
+    message: >-
+      Raw SQL is MariaDB-specific and bypasses the ORM, doc events and the Postgres
+      query rewrite. Use frappe.db.get_value / set_value / delete, frappe.get_all
+      with filters, or frappe.qb. If a statement truly has no ORM form, add
+      `# nosemgrep: oan-no-raw-sql` with the reason on the same line.
+    languages: [python]
+    severity: ERROR
+    pattern-either:
+      - pattern: frappe.db.sql(...)
+      - pattern: frappe.db.sql_ddl(...)
+      - pattern: frappe.db.multisql(...)
+      - pattern: frappe.db.sql_list(...)

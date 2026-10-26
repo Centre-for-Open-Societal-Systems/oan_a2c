@@ -1,0 +1,21 @@
+# Hand-written, not generated: generate_apisix_config_from_spec.py writes only
+# apisix-route.yaml and apisix-upstream.yaml.
+# APISIX terminates TLS for `hosts` with Secret `tls.secretName` (tls.crt, tls.key) in the
+# release namespace.
+{{- if and .Values.tls .Values.tls.secretName }}
+apiVersion: apisix.apache.org/v2
+kind: ApisixTls
+metadata:
+  name: oan-a2c-tls
+  labels:
+    app: oan-a2c
+spec:
+  ingressClassName: {{ .Values.ingressClassName | quote }}
+  hosts:
+{{- range (required "hosts is required with tls.secretName" .Values.hosts) }}
+  - {{ . | quote }}
+{{- end }}
+  secret:
+    name: {{ .Values.tls.secretName | quote }}
+    namespace: {{ .Release.Namespace | quote }}
+{{- end }}

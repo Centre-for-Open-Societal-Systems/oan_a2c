@@ -33,17 +33,36 @@ This application requires specific keys to be configured in your site's `site_co
 Used for securing authentication and session tokens:
 
 ```bash
-# Access-token signing keys: a map of key id ("kid") -> secret, plus the id that
-# new tokens are signed with. Rotate by adding a new id, pointing jwt_current_kid
-# at it, then dropping the old id once the longest-lived access token (15 min)
-# has expired. Every id still in the map is accepted on verification.
-bench --site mysite.localhost set-config jwt_secrets '{"v1": "your-jwt-signing-secret"}' --parse
+# Auth is served by oan_auth_service (install it first: it is a required app).
+# Access tokens are signed RS256. Generate a key with:
+#   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out sites/mysite.localhost/keys/jwt_v1.pem
+# jwt_private_keys maps key id ("kid") -> PEM path (or PEM text); jwt_current_kid is the
+# id new tokens are signed with. Rotate by adding a new id, pointing jwt_current_kid at
+# it, then dropping the old id once the longest-lived access token has expired.
+bench --site mysite.localhost set-config jwt_private_keys '{"v1": "keys/jwt_v1.pem"}' --parse
 bench --site mysite.localhost set-config jwt_current_kid "v1"
+
+# Must equal the `key` of the Kong issuer consumer (kong/kong.yml) and the token `iss` claim.
+bench --site mysite.localhost set-config jwt_issuer "https://auth.a2c.openagrinet.org/"
+
+# Refresh-token lifetimes in seconds. The frontend session cookies expect 1 day, or 30 days
+# with "remember me"; oan_auth_service defaults to 30 and 90 days.
+bench --site mysite.localhost set-config jwt_refresh_token_ttl 86400
+bench --site mysite.localhost set-config jwt_refresh_token_ttl_remember_me 2592000
+
+# Roles a caller may pick at POST /api/v1/auth/register without being an administrator.
+bench --site mysite.localhost set-config jwt_self_registerable_roles '["A2C Bank Admin", "A2C Farmer"]' --parse
+
+# Development Agents sign in only through the OpenG2P IAM service (SSO). IAM logins are
+# not site config: a System Manager adds one `OAN IAM Service` row per IAM login in the
+# desk (base URL, provider id, issuer, application, return origins). See "Delegated login"
+# in oan_auth_service's README. Give Development Agents the client role
+# `A2C Development Agent` on the row's `application` (role names are used as-is). A local
+# (password) account holding that role is refused on every API call.
 
 # Frappe's Fernet key for data at rest (Password fieldtypes, 2FA secrets). Must
 # stay stable for the life of the site: rotate it and every previously encrypted
-# value becomes undecryptable. Used as the token-signing fallback when
-# jwt_secrets is unset, but the two should be configured separately.
+# value becomes undecryptable. Not used for token signing.
 bench --site mysite.localhost set-config encryption_key "your-encryption-key-here"
 
 # HMAC key for consent receipt signatures.
@@ -75,8 +94,8 @@ bench --site mysite.localhost run-tests --app oan_a2c
 
 The A2C REST API is documented at three levels — a stakeholder-readable overview, a formal machine-readable contract, and the deployment/gateway setup:
 
-- **[`A2C_API_Specification.md`](docs/A2C_API_Specification.md)** — human-readable API reference: all 94 endpoints across the 10 resource domains (Identity & Access, Bank Onboarding & Administration, Bank Cataloging, Catalog Discovery, Applications, CRM/Leads & Field Ops, Loan Underwriting, Consent Management, Notifications, Inbound Webhooks), with a method/endpoint/description/access table per domain. Also covers authentication, gateway configuration, and response-format/pagination/rate-limiting appendices. Best starting point for anyone evaluating the API who isn't loading it into a tool.
-- **[`openapi/openapi_v1.public.yaml`](openapi/openapi_v1.public.yaml)** — the formal OpenAPI 3.0.3 contract: the same 94 endpoints with full request/response schemas and per-operation auth requirements. Load into Swagger UI, Postman, or a codegen tool.
+- **[`A2C_API_Specification.md`](docs/A2C_API_Specification.md)** — human-readable API reference: all 101 endpoints across the 10 resource domains (Identity & Access, Bank Onboarding & Administration, Bank Cataloging, Catalog Discovery, Applications, CRM/Leads & Field Ops, Loan Underwriting, Consent Management, Notifications, Inbound Webhooks), with a method/endpoint/description/access table per domain. Also covers authentication, gateway configuration, and response-format/pagination/rate-limiting appendices. Best starting point for anyone evaluating the API who isn't loading it into a tool.
+- **[`openapi/openapi_v1.public.yaml`](openapi/openapi_v1.public.yaml)** — the formal OpenAPI 3.0.3 contract: the same 101 endpoints with full request/response schemas and per-operation auth requirements. Load into Swagger UI, Postman, or a codegen tool.
 - **[`kong/README_kong_onboarding.md`](kong/README_kong_onboarding.md)** — how the API is deployed and secured behind Kong: authentication, throttling tiers, and onboarding a new external integration.
 
 ## Contributing
