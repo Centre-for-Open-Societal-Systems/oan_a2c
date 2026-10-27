@@ -386,37 +386,28 @@ def validate_email_string(v):
 
 
 def validate_phone_string(v):
-	"""Validate and normalize a phone number.
+	"""Validate a phone number with oan_auth_service's `validate_mobile`.
 
-	Single source of truth for phone validation across every API schema. Accepts
-	both international (`+251912345678`) and local (`0912345678`) formats, and
-	tolerates spaces/dashes/parens in the input (common when users paste). The
-	rule is on the digit count, not the punctuation:
-
-	  - strip everything except digits and a single leading '+'
-	  - require 10-15 digits
-	  - a leading 0 (local format) is allowed
-
-	Returns the normalized value (separators removed, '+' preserved if present).
+	One rule across login, sign-up and every a2c schema: an international mobile
+	number (`+251912345678`), checked by libphonenumber and returned as E.164.
 	Passes through None/empty so it composes with optional fields; required-ness
 	is enforced by the RequiredPhone variant.
+
+	`validate_mobile` signals failure with `frappe.throw`, which also queues a
+	message for the response. Pydantic validators must raise ValueError, so catch
+	it and drop the queued message.
 	"""
 	if v is None or v == "":
 		return v
-	import re
 
-	raw = str(v).strip()
-	has_plus = raw.startswith("+")
-	digits = re.sub(r"\D", "", raw)
+	from oan_auth_service.api.utils import validate_mobile
 
-	if not (10 <= len(digits) <= 15):
-		raise ValueError("Phone number must contain between 10 and 15 digits.")
-	# First significant digit can't be 0 for an international number; a local
-	# number may legitimately start with 0 (e.g. 0912345678).
-	if has_plus and digits.startswith("0"):
-		raise ValueError("An international (+) phone number cannot start with 0.")
-
-	return f"+{digits}" if has_plus else digits
+	try:
+		return validate_mobile(v)
+	except frappe.ValidationError as e:
+		if frappe.local.message_log:
+			frappe.local.message_log.pop()
+		raise ValueError(str(e)) from None
 
 
 def validate_required_phone_string(v):
