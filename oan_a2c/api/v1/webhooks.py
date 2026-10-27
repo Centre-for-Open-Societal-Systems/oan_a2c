@@ -45,8 +45,8 @@ def lead_inbound(
 	if not phone_number:
 		frappe.throw(_("phone_number is required"), frappe.MandatoryError)
 
-	# Same strict format rule as the user-facing create paths (10-15 digits,
-	# optional + country code). Telco input is external, so validate before we
+	# Same strict format rule as the user-facing create paths (international
+	# mobile number, E.164). Telco input is external, so validate before we
 	# persist it onto a lead.
 	try:
 		phone_number = validate_phone_string(phone_number)
