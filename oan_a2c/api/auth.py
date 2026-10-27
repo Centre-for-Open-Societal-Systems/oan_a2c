@@ -118,6 +118,9 @@ def _get_user_bank_context(user_id: str) -> dict[str, str | None]:
 	}
 
 
+AGENT_IAM_KEY = "agent"
+
+
 def require_sso_for_development_agents(user: str) -> str | None:
 	"""`revocation_check` for the a2c API namespaces: Development Agents sign in only through SSO.
 
@@ -126,7 +129,12 @@ def require_sso_for_development_agents(user: str) -> str | None:
 	IAM-provisioned users carry their roles from IAM, so the role alone decides.
 	"""
 	from oan_auth_service.api.iam_users import is_delegated_user
+	from oan_auth_service.config import settings
 
+	# No agent IAM option is offered (the providers list is only `local`), so the
+	# password form is the only way in and must work.
+	if not any(s.key == AGENT_IAM_KEY for s in settings.iam_services()):
+		return None
 	if is_delegated_user(user):
 		return None
 	if DEVELOPMENT_AGENT_ROLE in frappe.get_roles(user):

@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 import frappe
 
@@ -37,10 +38,19 @@ class TestDevelopmentAgentSSOOnly(unittest.TestCase):
 			frappe.delete_doc("User", user, force=True, ignore_permissions=True)
 
 	def test_local_development_agent_is_refused(self):
-		self.assertEqual(
-			require_sso_for_development_agents(self.local_dev_agent),
-			"Development Agents must sign in through SSO",
-		)
+		with mock.patch(
+			"oan_auth_service.config.settings.iam_services", return_value=[frappe._dict(key="agent")]
+		):
+			self.assertEqual(
+				require_sso_for_development_agents(self.local_dev_agent),
+				"Development Agents must sign in through SSO",
+			)
+
+	def test_local_development_agent_is_allowed_when_no_agent_option_is_offered(self):
+		with mock.patch(
+			"oan_auth_service.config.settings.iam_services", return_value=[frappe._dict(key="local")]
+		):
+			self.assertIsNone(require_sso_for_development_agents(self.local_dev_agent))
 
 	def test_iam_development_agent_is_allowed(self):
 		self.assertIsNone(require_sso_for_development_agents(self.iam_dev_agent))
