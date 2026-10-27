@@ -113,6 +113,9 @@ ssh -i "${SSH_KEY}" \
     docker compose exec -T backend bench --site mysite.localhost set-config jwt_self_registerable_roles '["A2C Bank Admin", "A2C Farmer"]' --parse || echo "WARN: jwt_self_registerable_roles set-config failed (continuing)"
 
     echo "=== Running migrations ==="
+    # Sync baked apps from image into the persistent volume's apps.txt before install/migrate
+    docker compose exec -T backend bash -c \
+        'for app in \$(ls -1 apps); do grep -qxF "\$app" sites/apps.txt 2>/dev/null || echo "\$app" >> sites/apps.txt; done'
     docker compose exec -T backend bench --site mysite.localhost install-app oan_auth_service || true
     docker compose exec -T backend bench --site mysite.localhost migrate
 
