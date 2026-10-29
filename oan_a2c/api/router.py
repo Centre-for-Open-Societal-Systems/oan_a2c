@@ -25,11 +25,13 @@ Frappe's matcher. Neither appears here.
 """
 
 import json
+import mimetypes
 import os
 import re
 from collections.abc import Callable
 from functools import lru_cache, wraps
 from typing import Any
+from urllib.parse import quote
 
 import frappe
 from oan_auth_service.api.middleware import register_namespace
@@ -152,6 +154,28 @@ def create_endpoint_wrapper(
 
 		if isinstance(result, Response):
 			return result
+
+		# Controllers written for Frappe's whitelisted-method style stream a file by
+		# setting response.type = "download" and returning nothing. Serialising that
+		# None would send the 4-byte body `null` instead of the file.
+		file_response = getattr(frappe.local, "response", None)
+		if file_response and file_response.get("type") == "download":
+			disposition = "inline" if file_response.get("display_content_as") == "inline" else "attachment"
+			content = file_response.get("filecontent") or b""
+			if isinstance(content, str):
+				content = content.encode()
+			res = Response(
+				content,
+				status=200,
+				content_type=mimetypes.guess_type(file_response.get("filename") or "")[0]
+				or "application/octet-stream",
+			)
+			res.headers["Content-Disposition"] = (
+				f"{disposition}; filename*=UTF-8''{quote(file_response.get('filename') or 'download')}"
+			)
+			if req_id := getattr(frappe.local, "request_id", None):
+				res.headers["X-Request-Id"] = req_id
+			return res
 
 		code = status
 		response = getattr(frappe.local, "response", None)

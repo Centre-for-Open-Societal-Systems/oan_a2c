@@ -1,0 +1,1663 @@
+{
+  "info": {
+    "_postman_id": "7254fbb0-2365-4208-91ce-70f03d91b23c",
+    "name": "OAN A2C - Farmer (IAM Portal + eSignet)",
+    "description": "Farmer flow for the A2C API (/api/v1):\n1. Log in through iam-bene-portal-api + eSignet (OTP). The IAM access token becomes the Bearer token.\n2. oan_auth_service validates the token through IAM get_user_profile and maps IAM client roles to A2C Farmer.\n3. Call farmer-facing endpoints: dashboard, catalog, saved products, applications.\nRun folder 1 first, then 2-5. Set individual id and OTP in the environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Farmer Login via IAM Bene Portal (eSignet)",
+      "item": [
+        {
+          "name": "1a. Get Login Providers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function() {",
+                  "    pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "    var data = pm.response.json();",
+                  "    pm.test('Has loginProviders', function () { pm.expect(data.loginProviders.length).to.be.above(0); });",
+                  "    var p = data.loginProviders[0];",
+                  "    pm.environment.set('provider_id', p.id);",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{iam_bene_url}}/auth/get_login_providers",
+              "host": [
+                "{{iam_bene_url}}"
+              ],
+              "path": [
+                "auth",
+                "get_login_providers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1b. Start Login Redirect (IAM -> eSignet)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function() {",
+                  "    pm.test('Status is 307', function () { pm.expect(pm.response.code).to.be.oneOf([302, 307]); });",
+                  "    var loc = pm.response.headers.get('Location') || '';",
+                  "    pm.test('Redirects to eSignet authorize', function () { pm.expect(loc).to.include('/authorize'); });",
+                  "    var q = {};",
+                  "    if (loc.indexOf('?') !== -1) {",
+                  "        loc.split('?')[1].split('&').forEach(function (part) {",
+                  "            var idx = part.indexOf('=');",
+                  "            if (idx !== -1) {",
+                  "                q[part.slice(0, idx)] = decodeURIComponent(part.slice(idx + 1).replace(/\\+/g, ' '));",
+                  "            }",
+                  "        });",
+                  "    }",
+                  "    pm.environment.set('iam_client_id', q.client_id || 'openg2p-beneficiary-esignet');",
+                  "    pm.environment.set('iam_redirect_uri', q.redirect_uri || 'http://localhost:3030/api/portal/auth/callback');",
+                  "    pm.environment.set('iam_state', q.state || '');",
+                  "    pm.environment.set('iam_nonce', q.nonce || '');",
+                  "    pm.environment.set('iam_code_challenge', q.code_challenge || '');",
+                  "    pm.environment.set('iam_code_challenge_method', q.code_challenge_method || 'S256');",
+                  "    pm.environment.set('iam_acr_values', q.acr_values || 'mosip:idp:acr:generated-code');",
+                  "    pm.environment.set('iam_scope', q.scope || 'openid profile email');",
+                  "    pm.environment.set('iam_claims', q.claims || '{}');",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{iam_bene_url}}/auth/get_login_provider_redirect/{{provider_id}}?redirect_uri={{iam_redirect_target}}",
+              "host": [
+                "{{iam_bene_url}}"
+              ],
+              "path": [
+                "auth",
+                "get_login_provider_redirect",
+                "{{provider_id}}"
+              ],
+              "query": [
+                {
+                  "key": "redirect_uri",
+                  "value": "{{iam_redirect_target}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "1c. Get eSignet CSRF Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function() {",
+                  "    pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "    var data = pm.response.json();",
+                  "    pm.environment.set('xsrf', data.token);",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{esignet_url}}/csrf/token",
+              "host": [
+                "{{esignet_url}}"
+              ],
+              "path": [
+                "csrf",
+                "token"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1d. eSignet OAuth Details (using IAM parameters)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('now', new Date().toISOString());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function() {",
+                  "    pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "    var b = pm.response.json();",
+                  "    if (b.response) {",
+                  "        pm.environment.set('txn', b.response.transactionId);",
+                  "        var hash = CryptoJS.SHA256(JSON.stringify(b.response)).toString(CryptoJS.enc.Base64).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');",
+                  "        pm.environment.set('oauth_hash', hash);",
+                  "    }",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{xsrf}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestTime\": \"{{now}}\",\n  \"request\": {\n    \"clientId\": \"{{iam_client_id}}\",\n    \"scope\": \"{{iam_scope}}\",\n    \"responseType\": \"code\",\n    \"redirectUri\": \"{{iam_redirect_uri}}\",\n    \"display\": \"popup\",\n    \"prompt\": \"login\",\n    \"acrValues\": \"{{iam_acr_values}}\",\n    \"nonce\": \"{{iam_nonce}}\",\n    \"state\": \"{{iam_state}}\",\n    \"claimsLocales\": \"en\",\n    \"uiLocales\": \"en\",\n    \"claims\": {\n      \"userinfo\": {\n        \"name\": {\n          \"essential\": false\n        }\n      },\n      \"id_token\": {}\n    },\n    \"codeChallenge\": \"{{iam_code_challenge}}\",\n    \"codeChallengeMethod\": \"{{iam_code_challenge_method}}\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{esignet_url}}/authorization/v2/oauth-details",
+              "host": [
+                "{{esignet_url}}"
+              ],
+              "path": [
+                "authorization",
+                "v2",
+                "oauth-details"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1e. eSignet Send OTP",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('now', new Date().toISOString());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function() {",
+                  "    pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "    var b = pm.response.json();",
+                  "    if (!b.response) {",
+                  "        var e = (b.errors || [])[0] || {};",
+                  "        throw new Error('eSignet send-otp error: ' + (e.errorCode || '?') + ' - ' + (e.errorMessage || JSON.stringify(b)));",
+                  "    }",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{xsrf}}"
+              },
+              {
+                "key": "oauth-details-key",
+                "value": "{{txn}}"
+              },
+              {
+                "key": "oauth-details-hash",
+                "value": "{{oauth_hash}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestTime\": \"{{now}}\",\n  \"request\": {\n    \"transactionId\": \"{{txn}}\",\n    \"individualId\": \"{{esignet_individual_id}}\",\n    \"otpChannels\": [\n      \"phone\"\n    ],\n    \"captchaToken\": \"x\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{esignet_url}}/authorization/send-otp",
+              "host": [
+                "{{esignet_url}}"
+              ],
+              "path": [
+                "authorization",
+                "send-otp"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1f. eSignet Authenticate OTP",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('now', new Date().toISOString());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function() {",
+                  "    pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "    var b = pm.response.json();",
+                  "    if (!b.response) {",
+                  "        var e = (b.errors || [])[0] || {};",
+                  "        throw new Error('eSignet authenticate error: ' + (e.errorCode || '?') + ' - ' + (e.errorMessage || JSON.stringify(b)));",
+                  "    }",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{xsrf}}"
+              },
+              {
+                "key": "oauth-details-key",
+                "value": "{{txn}}"
+              },
+              {
+                "key": "oauth-details-hash",
+                "value": "{{oauth_hash}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestTime\": \"{{now}}\",\n  \"request\": {\n    \"transactionId\": \"{{txn}}\",\n    \"individualId\": \"{{esignet_individual_id}}\",\n    \"challengeList\": [\n      {\n        \"authFactorType\": \"OTP\",\n        \"challenge\": \"{{esignet_otp}}\",\n        \"format\": \"alpha-numeric\"\n      }\n    ]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{esignet_url}}/authorization/v2/authenticate",
+              "host": [
+                "{{esignet_url}}"
+              ],
+              "path": [
+                "authorization",
+                "v2",
+                "authenticate"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1g. eSignet Authorize Claims & Get Code",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('now', new Date().toISOString());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function() {",
+                  "    pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "    var b = pm.response.json();",
+                  "    if (!b.response) {",
+                  "        var e = (b.errors || [])[0] || {};",
+                  "        throw new Error('eSignet error: ' + (e.errorCode || '?') + ' - ' + (e.errorMessage || JSON.stringify(b)));",
+                  "    }",
+                  "    pm.test('Received auth code from eSignet', function () { pm.expect(b.response.code).to.be.ok; });",
+                  "    pm.environment.set('auth_code', b.response.code);",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-XSRF-TOKEN",
+                "value": "{{xsrf}}"
+              },
+              {
+                "key": "oauth-details-key",
+                "value": "{{txn}}"
+              },
+              {
+                "key": "oauth-details-hash",
+                "value": "{{oauth_hash}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requestTime\": \"{{now}}\",\n  \"request\": {\n    \"transactionId\": \"{{txn}}\",\n    \"acceptedClaims\": [\n      \"name\"\n    ],\n    \"permittedAuthorizeScopes\": []\n  }\n}"
+            },
+            "url": {
+              "raw": "{{esignet_url}}/authorization/auth-code",
+              "host": [
+                "{{esignet_url}}"
+              ],
+              "path": [
+                "authorization",
+                "auth-code"
+              ]
+            }
+          }
+        },
+        {
+          "name": "1h. IAM Callback (Exchange Code & Set Session)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function() {",
+                  "    pm.test('Status is 302 or 307', function () { pm.expect(pm.response.code).to.be.oneOf([302, 307]); });",
+                  "    var setCookies = pm.response.headers.filter(function(h) { return h.key.toLowerCase() === 'set-cookie'; }).map(function(h) { return h.value; });",
+                  "    var findCookie = function(n) { var c = setCookies.find(function(v) { return v.indexOf(n + '=') === 0; }); return c ? c.split(';')[0].slice(n.length + 1) : ''; };",
+                  "    var idToken = findCookie('X-ID-Token');",
+                  "    var accessToken = findCookie('X-Access-Token');",
+                  "    if (idToken) { pm.environment.set('bene_token', idToken); }",
+                  "    if (accessToken) { pm.environment.set('bene_access_token', accessToken); }",
+                  "    pm.environment.set('iam_cookie_header', setCookies.map(function(c) { return c.split(';')[0]; }).join('; '));",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{iam_bene_url}}/auth/callback?state={{iam_state}}&code={{auth_code}}",
+              "host": [
+                "{{iam_bene_url}}"
+              ],
+              "path": [
+                "auth",
+                "callback"
+              ],
+              "query": [
+                {
+                  "key": "state",
+                  "value": "{{iam_state}}"
+                },
+                {
+                  "key": "code",
+                  "value": "{{auth_code}}"
+                }
+              ]
+            }
+          },
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          }
+        },
+        {
+          "name": "1i. Verify User Profile on IAM Portal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "(function() {",
+                  "    pm.test('Status is 200 or 401', function () { pm.expect([200, 401]).to.include(pm.response.code); });",
+                  "})();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Cookie",
+                "value": "{{iam_cookie_header}}"
+              }
+            ],
+            "url": {
+              "raw": "{{iam_bene_url}}/auth/get_user_profile",
+              "host": [
+                "{{iam_bene_url}}"
+              ],
+              "path": [
+                "auth",
+                "get_user_profile"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Identity (/api/v1/auth, /api/v1/me)",
+      "item": [
+        {
+          "name": "2a. Who Am I (token check)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/auth/me",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2b. Farmer Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/me/dashboard",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "dashboard"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200, 403]', function () { pm.expect([200, 403]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2c. Consent -> Farmer Profile (/api/v1/consent)",
+      "item": [
+        {
+          "name": "6a. Search Farmer by Fayda ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/consent/farmers?fayda_id={{esignet_individual_id}}",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "consent",
+                "farmers"
+              ],
+              "query": [
+                {
+                  "key": "fayda_id",
+                  "value": "{{esignet_individual_id}}",
+                  "disabled": false
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200, 404]', function () { pm.expect([200, 404]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6b. Consent Reasons",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/consent/reasons",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "consent",
+                "reasons"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200]', function () { pm.expect([200]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6c. Consent Allowed Fields",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/consent/allowed-fields",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "consent",
+                "allowed-fields"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var d = pm.response.json().data || [];",
+                  "if (d.length) { pm.environment.set('allowed_field_id', String(d[0].id)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6d. Request OTP (opens consent request)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/consent/otp",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "consent",
+                "otp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fayda_id\": \"{{esignet_individual_id}}\",\n  \"idempotency_key\": \"{{$guid}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var d = (pm.response.json().data) || {};",
+                  "pm.environment.set('consent_request', d.consent_request || '');",
+                  "pm.environment.set('consent_txn_id', d.transaction_id || '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6d-i. Find Latest OTP",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{otp_inbox_list_url}}/?list-type=2&prefix=otp/&max-keys=1000"
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var end = Date.now() + 4000; while (Date.now() < end) {}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var xml = pm.response.text();",
+                  "var keys = []; var re = /<Key>([^<]+)<\\/Key>/g; var m;",
+                  "while ((m = re.exec(xml)) !== null) { keys.push(m[1]); }",
+                  "keys = keys.filter(function (k) { return k.indexOf('otp/') === 0 && k.slice(-5) === '.json'; }).sort();",
+                  "pm.test('OTP file found', function () { pm.expect(keys.length).to.be.above(0); });",
+                  "if (keys.length) { pm.environment.set('latest_otp_key', keys[keys.length - 1]); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6d-ii. Read Latest OTP",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{otp_inbox_url}}/{{latest_otp_key}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var b = {}; try { b = pm.response.json(); } catch (e) {}",
+                  "var otp = b.otp || b.otp_code || (b.request && b.request.otp);",
+                  "var tx = b.transaction_id || b.transactionID || b.transactionId;",
+                  "pm.test('OTP present', function () { pm.expect(otp).to.be.ok; });",
+                  "if (otp) { pm.environment.set('otp_code', String(otp)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6e. Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/consent/otp/verify",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "consent",
+                "otp",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_request\": \"{{consent_request}}\",\n  \"transaction_id\": \"{{consent_txn_id}}\",\n  \"otp_code\": \"{{otp_code}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6f. Submit Consent (creates Farmer Profile)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/consent/requests",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "consent",
+                "requests"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"consent_request\": \"{{consent_request}}\",\n  \"consent_type\": \"specific\",\n  \"consent_reason_id\": 1,\n  \"allowed_data_field_ids\": [\n    \"{{allowed_field_id}}\"\n  ],\n  \"consent_form_filename\": \"consent.pdf\",\n  \"consent_form_base64\": \"JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgKHB5cGRmKQo+PgplbmRvYmoKMiAwIG9iago8PAovVHlwZSAvUGFnZXMKL0NvdW50IDEKL0tpZHMgWyA0IDAgUiBdCj4+CmVuZG9iagozIDAgb2JqCjw8Ci9UeXBlIC9DYXRhbG9nCi9QYWdlcyAyIDAgUgo+PgplbmRvYmoKNCAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgMjAwIDIwMCBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCnhyZWYKMCA1CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMDU0IDAwMDAwIG4gCjAwMDAwMDAxMTMgMDAwMDAgbiAKMDAwMDAwMDE2MiAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDUKL1Jvb3QgMyAwIFIKL0luZm8gMSAwIFIKPj4Kc3RhcnR4cmVmCjI1NgolJUVPRgo=\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6g. Dashboard after consent (profile bound)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/me/dashboard",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "me",
+                "dashboard"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200]', function () { pm.expect([200]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Catalog Discovery (/api/v1/catalog)",
+      "item": [
+        {
+          "name": "3a. Catalog Facets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/catalog/facets",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "catalog",
+                "facets"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3b. List Catalog Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/catalog/products?limit=20&start=0&sort_by=product_name&category=&tag=&region=&is_saved=&min_tenure_months=&max_tenure_months=&max_interest_rate=",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "catalog",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "start",
+                  "value": "0",
+                  "disabled": false
+                },
+                {
+                  "key": "sort_by",
+                  "value": "product_name",
+                  "disabled": false
+                },
+                {
+                  "key": "category",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "tag",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "region",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "is_saved",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "min_tenure_months",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "max_tenure_months",
+                  "value": "",
+                  "disabled": true
+                },
+                {
+                  "key": "max_interest_rate",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var items = (b.data && (b.data.products || b.data.items || b.data)) || [];",
+                  "if (Array.isArray(items) && items.length > 0) {",
+                  "    var p = items[0];",
+                  "    pm.environment.set('loan_product', p.name || p.id || p.product_id);",
+                  "    pm.environment.set('bank_id', p.bank || p.bank_id || '');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3c. Get Bank Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/catalog/banks/{{bank_id}}",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "catalog",
+                "banks",
+                "{{bank_id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200, 404]', function () { pm.expect([200, 404]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3d. Save Product",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/catalog/saved-products/{{loan_product}}",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "catalog",
+                "saved-products",
+                "{{loan_product}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200, 201, 404, 405]', function () { pm.expect([200, 201, 404, 405]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3e. List Saved Products",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/catalog/saved-products",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "catalog",
+                "saved-products"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 2xx', function () { pm.expect(pm.response.code).to.be.within(200, 299); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3f. Unsave Product",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/catalog/saved-products/{{loan_product}}",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "catalog",
+                "saved-products",
+                "{{loan_product}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200, 204, 404, 405]', function () { pm.expect([200, 204, 404, 405]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. Farmer Applications (/api/v1/applications)",
+      "item": [
+        {
+          "name": "4a. Create Application (draft)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/applications",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "applications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loan_product\": \"{{loan_product}}\",\n  \"requested_amount\": 500,\n  \"loan_reason\": \"Seed and fertilizer for the next season\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Created, or 400 when user has no Farmer Profile yet', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201, 400]); });",
+                  "try { var d = pm.response.json().data; if (d && (d.application_id || d.name || d.id)) { pm.environment.set('application_id', d.application_id || d.name || d.id); } } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4b. List My Applications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/applications?limit=20&start=0&status=",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "applications"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "disabled": false
+                },
+                {
+                  "key": "start",
+                  "value": "0",
+                  "disabled": false
+                },
+                {
+                  "key": "status",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json(); var items = (b.data && (b.data.items || b.data)) || [];",
+                  "if ((!pm.environment.get('application_id') || pm.environment.get('application_id') === 'NONE') && Array.isArray(items) && items.length) { pm.environment.set('application_id', items[0].application_id || items[0].name || items[0].id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4c. Get My Application",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/applications/{{application_id}}",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "applications",
+                "{{application_id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200, 404]', function () { pm.expect([200, 404]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4d. Update My Application",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/applications/{{application_id}}",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "applications",
+                "{{application_id}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requested_amount\": 800,\n  \"loan_reason\": \"Updated: seed, fertilizer and irrigation\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200, 404, 409, 422]', function () { pm.expect([200, 404, 409, 422]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4e. Submit My Application",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/applications/{{application_id}}/submit",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "applications",
+                "{{application_id}}",
+                "submit"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200, 400, 404, 409, 422]', function () { pm.expect([200, 400, 404, 409, 422]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. Application Documents",
+      "item": [
+        {
+          "name": "5a. List Application Documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{bene_access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{a2c_url}}/api/v1/loan-applications/{{application_id}}/documents",
+              "host": [
+                "{{a2c_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "loan-applications",
+                "{{application_id}}",
+                "documents"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['loan_product','bank_id','application_id'].forEach(function (k) { var v = pm.environment.get(k); if (!v || v === 'NONE') { pm.environment.set(k, 'NONE'); } });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status in [200, 403, 404]', function () { pm.expect([200, 403, 404]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

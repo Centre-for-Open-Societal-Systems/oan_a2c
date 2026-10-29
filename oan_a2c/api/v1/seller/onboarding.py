@@ -431,7 +431,10 @@ def download_kyc_document(**kwargs):
 	file_doc = frappe.get_doc("File", file_name)
 
 	frappe.local.response.filename = file_doc.file_name
-	frappe.local.response.filecontent = file_doc.get_content()
+	# Raw bytes: File.get_content() decodes anything that parses as text, which
+	# corrupts a binary file's bytes once they are re-encoded for the response.
+	with open(file_doc.get_full_path(), "rb") as f:
+		frappe.local.response.filecontent = f.read()
 	frappe.local.response.type = "download"
 	if kwargs.get("view"):
 		frappe.local.response.display_content_as = "inline"
