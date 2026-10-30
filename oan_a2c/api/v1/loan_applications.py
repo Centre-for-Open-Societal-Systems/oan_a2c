@@ -327,7 +327,10 @@ def get_basic_profile(lead_id: str | None = None, include_consent_data: bool | N
 	if consent_id:
 		consent_doc_data = (
 			frappe.db.get_value(
-				"A2C Consent Request", consent_id, ["status", "otp_verified_at"], as_dict=True
+				"A2C Consent Request",
+				consent_id,
+				["status", "otp_verified_at", "farmer_fayda_id"],
+				as_dict=True,
 			)
 			or {}
 		)
@@ -335,6 +338,7 @@ def get_basic_profile(lead_id: str | None = None, include_consent_data: bool | N
 			"name": consent_id,
 			"status": consent_doc_data.get("status"),
 			"otp_verified": bool(consent_doc_data.get("otp_verified_at")),
+			"farmer_fayda_id": consent_doc_data.get("farmer_fayda_id"),
 		}
 		if include_consent_data:
 			data.update(_get_consent_details(consent_id))
