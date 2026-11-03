@@ -331,6 +331,7 @@ class TestLoansV1API(ApiTestCase):
 		self.assertTrue(res["data"]["farmer_profile_created"])
 		self.assertEqual(res["data"]["first_name"], "API_TEST_FARMER")
 		self.assertEqual(res["data"]["phone_number"], "+251999888777")
+		self.assertEqual(res["data"]["consent_request"]["farmer_fayda_id"], "123456789")
 		self.assertNotIn("loan_amount", res["data"])
 
 		# Verify consent fields are NOT returned by default
