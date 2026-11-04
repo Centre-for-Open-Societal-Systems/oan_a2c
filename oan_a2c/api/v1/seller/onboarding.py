@@ -113,6 +113,13 @@ class UpdateBankProfileSchema(BaseModel):
 	registered_phone: RequiredPhone | None = None
 	logo: str | None = Field(None, max_length=255)
 
+	@field_validator("registered_zone")
+	@classmethod
+	def zone_not_blank(cls, v: str | None) -> str | None:
+		if v is not None and not v.strip():
+			raise ValueError("Zone is required.")
+		return v
+
 
 class SaveOrgContactsSchema(BaseModel):
 	gro_name: str = Field(..., min_length=1, max_length=140)
