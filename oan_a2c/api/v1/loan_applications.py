@@ -417,6 +417,20 @@ def get_full_profile(**kwargs):
 	doc = _get_app(application_id)
 	status_info = status_payload(doc)
 
+	farmer_id = doc.farmer_id
+	if doc.id_type == "uid" and doc.id_number:
+		farmer_id = doc.id_number
+	elif doc.consent_id:
+		farmer_id = frappe.db.get_value("A2C Consent Request", doc.consent_id, "farmer_fayda_id") or farmer_id
+
+	loan_officer_name = None
+	if doc.loan_officer:
+		loan_officer_name = (
+			frappe.db.get_value("User", doc.loan_officer, "full_name")
+			or frappe.db.get_value("User", {"email": doc.loan_officer}, "full_name")
+			or doc.loan_officer
+		)
+
 	data = {
 		"application_id": doc.name,
 		"lead_id": doc.lead_id,
@@ -429,7 +443,7 @@ def get_full_profile(**kwargs):
 		"phone_number": doc.phone_number,
 		"id_type": doc.id_type,
 		"id_number": doc.id_number,
-		"farmer_id": doc.farmer_id,
+		"farmer_id": farmer_id,
 		"consent_id": doc.consent_id,
 		"loan_type": _resolve_loan_type(doc),
 		"loan_product": doc.loan_product,
@@ -442,6 +456,7 @@ def get_full_profile(**kwargs):
 		"is_terminal": status_info["is_terminal"],
 		"is_successful": status_info["is_successful"],
 		"loan_officer": doc.loan_officer,
+		"loan_officer_name": loan_officer_name,
 		"creation": to_tz_aware_iso(doc.creation),
 		"date_of_birth": str(doc.date_of_birth) if doc.date_of_birth else None,
 		"gender": doc.gender,
