@@ -73,7 +73,7 @@ def _make_lead_verifiable(lead_id):
 			"zone": "West Hararghe",
 			"woreda": "Chiro",
 			"kebele": "01",
-			"status": "Scheduled",
+			"status": "Completed",
 		}
 	).insert(ignore_permissions=True)
 
@@ -878,6 +878,28 @@ class TestLeadStatusUpdateAPI(unittest.TestCase):
 			if frappe.db.exists(doctype, name):
 				frappe.delete_doc(doctype, name, ignore_permissions=True, force=True)
 		frappe.db.commit()
+
+	def test_verify_requires_completed_visit(self):
+		"""A Scheduled (not yet Completed) visit must not satisfy the verification prerequisite."""
+		from oan_a2c.api.v1.leads import update_lead_status
+
+		# setUp resets status only; earlier tests can leave workflow_state at Processed/Rejected.
+		frappe.db.set_value("A2C Lead", self.lead_id, {"status": "Active", "workflow_state": "Active"})
+		self._verifiable_cleanup = _make_lead_verifiable(self.lead_id)
+		visit_name = next(
+			name for doctype, name in self._verifiable_cleanup if doctype == "A2C Visit Schedule"
+		)
+		frappe.db.set_value("A2C Visit Schedule", visit_name, "status", "Scheduled")
+
+		res = update_lead_status(lead_id=self.lead_id, status="Verified")
+		self.assertEqual(res["status"], "error")
+		self.assertEqual(res["code"], "VALIDATION_ERROR")
+		self.assertIn("completed visit", res["message"])
+		self.assertEqual(frappe.db.get_value("A2C Lead", self.lead_id, "status"), "Active")
+
+		frappe.db.set_value("A2C Visit Schedule", visit_name, "status", "Completed")
+		update_lead_status(lead_id=self.lead_id, status="Verified")
+		self.assertEqual(frappe.db.get_value("A2C Lead", self.lead_id, "status"), "Verified")
 
 	def test_1_update_status_success(self):
 		"""Verifies that update_lead_status successfully updates status and records the reason as a timeline comment."""
