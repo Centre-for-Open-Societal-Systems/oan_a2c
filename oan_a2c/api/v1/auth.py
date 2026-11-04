@@ -18,7 +18,8 @@ def create_user_account(
 	if frappe.db.exists("User", email):
 		return frappe.get_doc("User", email)
 
-	if frappe.db.exists("User", {"mobile_no": phone_number}):
+	phone_number = (phone_number or "").strip()
+	if phone_number and frappe.db.exists("User", {"mobile_no": phone_number}):
 		return None
 
 	first_name, _sep, last_name = full_name.strip().partition(" ")
@@ -28,7 +29,7 @@ def create_user_account(
 		"email": email,
 		"first_name": first_name,
 		"last_name": last_name,
-		"mobile_no": phone_number,
+		"mobile_no": phone_number or None,
 		"send_welcome_email": 0,
 		"new_password": password,
 		"oan_must_change_password": 1 if must_change_password else 0,
