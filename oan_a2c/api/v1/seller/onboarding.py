@@ -91,6 +91,7 @@ class RegisterBankSchema(BaseModel):
 
 class UpdateBankProfileSchema(BaseModel):
 	bank_name: str | None = Field(None, max_length=140)
+	bank_code: str | None = Field(None, max_length=140)
 	brand_name: str | None = Field(None, max_length=140)
 	website: str | None = Field(
 		None,
@@ -112,6 +113,13 @@ class UpdateBankProfileSchema(BaseModel):
 	registered_email: SafeEmail | None = None
 	registered_phone: RequiredPhone | None = None
 	logo: str | None = Field(None, max_length=255)
+
+	@field_validator("bank_code")
+	@classmethod
+	def bank_code_not_blank(cls, v: str | None) -> str | None:
+		if v is not None and not re.sub(r"[^A-Za-z0-9]", "", v):
+			raise ValueError("Registration number is required.")
+		return v
 
 	@field_validator("registered_zone")
 	@classmethod
@@ -578,6 +586,16 @@ def update_bank_profile(**kwargs):
 		frappe.throw(_("Only Bank Admins can update the organization profile."), frappe.PermissionError)
 
 	doc = frappe.get_doc("A2C Participating Bank", bank)
+
+	new_bank_code = kwargs.get("bank_code")
+	if new_bank_code is not None:
+		new_bank_code = normalize_tin(new_bank_code)
+		if new_bank_code != doc.bank_code:
+			if frappe.db.exists(
+				"A2C Participating Bank", {"bank_code": new_bank_code, "name": ["!=", doc.name]}
+			):
+				frappe.throw(_("This registration number is already in use."), frappe.ValidationError)
+			doc.bank_code = new_bank_code
 
 	editable_fields = [
 		"bank_name",
