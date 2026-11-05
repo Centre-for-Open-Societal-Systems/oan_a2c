@@ -351,6 +351,21 @@ def get_leads(**kwargs):
 			lead["visit_date"] = visit.get("visit_date") if visit else None
 			lead["schedule_status"] = visit.get("status") if visit else None
 
+		# When the lead's status last changed: the newest "Status Changed" audit event, or the
+		# creation time when it has never changed (its first status was set on creation).
+		# One query for the page, like credit info and visits above.
+		latest_status_change = {}
+		for event in frappe.get_all(
+			"A2C Lead Audit Event",
+			filters={"lead": ["in", lead_names], "event_type": "Status Changed"},
+			fields=["lead", "creation"],
+			order_by="creation desc",
+		):
+			latest_status_change.setdefault(event["lead"], event["creation"])
+
+		for lead in leads:
+			lead["status_changed_at"] = latest_status_change.get(lead["name"]) or lead["creation"]
+
 		# A2C Lead itself stores no location -- it lives on the linked farmer profile,
 		# which only exists once the lead has been through basic profiling. One batched
 		# query for the page (same idiom as credit info and visits above); leads with no
