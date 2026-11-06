@@ -11,7 +11,7 @@ transactional table, and each response reports the snapshot's time in
 `meta.as_of`.
 
 Guest access is deliberate at this layer: the dashboards hold no A2C user, and
-once the Kong gateway enforces authorization it is the gateway that checks the
+once the APISIX gateway enforces authorization it is the gateway that checks the
 dashboards' API key (see the spec's DashboardKeyAuth). What keeps the route safe
 here is what it can return:
 

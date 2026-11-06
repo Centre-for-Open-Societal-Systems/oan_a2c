@@ -22,8 +22,8 @@ def lead_inbound(
 
 	Authentication: two hops, neither of them JWT.
 
-	The partner authenticates to Kong with a `key-auth` credential. Kong then
-	rewrites the Authorization header to a Frappe API key/secret for a dedicated
+	The partner authenticates to the APISIX gateway with a `key-auth` credential.
+	The gateway then rewrites the Authorization header to a Frappe API key/secret for a dedicated
 	service user (`Authorization: token <key>:<secret>`), which Frappe validates
 	in validate_auth_via_api_keys() before auth_hooks run. The route is declared
 	an API-key path to oan_auth_service's middleware, which refuses any other
@@ -31,7 +31,7 @@ def lead_inbound(
 
 	The route is deliberately *not* registered as a guest route: without that
 	credential the request is rejected before reaching this function, so a caller
-	who bypasses Kong and hits the origin directly gets a 401 rather than a lead.
+	who bypasses the gateway and hits the origin directly gets a 401 rather than a lead.
 
 	Idempotency contract (spec §4.4):
 	  - Primary Check: By External Reference ID. If a lead already exists with this

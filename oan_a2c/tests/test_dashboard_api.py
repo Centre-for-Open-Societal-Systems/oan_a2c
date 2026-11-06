@@ -375,30 +375,6 @@ class TestDashboardApi(unittest.TestCase):
 		self.assertFalse(is_guest_operation({"security": [{"BearerAuth": []}]}))
 		self.assertFalse(is_guest_operation({"security": [{"DashboardKeyAuth": [], "BearerAuth": []}]}))
 
-	def test_gateway_protects_the_charts_with_the_dashboard_key(self):
-		"""Kong: key-auth plus an ACL that admits only the dashboards' consumer."""
-		import importlib.util
-		import os
-
-		path = os.path.join(frappe.get_app_path("oan_a2c"), "..", "kong", "generate_kong_config_from_spec.py")
-		spec = importlib.util.spec_from_file_location("a2c_kong_generator", path)
-		generator = importlib.util.module_from_spec(spec)
-		spec.loader.exec_module(generator)
-
-		config = generator.build_config(
-			generator.reconcile(generator.spec_routes(generator.load_spec(generator.SPEC_PATH)))
-		)
-		route = next(r for r in config["services"][0]["routes"] if "charts" in r["paths"][0])
-		plugins = {p["name"]: p["config"] for p in route["plugins"]}
-		self.assertEqual(plugins["key-auth"]["key_names"], ["apikey"])
-		self.assertTrue(plugins["key-auth"]["hide_credentials"])
-		self.assertEqual(plugins["acl"]["allow"], ["dashboards"])
-		self.assertEqual(plugins["rate-limiting"]["limit_by"], "consumer")
-
-		consumer = next(c for c in config["consumers"] if c["username"] == "oan-dashboards")
-		self.assertEqual(consumer["acls"], [{"group": "dashboards"}])
-		self.assertIn("DECK_OAN_DASHBOARDS_API_KEY", consumer["keyauth_credentials"][0]["key"])
-
 	def test_namespace_declares_one_scheme_per_path(self):
 		"""Charts are public, inbound webhooks take an API key, everything else a JWT."""
 		from oan_auth_service.api import middleware

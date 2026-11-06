@@ -42,7 +42,8 @@ Used for securing authentication and session tokens:
 bench --site mysite.localhost set-config jwt_private_keys '{"v1": "keys/jwt_v1.pem"}' --parse
 bench --site mysite.localhost set-config jwt_current_kid "v1"
 
-# Must equal the `key` of the Kong issuer consumer (kong/kong.yml) and the token `iss` claim.
+# Must equal the token `iss` claim, and OAN_JWT_ISSUER of the gateway's issuer consumer when
+# APISIX verifies tokens itself (GATEWAY_JWT in apisix/generate_apisix_config_from_spec.py).
 bench --site mysite.localhost set-config jwt_issuer "https://auth.a2c.openagrinet.org/"
 
 # Refresh-token lifetimes in seconds. The frontend session cookies expect 1 day, or 30 days
@@ -96,7 +97,7 @@ The A2C REST API is documented at three levels — a stakeholder-readable overvi
 
 - **[`A2C_API_Specification.md`](docs/A2C_API_Specification.md)** — human-readable API reference: all 101 endpoints across the 10 resource domains (Identity & Access, Bank Onboarding & Administration, Bank Cataloging, Catalog Discovery, Applications, CRM/Leads & Field Ops, Loan Underwriting, Consent Management, Notifications, Inbound Webhooks), with a method/endpoint/description/access table per domain. Also covers authentication, gateway configuration, and response-format/pagination/rate-limiting appendices. Best starting point for anyone evaluating the API who isn't loading it into a tool.
 - **[`openapi/openapi_v1.public.yaml`](openapi/openapi_v1.public.yaml)** — the formal OpenAPI 3.0.3 contract: the same 101 endpoints with full request/response schemas and per-operation auth requirements. Load into Swagger UI, Postman, or a codegen tool.
-- **[`kong/README_kong_onboarding.md`](kong/README_kong_onboarding.md)** — how the API is deployed and secured behind Kong: authentication, throttling tiers, and onboarding a new external integration.
+- **[`apisix/README.md`](apisix/README.md)** — how the API is deployed and secured behind the APISIX gateway: authentication, throttling tiers, and partner consumers.
 
 ## Contributing
 

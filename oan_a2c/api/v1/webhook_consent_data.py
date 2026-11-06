@@ -528,9 +528,9 @@ def receive_consent_data(**kwargs):
 	Requires `Authorization: token <api_key>:<api_secret>` and write permission
 	on A2C Consent Request. Used by direct callers (Postman, Odoo server action).
 
-	Behind Kong the header is supplied by the gateway's request-transformer, not
-	by the partner: the partner presents a `key-auth` credential, Kong replaces
-	it with the Frappe service user's key/secret. That service user therefore
+	Behind the APISIX gateway the header is supplied by the gateway's proxy-rewrite,
+	not by the partner: the partner presents a `key-auth` credential, the gateway
+	replaces it with the Frappe service user's key/secret. That service user therefore
 	needs a role carrying write DocPerm on A2C Consent Request — enforce_permission
 	below is a real check, not a formality.
 	"""

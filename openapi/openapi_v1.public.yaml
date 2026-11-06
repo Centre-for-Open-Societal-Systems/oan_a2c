@@ -4472,7 +4472,7 @@ components:
       type: apiKey
       in: header
       name: apikey
-      description: API key of the OAN dashboards (Kong consumer `oan-dashboards`, group `dashboards`).
+      description: API key of the OAN dashboards (gateway consumer `a2c-oan-dashboards`).
         Checked and stripped by the gateway; the platform itself treats the route as public, so today,
         before the gateway enforces keys, the header is simply ignored.
   schemas:

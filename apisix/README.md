@@ -15,20 +15,20 @@ adc sync -f apisix/adc.yaml --label-selector app=oan-a2c
 
 Shared logic lives in `oan_auth_service/gateway_apisix.py`, so the generator runs in a bench
 that has `oan_auth_service` installed. The throttling tiers and the `(method, path) -> tier`
-table are read from `kong/generate_kong_config_from_spec.py` while Kong is still in service.
-Change them there. The generator refuses to run while an operation has no tier.
+table are `TIERS` and `TIER_OVERRIDES` in the generator. The generator refuses to run while an
+operation has no tier.
 
 Manage a gateway with either the Ingress Controller or `adc sync`, never both. Each one
 overwrites the other's routes.
 
-## What the gateway does, compared with Kong
+## What the gateway does
 
-| Spec security       | Gateway                                                                                                                                                                                                                                                             |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BearerAuth`        | Rate limit by client address. Frappe's JWT middleware verifies the token. Kong's `jwt` plugin, which had a placeholder key, is not carried over                                                                                                                     |
-| none                | Rate limit by client address                                                                                                                                                                                                                                        |
-| `PartnerApiKeyAuth` | `key-auth` (header `apikey`). `consumer-restriction` to the partner consumers, which is stricter than Kong, where any key-auth consumer could call these routes. `ip-restriction`. Rate limit per consumer. `Authorization` is set to the Frappe service credential |
-| `DashboardKeyAuth`  | `key-auth` and `consumer-restriction` to the dashboards consumer. Rate limit per consumer                                                                                                                                                                           |
+| Spec security       | Gateway                                                                                                                                                                                                                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BearerAuth`        | Rate limit by client address. Frappe's JWT middleware verifies the token                                                                                                                                                                                                         |
+| none                | Rate limit by client address                                                                                                                                                                                                                                                     |
+| `PartnerApiKeyAuth` | `key-auth` (header `apikey`). `consumer-restriction` to the one partner consumer of each endpoint (`PARTNER_ENDPOINTS`), so a partner cannot call another partner's endpoint. `ip-restriction`. Rate limit per consumer. `Authorization` is set to the Frappe service credential |
+| `DashboardKeyAuth`  | `key-auth` and `consumer-restriction` to the dashboards consumer. Rate limit per consumer                                                                                                                                                                                        |
 
 There is also `/files/*` (GET and HEAD, `static-assets` tier) with a long `Cache-Control`.
 Request IDs and Prometheus metrics are global rules on the shared gateway, not per app.
@@ -38,15 +38,22 @@ Request IDs and Prometheus metrics are global rules on the shared gateway, not p
 Nothing secret is in the generated files. APISIX resolves `$env://NAME` from its own
 environment:
 
-| Variable                                                            | Holds                                                                                       |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `A2C_FRAPPE_SERVICE_AUTHORIZATION`                                  | `token <api_key>:<api_secret>` of the login-disabled Frappe service user for partner routes |
-| `A2C_OPENG2P_CONSENT_WEBHOOK_KEY`, `A2C_TELCO_IVR_LEAD_GATEWAY_KEY` | Partner API keys                                                                            |
-| `A2C_OAN_DASHBOARDS_KEY`                                            | OAN dashboards API key                                                                      |
+| Variable                           | Holds                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| `A2C_FRAPPE_SERVICE_AUTHORIZATION` | `token <api_key>:<api_secret>` of the login-disabled Frappe service user for partner routes |
+| `A2C_OPENG2P_CONSENT_WEBHOOK_KEY`  | Partner API key                                                                             |
+| `OAN_IVR_VENDOR_KEY`               | Telco IVR vendor API key, shared with grievance                                             |
+| `A2C_OAN_DASHBOARDS_KEY`           | OAN dashboards API key                                                                      |
 
 In Kubernetes, the consumer keys come from Secrets instead. There is one Secret per
 consumer, named after it (key `key`), in the release namespace. Only
 `A2C_FRAPPE_SERVICE_AUTHORIZATION` is needed in the APISIX pods' environment.
+
+The telco IVR vendor also calls grievance with the same key, so its consumer,
+`oan-ivr-vendor`, is shared (`gateway_apisix.SHARED_CONSUMERS`). This chart does not create
+it: the APISIX release does (oan-helm `apisix.yaml`, `extraDeploy`), with its Secret in that
+release's namespace. The partner routes whitelist `<sharedConsumerNamespace>_oan-ivr-vendor`,
+so set `sharedConsumerNamespace` to that namespace.
 
 ## Kubernetes
 

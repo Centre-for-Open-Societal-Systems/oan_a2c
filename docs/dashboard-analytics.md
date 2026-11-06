@@ -54,9 +54,9 @@ another 15 minutes).
 
 ## Access
 
-The chart route is guest in Frappe. It is public today; once the Kong gateway enforces
+The chart route is guest in Frappe. It is public today; once the APISIX gateway enforces
 authorization, the gateway checks the dashboards' API key (`DashboardKeyAuth` in the spec, the
-`oan-dashboards` consumer in `kong/kong.yml`), and the backend host is not reachable directly. Rows
+`a2c-oan-dashboards` consumer in `apisix/adc.yaml`), and the backend host is not reachable directly. Rows
 never carry a farmer name, phone, ID, consent value, document or record id.
 
 ## Operations

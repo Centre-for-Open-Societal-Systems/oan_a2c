@@ -8,21 +8,21 @@ This document provides a tabular, bordered-ready specification for all APIs cove
 
 ### 1.1 Identity, Authentication & Profile APIs
 
-| Method    | Endpoint                    | Legacy RPC Method                                   | Auth Required  | Rate Limit    | Purpose                                                                                                           |
-| :-------- | :-------------------------- | :-------------------------------------------------- | :------------- | :------------ | :---------------------------------------------------------------------------------------------------------------- |
-| **POST**  | `/v1/auth/login`            | `oan_auth_service.api.v1.auth.login`                | Public (Guest) | Kong per-IP   | Authenticate; returns 15-min RS256 access token, refresh token, roles. Identifier may be email, phone or user id. |
-| **POST**  | `/v1/auth/register`         | `oan_auth_service.api.v1.auth.register_user`        | Public (Guest) | Kong per-IP   | Self-register for roles in `jwt_self_registerable_roles`; returns `{user, roles}`; no tokens (sign in next).      |
-| **POST**  | `/v1/auth/refresh`          | `oan_auth_service.api.v1.auth.refresh`              | Public (Guest) | Kong per-IP   | Single-use rotation of the refresh token; returns a new token pair.                                               |
-| **POST**  | `/v1/auth/logout`           | `oan_auth_service.api.v1.auth.logout`               | Public (Guest) | Kong per-IP   | Revokes the refresh token.                                                                                        |
-| **POST**  | `/v1/auth/password/initial` | `oan_auth_service.api.v1.auth.set_initial_password` | Public (Guest) | 10/5min (IP)  | Replaces a temporary admin-issued password (`oan_must_change_password=1`).                                        |
-| **POST**  | `/v1/auth/password/forgot`  | `oan_auth_service.api.v1.auth.forgot_password`      | Public (Guest) | Kong per-IP   | Starts password recovery by email link or SMS one-time code.                                                      |
-| **POST**  | `/v1/auth/password/reset`   | `oan_auth_service.api.v1.auth.reset_password`       | Public (Guest) | 10/h (IP)     | Completes the reset with `key`, or `usr` + `otp`.                                                                 |
-| **PATCH** | `/v1/me/password`           | `oan_a2c.api.auth.change_password`                  | Bearer (JWT)   | 5/5min (User) | Authenticated user changes password after verifying existing password.                                            |
-| **GET**   | `/v1/auth/me`               | `oan_auth_service.api.v1.auth.get_me`               | Bearer (JWT)   | Standard      | Returns identity and roles. a2c adds `profiles.a2c` with user type and linked bank context.                       |
-| **GET**   | `/v1/me/profile`            | `oan_a2c.api.auth.get_user_profile`                 | Bearer (JWT)   | Standard      | Returns full user profile (personal details, contact, organization, employee ID, member since).                   |
-| **PATCH** | `/v1/me/profile`            | `oan_a2c.api.auth.update_profile`                   | Bearer (JWT)   | Standard      | Updates personal details (name, phone, language, gender, and verified avatar image).                              |
-| **POST**  | `/v1/consent/otp`           | `oan_a2c.api.v1.consent.consent.request_otp`        | Bearer (JWT)   | 3/min (User)  | Dispatches Fayda National ID OTP for identity authentication.                                                     |
-| **POST**  | `/v1/consent/otp/verify`    | `oan_a2c.api.v1.consent.consent.verify_otp`         | Bearer (JWT)   | 5/min (User)  | Verifies Fayda National ID OTP code for consent capture.                                                          |
+| Method    | Endpoint                    | Legacy RPC Method                                   | Auth Required  | Rate Limit     | Purpose                                                                                                           |
+| :-------- | :-------------------------- | :-------------------------------------------------- | :------------- | :------------- | :---------------------------------------------------------------------------------------------------------------- |
+| **POST**  | `/v1/auth/login`            | `oan_auth_service.api.v1.auth.login`                | Public (Guest) | Gateway per-IP | Authenticate; returns 15-min RS256 access token, refresh token, roles. Identifier may be email, phone or user id. |
+| **POST**  | `/v1/auth/register`         | `oan_auth_service.api.v1.auth.register_user`        | Public (Guest) | Gateway per-IP | Self-register for roles in `jwt_self_registerable_roles`; returns `{user, roles}`; no tokens (sign in next).      |
+| **POST**  | `/v1/auth/refresh`          | `oan_auth_service.api.v1.auth.refresh`              | Public (Guest) | Gateway per-IP | Single-use rotation of the refresh token; returns a new token pair.                                               |
+| **POST**  | `/v1/auth/logout`           | `oan_auth_service.api.v1.auth.logout`               | Public (Guest) | Gateway per-IP | Revokes the refresh token.                                                                                        |
+| **POST**  | `/v1/auth/password/initial` | `oan_auth_service.api.v1.auth.set_initial_password` | Public (Guest) | 10/5min (IP)   | Replaces a temporary admin-issued password (`oan_must_change_password=1`).                                        |
+| **POST**  | `/v1/auth/password/forgot`  | `oan_auth_service.api.v1.auth.forgot_password`      | Public (Guest) | Gateway per-IP | Starts password recovery by email link or SMS one-time code.                                                      |
+| **POST**  | `/v1/auth/password/reset`   | `oan_auth_service.api.v1.auth.reset_password`       | Public (Guest) | 10/h (IP)      | Completes the reset with `key`, or `usr` + `otp`.                                                                 |
+| **PATCH** | `/v1/me/password`           | `oan_a2c.api.auth.change_password`                  | Bearer (JWT)   | 5/5min (User)  | Authenticated user changes password after verifying existing password.                                            |
+| **GET**   | `/v1/auth/me`               | `oan_auth_service.api.v1.auth.get_me`               | Bearer (JWT)   | Standard       | Returns identity and roles. a2c adds `profiles.a2c` with user type and linked bank context.                       |
+| **GET**   | `/v1/me/profile`            | `oan_a2c.api.auth.get_user_profile`                 | Bearer (JWT)   | Standard       | Returns full user profile (personal details, contact, organization, employee ID, member since).                   |
+| **PATCH** | `/v1/me/profile`            | `oan_a2c.api.auth.update_profile`                   | Bearer (JWT)   | Standard       | Updates personal details (name, phone, language, gender, and verified avatar image).                              |
+| **POST**  | `/v1/consent/otp`           | `oan_a2c.api.v1.consent.consent.request_otp`        | Bearer (JWT)   | 3/min (User)   | Dispatches Fayda National ID OTP for identity authentication.                                                     |
+| **POST**  | `/v1/consent/otp/verify`    | `oan_a2c.api.v1.consent.consent.verify_otp`         | Bearer (JWT)   | 5/min (User)   | Verifies Fayda National ID OTP code for consent capture.                                                          |
 
 ---
 
@@ -56,7 +56,7 @@ This document provides a tabular, bordered-ready specification for all APIs cove
 > them under `/api/v1/...`. The endpoint-level contract is documented in `oan_auth_service/docs/API_DOCUMENTATION.md`.
 >
 > **Rate limiting.** `oan_auth_service` limits only the password-recovery flows itself. Login, register and refresh
-> are limited at the Kong gateway (`public-auth` tier, per IP). A request that reaches the app directly is unlimited.
+> are limited at the APISIX gateway (`public-auth` tier, per IP). A request that reaches the app directly is unlimited.
 
 > **Development Agents sign in only through SSO.** They authenticate with the OpenG2P IAM service (Keycloak behind
 > it); the frontend's `/api/auth/sso/*` routes run that login and forward IAM's access token as the Bearer token.
