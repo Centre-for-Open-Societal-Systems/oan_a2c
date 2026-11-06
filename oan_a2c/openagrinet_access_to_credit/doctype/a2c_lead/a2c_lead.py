@@ -68,6 +68,47 @@ class A2CLead(Document):
 
 	def on_trash(self):
 		self._clear_number_card_cache()
+		self._remove_lead_owned_records()
+
+	def _remove_lead_owned_records(self):
+		"""
+		Let a lead be deleted together with the records that only exist for it.
+
+		Runs from on_trash, which Frappe calls before its link check. The lead and
+		its consent request point at each other (A2C Lead.consent_id and the consent
+		request's reference_name), and a Processed/Granted/Rejected lead cannot be
+		saved, so the link could never be cleared and neither record could go. The
+		pointers are cleared with db.set_value, which skips the save-time lock.
+
+		A lead with a loan application is a committed record, so nothing is removed
+		and the standard link check refuses the delete. Delete permission on the
+		lead (System Manager / A2C Administrator) is what gates this.
+		"""
+		if frappe.db.exists("A2C Loan Application", {"lead_id": self.name}):
+			return
+
+		consents = frappe.get_all(
+			"A2C Consent Request",
+			filters={"reference_doctype": "A2C Lead", "reference_name": self.name},
+			pluck="name",
+		)
+		if self.consent_id and self.consent_id not in consents:
+			consents.append(self.consent_id)
+
+		if consents:
+			frappe.db.set_value("A2C Lead", self.name, "consent_id", None, update_modified=False)
+			self.consent_id = None
+			# The farmer profile outlives the lead; only its pointer to the consent goes.
+			for profile in frappe.get_all(
+				"A2C Farmer Profile", filters={"consent_id": ["in", consents]}, pluck="name"
+			):
+				frappe.db.set_value("A2C Farmer Profile", profile, "consent_id", None, update_modified=False)
+			for consent in consents:
+				frappe.delete_doc("A2C Consent Request", consent, ignore_permissions=True)
+
+		for doctype in ("A2C Credit Information", "A2C Visit Schedule", "A2C Lead Audit Event"):
+			for name in frappe.get_all(doctype, filters={"lead": self.name}, pluck="name"):
+				frappe.delete_doc(doctype, name, ignore_permissions=True)
 
 	def _clear_number_card_cache(self):
 		"""
