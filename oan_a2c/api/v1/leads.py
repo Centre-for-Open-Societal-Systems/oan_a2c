@@ -13,7 +13,7 @@ from frappe import _
 from frappe.utils import sanitize_html, strip_html
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from oan_a2c.a2c_marketplace.roles import BANK_AGENT_ROLE, DEVELOPMENT_AGENT_ROLE
+from oan_a2c.a2c_marketplace.roles import DEVELOPMENT_AGENT_ROLE
 from oan_a2c.api.utils import (
 	RequiredPhone,
 	SafeDate,
@@ -724,7 +724,7 @@ def update_lead_status(**kwargs):
 @handle_api_errors
 def get_assignable_users(**kwargs):
 	"""
-	Retrieves potential lead assignees: active Users having roles 'Development Agent' or 'Bank Agent'.
+	Retrieves potential lead assignees: active Users having the 'Development Agent' role.
 	Optionally filters by search_query (full_name, name, or email) and supports pagination.
 	"""
 	frappe.has_permission("A2C Lead", "read", throw=True)
@@ -733,12 +733,12 @@ def get_assignable_users(**kwargs):
 	start_idx = kwargs.get("start") or 0
 	page_len = kwargs.get("page_length") or 20
 
-	# Fetch Users linked to either 'Development Agent' or 'Bank Agent' role.
+	# Fetch Users linked to the 'Development Agent' role.
 	# ignore_permissions=True is required here because standard users (like Bank Agent)
 	# do not have permission to read/query the Has Role doctype.
 	role_users = frappe.get_list(
 		"Has Role",
-		filters={"role": ["in", [DEVELOPMENT_AGENT_ROLE, BANK_AGENT_ROLE]]},
+		filters={"role": DEVELOPMENT_AGENT_ROLE},
 		pluck="parent",
 		ignore_permissions=True,
 	)
