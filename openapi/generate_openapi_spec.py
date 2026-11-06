@@ -2743,7 +2743,7 @@ doc = {
 				"type": "apiKey",
 				"in": "header",
 				"name": "apikey",
-				"description": "API key of the OAN dashboards (Kong consumer `oan-dashboards`, group `dashboards`). Checked and stripped by the gateway; the platform itself treats the route as public, so today, before the gateway enforces keys, the header is simply ignored.",
+				"description": "API key of the OAN dashboards (gateway consumer `a2c-oan-dashboards`). Checked and stripped by the gateway; the platform itself treats the route as public, so today, before the gateway enforces keys, the header is simply ignored.",
 			},
 		},
 		"schemas": components_schemas,
@@ -2753,7 +2753,7 @@ doc = {
 
 with open(INTERNAL_SPEC_OUTPUT, "w") as f:  # nosemgrep: frappe-security-file-traversal
 	f.write("# A2C API -- OpenAPI 3.0.3 (INTERNAL / engineering build artifact)\n")
-	f.write("# Carries x-legacy-rpc-method + x-schema-confidence for the Kong/BFF build-out.\n")
+	f.write("# Carries x-legacy-rpc-method + x-schema-confidence for the gateway/BFF build-out.\n")
 	f.write(
 		"# Generated from generate_openapi_spec.py -- do not hand-edit; change the generator and re-run.\n"
 	)

@@ -241,17 +241,17 @@ If you must expose a permanent URL, commit to a **hostname you control** (`https
 
 **Known gaps**
 
-| Gap                                                                                                                | Impact                                                                                                                                            |
-| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Public files are served directly off the app origin (`/files/`), and Kong has no route for them                    | At gateway cutover, when the app ingress is firewalled to Kong only, every logo and avatar breaks. Decide the media origin _before_ that cutover. |
-| Business records store `file_url` strings (`kyc_document`, `consent_form_attachment`, `logo`) rather than file IDs | A storage migration becomes a data migration across historical regulatory records.                                                                |
-| Uploads are base64-in-JSON with a 5 MB cap                                                                         | Acceptable at current sizes; will not survive larger documents. Direct-to-storage upload is the exit.                                             |
-| No malware scanning on uploaded documents                                                                          | Bank-supplied PDFs are ingested unscanned.                                                                                                        |
-| No sharing model                                                                                                   | If document sharing is ever required, build the share-record pattern from §5 — do not hand out presigned URLs.                                    |
+| Gap                                                                                                                | Impact                                                                                                                                  |
+| ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Public files are served off the app origin (`/files/`), through the gateway's `/files/*` route                     | Every logo and avatar load counts against the `static-assets` rate limit and hits Frappe. Decide the media origin before traffic grows. |
+| Business records store `file_url` strings (`kyc_document`, `consent_form_attachment`, `logo`) rather than file IDs | A storage migration becomes a data migration across historical regulatory records.                                                      |
+| Uploads are base64-in-JSON with a 5 MB cap                                                                         | Acceptable at current sizes; will not survive larger documents. Direct-to-storage upload is the exit.                                   |
+| No malware scanning on uploaded documents                                                                          | Bank-supplied PDFs are ingested unscanned.                                                                                              |
+| No sharing model                                                                                                   | If document sharing is ever required, build the share-record pattern from §5 — do not hand out presigned URLs.                          |
 
 **Suggested order of work**
 
-1. Decide the public media hostname before the Kong cutover (blocking; everything else is not).
+1. Decide the public media hostname (blocking; everything else is not).
 2. Migrate `file_url` columns to file IDs with a resolver — cheapest now, most expensive later.
 3. Move the public tier to object storage + CDN (public bucket only; private files stay where they are — this keeps both download endpoints working untouched).
 4. Direct-to-storage upload for the private tier when document sizes demand it.

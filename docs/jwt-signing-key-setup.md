@@ -11,7 +11,7 @@ This guide covers a one-time manual setup on an already-running A2C site (develo
 | `jwt_private_keys` | `{"v1": "keys/jwt_v1.pem"}` | Maps each key id (`kid`) to a PEM file path (relative to the site directory) or the PEM text. |
 | `jwt_current_kid`  | `v1`                        | The `kid` used to sign new tokens.                                                            |
 
-Verifiers (Kong, APISIX, other apps) need no secret. They read the public half from `GET /api/v1/auth/keys` (JWKS).
+Verifiers (APISIX, other apps) need no secret. They read the public half from `GET /api/v1/auth/keys` (JWKS).
 
 The old `jwt_secrets` (HS256) value is ignored by `oan_auth_service`. Leave it in place until the gateway verifies with JWKS.
 

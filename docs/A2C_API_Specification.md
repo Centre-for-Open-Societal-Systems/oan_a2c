@@ -67,25 +67,25 @@ Endpoints marked “Public” in the Access column require no credential — thi
 
 ---
 
-## 5. Gateway Configuration (Kong)
+## 5. Gateway Configuration (APISIX)
 
-All traffic to the A2C API passes through an API gateway (Kong) before reaching the platform. The gateway enforces four things on every request: identity verification, traffic throttling, routing to the correct backend, and request logging. It does not contain business logic — approval rules, bank-scoping, and data validation continue to live in the A2C platform itself, so this layer adds protection without duplicating the platform's own rules.
+All traffic to the A2C API passes through an API gateway (Apache APISIX) before reaching the platform. The gateway enforces four things on every request: identity verification, traffic throttling, routing to the correct backend, and request logging. It does not contain business logic — approval rules, bank-scoping, and data validation continue to live in the A2C platform itself, so this layer adds protection without duplicating the platform's own rules.
 
 **Deployment Model**
 
 The gateway configuration is declarative — the entire routing and policy setup is a single reviewable file, deployed the same way as any other infrastructure change: version-controlled and applied through CI, never edited by hand in production. This keeps a complete history of every change to how the API is exposed.
 
-> _Note: the gateway vendor changed its licensing terms in 2025 — some distributions now require a paid license for full functionality. A2C is deployed on the fully open, license-free distribution, consistent with the platform's no-vendor-lock-in principle. This is a deliberate architectural choice, not a temporary workaround._
+> _Note: Apache APISIX is an Apache Software Foundation project under the Apache 2.0 license, consistent with the platform's no-vendor-lock-in principle._
 
 **Authentication at the Gateway**
 
 The gateway recognizes three credential types:
 
-| Credential             | Used By                                                                              | What the Gateway Checks                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| **Bearer Token (JWT)** | All signed-in users — farmers, bank staff, development agents                        | Signature and expiry only                                                                                     |
-| **Partner API Key**    | The two inbound webhook receivers (Consent Management, Inbound Webhooks)             | A valid, provisioned key, plus the caller's IP address against an allowlist                                   |
-| **Dashboard API Key**  | The OAN programme dashboards, reading the aggregate charts (`/v1/charts/{chart_id}`) | A valid key held by the `oan-dashboards` consumer, whose group is the only one the charts' access list admits |
+| Credential             | Used By                                                                              | What the Gateway Checks                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| **Bearer Token (JWT)** | All signed-in users — farmers, bank staff, development agents                        | Nothing: the platform verifies signature and expiry. The gateway only rate-limits                  |
+| **Partner API Key**    | The two inbound webhook receivers (Consent Management, Inbound Webhooks)             | A valid key held by that endpoint's own partner, plus the caller's IP address against an allowlist |
+| **Dashboard API Key**  | The OAN programme dashboards, reading the aggregate charts (`/v1/charts/{chart_id}`) | A valid key held by the `a2c-oan-dashboards` consumer, the only consumer the charts route admits   |
 
 Role-based permissions — which bank a user belongs to, which actions their role allows — are enforced by the A2C platform itself, not the gateway. This keeps a single, consistent source of truth for authorization rather than duplicating those rules in two places.
 
@@ -93,15 +93,15 @@ Role-based permissions — which bank a user belongs to, which actions their rol
 
 Every endpoint is assigned to one of seven traffic tiers, each with its own allowance. This protects the platform from being overwhelmed and gives integration partners predictable capacity to plan against. A caller that exceeds its limit receives an HTTP 429 response (see Appendix A) rather than the request being queued or delayed.
 
-| Tier                           | Applies To                                                                             | Limit                        |
-| ------------------------------ | -------------------------------------------------------------------------------------- | ---------------------------- |
-| **Public / Authentication**    | Login, registration, password recovery                                                 | **5 requests/min · 30/hour** |
-| **Core Account**               | Profile, notifications                                                                 | **120/min · 4,000/hour**     |
-| **Farmer App**                 | Catalog browsing, applications, dashboard                                              | **90/min · 3,000/hour**      |
-| **Bank & Partner Integration** | Onboarding, cataloging, underwriting, consent — higher tiers available by partner plan | **300/min · 15,000/hour**    |
-| **Internal CRM**               | Lead & field-agent tools                                                               | **600/min · 30,000/hour**    |
-| **Inbound Webhooks**           | Registry and telco receivers                                                           | **3,000/min · 120,000/hour** |
-| **Document Uploads**           | KYC and supporting documents                                                           | **10/min · 200/hour**        |
+| Tier                           | Applies To                                    | Limit                        |
+| ------------------------------ | --------------------------------------------- | ---------------------------- |
+| **Public / Authentication**    | Login, registration, password recovery        | **5 requests/min · 30/hour** |
+| **Core Account**               | Profile, notifications                        | **120/min · 4,000/hour**     |
+| **Farmer App**                 | Catalog browsing, applications, dashboard     | **90/min · 3,000/hour**      |
+| **Bank & Partner Integration** | Onboarding, cataloging, underwriting, consent | **300/min · 15,000/hour**    |
+| **Internal CRM**               | Lead & field-agent tools                      | **600/min · 30,000/hour**    |
+| **Inbound Webhooks**           | Registry and telco receivers                  | **3,000/min · 120,000/hour** |
+| **Document Uploads**           | KYC and supporting documents                  | **10/min · 200/hour**        |
 
 **Additional Protections**
 

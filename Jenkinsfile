@@ -20,7 +20,7 @@
 //  NOTE (staging_aws prereq): ${STAGING_APP_DIR} must be provisioned on BACKEND_IP
 //  before the first staging_aws build — a copy of /opt/oan_a2c with its own .env
 //  (ECR_IMAGE on oan/a2c) and DISTINCT host ports (dev uses frontend 8080 and
-//  kong 8000-8001; give staging e.g. 8090 and 8010-8011) plus its own site, so the
+//  gateway 8000-8001; give staging e.g. 8090 and 8010-8011) plus its own site, so the
 //  two stacks don't collide. Same box, different image tag + different compose app.
 //
 //  Tags:  <branch>-<build>   immutable, pinned by oan-kustomize / deploy-ec2.sh

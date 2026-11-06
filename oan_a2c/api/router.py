@@ -46,7 +46,7 @@ NAMESPACE = "/api/v1"
 _rules: list[Rule] = []
 _exempt_paths: set[str] = set()
 
-# Inbound webhooks: called by a partner through Kong, which rewrites the
+# Inbound webhooks: called by a partner through the APISIX gateway, which rewrites the
 # Authorization header to `token <key>:<secret>` of a dedicated Frappe service
 # user. Frappe validates that credential before auth_hooks run, and the
 # middleware then requires it: a Bearer token, a desk `sid` or no credential at
@@ -288,7 +288,7 @@ def get_routes_spec() -> list[tuple[str, str, str]]:
 
 # Security schemes the gateway alone checks, and strips before the request reaches
 # Frappe. A route whose every requirement is one of these is guest to the platform:
-# Kong is what refuses a caller without the credential.
+# the gateway is what refuses a caller without the credential.
 GATEWAY_ONLY_SCHEMES = frozenset({"DashboardKeyAuth"})
 
 
@@ -314,7 +314,7 @@ def _register_spec_routes():
 
 	for method, path, endpoint_str in routes:
 		# Auth endpoints are owned and registered by oan_auth_service. The spec still
-		# lists them so Kong and the docs know the paths.
+		# lists them so the gateway and the docs know the paths.
 		if endpoint_str.startswith("oan_auth_service."):
 			continue
 

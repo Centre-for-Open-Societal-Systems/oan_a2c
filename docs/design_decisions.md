@@ -14,7 +14,7 @@ Entries marked **Open** record a decision that shipped without its reason being 
 
 1. [One module inside `oan_a2c`, not a separate app](#1-one-module-inside-oan_a2c-not-a-separate-app)
 2. [Stateless JWT with rotating refresh tokens](#2-stateless-jwt-with-rotating-refresh-tokens)
-3. [REST routes behind Kong](#3-rest-routes-behind-kong)
+3. [REST routes behind the API gateway](#3-rest-routes-behind-the-api-gateway)
 4. [Runtime: independent processes that talk through Redis](#4-runtime-independent-processes-that-talk-through-redis)
 
 **Tenancy and roles**
@@ -90,24 +90,24 @@ Login, refresh, logout and the password flows, and the middleware that reads the
 
 ---
 
-## 3. REST routes behind Kong
+## 3. REST routes behind the API gateway
 
-**Decision.** Endpoints are declared as REST routes under `/api/v1` on Frappe's own URL map, instead of Frappe's default `/api/method/<dotted.path>` style. Kong sits in front of everything:
+**Decision.** Endpoints are declared as REST routes under `/api/v1` on Frappe's own URL map, instead of Frappe's default `/api/method/<dotted.path>` style. The APISIX gateway sits in front of everything:
 
-- people send a JWT, checked by Kong's `jwt` plugin;
-- partner systems (IVR telco, consent registry) send a Kong API key, restricted by IP;
-- for partner webhooks, Kong swaps the partner key for a Frappe service credential before forwarding.
+- people send a JWT, verified by the JWT middleware in Frappe; the gateway rate-limits;
+- partner systems (IVR telco, consent registry) send a gateway API key, restricted by IP;
+- for partner webhooks, the gateway swaps the partner key for a Frappe service credential before forwarding.
 
 **Why.**
 
 - Stable, resource-shaped URLs do not change when a Python file is moved or renamed. The old dotted paths did.
-- An OpenAPI spec and the Kong config can be generated from the declared routes, so documentation and gateway cannot drift from the code.
+- An OpenAPI spec and the APISIX config are generated from the declared routes, so documentation and gateway cannot drift from the code.
 - Routes marked as guest are also registered as exempt in the JWT middleware from the same declaration, so the two lists cannot drift apart.
-- Partners never hold Frappe credentials. Revoking a partner means removing its Kong key, not rotating a platform secret.
+- Partners never hold Frappe credentials. Revoking a partner means removing its gateway key, not rotating a platform secret.
 
 **Considered.** Keeping `/api/method` paths. Rejected because every refactor broke the frontend and Postman.
 
-**Note.** Kong's `key-auth` accepts any consumer's key on any key-auth route. If partners must be isolated from each other's webhooks, add Kong's `acl` plugin.
+**Note.** `key-auth` alone accepts any consumer's key on any key-auth route. Each partner webhook route therefore admits only its own consumer (`consumer-restriction`), so partners cannot call each other's webhooks.
 
 ---
 
