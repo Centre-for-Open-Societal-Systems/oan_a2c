@@ -2,7 +2,7 @@
 
 Three services, two credentials:
 
-- Registry Agent API (`/agent_portal/vc/lookup_beneficiary`) — finds the farmer
+- Registry staff API (`/register-data/search_in_a_register`) — finds the farmer
   by national ID. Called with the *caller's own* bearer token: Development Agents
   sign in through the OpenG2P IAM, so the token on this request is already one
   the registry accepts.
@@ -83,6 +83,19 @@ class DriftWarnModel(BaseModel):
 
 
 # ─── Response schemas ─────────────────────────────────────────────────────────
+
+
+# The Farmer register's id in the farmer registry (g2p_register_definitions); overridable in settings.
+FARMER_REGISTER_ID = "a1a4d25a-1cd4-4356-abac-985a0b3c6bcd"
+
+
+# Default consent subject type (settings `subject_id_type` overrides): the Aggregation Layer only accepts the Fayda FIN.
+SUBJECT_ID_TYPE = "FIN"
+
+
+def _fayda_digits(value) -> str:
+	"""A Fayda ID with any "FAN-" prefix and spacing removed, so IDs compare by their digits."""
+	return "".join(ch for ch in str(value or "") if ch.isdigit())
 
 
 class AgentLookupResult(DriftWarnModel):
@@ -351,6 +364,7 @@ class OpenG2PClient:
 				_("An agent sign-in is required to search the farmer registry."), frappe.PermissionError
 			)
 
+		wanted = _fayda_digits(national_id)
 		envelope = {
 			"request_header": {
 				"request_id": str(uuid.uuid4()),
@@ -358,14 +372,20 @@ class OpenG2PClient:
 				"sender_app_mnemonic": "oan_a2c",
 				"sender_app_url": frappe.utils.get_url(),
 			},
-			"request_body": {"request_payload": {"national_id": national_id}},
+			"request_body": {
+				# The registry's search text indexes the bare foundational (Fayda) number, so a "FAN-" prefix is dropped.
+				"pagination_request": {"current_page": 1, "page_size": 10, "search_text": wanted},
+				"request_payload": {
+					"register_id": self.settings.get("farmer_register_id") or FARMER_REGISTER_ID
+				},
+			},
 		}
 		# iam_core's CsrfMiddleware wants the double-submit pair on every POST, even
 		# with a bearer token: the same random value as X-CSRF-Token cookie and header.
 		csrf = frappe.generate_hash(length=32)
 		body = self._request(
 			"POST",
-			f"{self.settings.agent_api_url}/agent_portal/vc/lookup_beneficiary",
+			f"{self.settings.agent_api_url}/register-data/search_in_a_register",
 			token=token,
 			json=envelope,
 			headers={"X-CSRF-Token": csrf, "Cookie": f"X-CSRF-Token={csrf}"},
@@ -375,20 +395,23 @@ class OpenG2PClient:
 		if str(header.get("response_status", "")).upper() == "ERROR":
 			error_message = header.get("response_error_message") or ""
 			frappe.log_error(
-				f"Agent lookup_beneficiary error {header.get('response_error_code')}: {error_message}",
+				f"Registry search_in_a_register error {header.get('response_error_code')}: {error_message}",
 				"OpenG2P Error",
 			)
-			if "not found" in error_message.lower() or "no record" in error_message.lower():
-				frappe.throw(
-					_("Farmer with Fayda ID '{0}' not found.").format(national_id), frappe.DoesNotExistError
-				)
 			frappe.throw(_(error_message or "Farmer lookup failed."))
 
-		payload = (body.get("response_body") or {}).get("response_payload")
-		if not payload:
+		# A search is a text match, so only a hit whose foundational ID is exactly this one counts.
+		hits = (body.get("response_body") or {}).get("response_payload") or []
+		match = next((h for h in hits if _fayda_digits(h.get("foundational_id")) == wanted), None)
+		if not match:
 			frappe.throw(
 				_("Farmer with Fayda ID '{0}' not found.").format(national_id), frappe.DoesNotExistError
 			)
+		payload = {
+			"internal_record_id": match.get("internal_record_id"),
+			"register_id": self.settings.get("farmer_register_id") or FARMER_REGISTER_ID,
+			"record_name": match.get("record_name"),
+		}
 
 		farmer = self._parse(AgentLookupResult, payload, "lookup_beneficiary").model_dump()
 		frappe.cache().set_value(cache_key, farmer, expires_in_sec=3600)
@@ -423,7 +446,10 @@ class OpenG2PClient:
 
 		body = {
 			"method": "otp",
-			"subject_id": {"type": "national_id", "value": national_id},
+			"subject_id": {
+				"type": self.settings.get("subject_id_type") or SUBJECT_ID_TYPE,
+				"value": _fayda_digits(national_id),
+			},
 			"purpose": {"code": purpose},
 			"grants": grants,
 		}
@@ -477,7 +503,7 @@ class OpenG2PClient:
 							"query_type": "beneficiary360",
 							"query": {
 								"@context": "https://schemas.openg2p.org/beneficiary360/v1/context.jsonld",
-								"foundationalId": national_id,
+								"foundationalId": _fayda_digits(national_id),
 								"timeframe": self.settings.timeframe or "Timeframe-Medium",
 								"sections": ["REGISTRIES"],
 							},

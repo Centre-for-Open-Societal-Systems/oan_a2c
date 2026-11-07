@@ -11,6 +11,7 @@
     "column_break_endpoints",
     "aggregation_url",
     "agent_api_url",
+    "farmer_register_id",
     "verify_ssl",
     "partner_section",
     "partner_realm",
@@ -23,6 +24,7 @@
     "partner_password",
     "consent_section",
     "purpose_code",
+    "subject_id_type",
     "timeframe"
   ],
   "fields": [
@@ -57,11 +59,18 @@
       "label": "Aggregation Layer URL"
     },
     {
-      "description": "Registry Agent API base URL (serves /agent_portal/vc/lookup_beneficiary). On dev this is currently the same host as the staff API, e.g. https://staff-farmer-development.oanstaging.com.",
+      "description": "Registry staff API base URL, used for the farmer search (POST /register-data/search_in_a_register), e.g. https://staff-farmer.development.oanstaging.com.",
       "fieldname": "agent_api_url",
       "fieldtype": "Data",
       "options": "URL",
-      "label": "Agent API URL"
+      "label": "Farmer Registry Staff API URL"
+    },
+    {
+      "default": "a1a4d25a-1cd4-4356-abac-985a0b3c6bcd",
+      "description": "Id of the Farmer register in the farmer registry, searched for the farmer lookup.",
+      "fieldname": "farmer_register_id",
+      "fieldtype": "Data",
+      "label": "Farmer Register ID"
     },
     {
       "default": "1",
@@ -130,6 +139,13 @@
       "fieldname": "purpose_code",
       "fieldtype": "Data",
       "label": "Purpose Code"
+    },
+    {
+      "default": "FIN",
+      "description": "Type of the Fayda ID sent as the consent subject and used to query the Aggregation Layer. It must be one of the partner binding's allowed subject ID types; the Aggregation Layer currently accepts only FIN.",
+      "fieldname": "subject_id_type",
+      "fieldtype": "Data",
+      "label": "Subject ID Type"
     },
     {
       "default": "Timeframe-Medium",
