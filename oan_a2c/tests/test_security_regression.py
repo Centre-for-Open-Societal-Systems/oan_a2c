@@ -191,6 +191,50 @@ class TestSecurityRegression(unittest.TestCase):
 		self.assertEqual(res.get("status"), "success", f"A3: own logo rejected: res={res}")
 		self.assertEqual(frappe.db.get_value("A2C Participating Bank", bank.name, "logo"), own.file_url)
 
+	# ---------- registration number (bank_code) is saved by update_bank_profile ----------
+	def test_bank_admin_can_change_registration_number(self):
+		from oan_a2c.api.v1.seller.onboarding import update_bank_profile
+
+		h = frappe.generate_hash(length=6)
+		bank = _bank(h, f"RG{h[:5]}")
+		admin = _user(f"rgadmin-{h}@ex.com", BANK_ADMIN_ROLE)
+		_bind(admin, bank.name)
+
+		frappe.set_user(admin)
+		res = update_bank_profile(bank_code=f"reg-{h}-99")
+		self.assertEqual(res.get("status"), "success", f"registration number not saved: res={res}")
+		self.assertEqual(
+			frappe.db.get_value("A2C Participating Bank", bank.name, "bank_code"), f"REG{h.upper()}99"
+		)
+
+	def test_registration_number_already_used_by_another_bank_is_rejected(self):
+		from oan_a2c.api.v1.seller.onboarding import update_bank_profile
+
+		h = frappe.generate_hash(length=6)
+		other = _bank(h, f"OT{h[:5]}")
+		bank = _bank(f"{h}x", f"MY{h[:5]}")
+		admin = _user(f"dupadmin-{h}@ex.com", BANK_ADMIN_ROLE)
+		_bind(admin, bank.name)
+
+		frappe.set_user(admin)
+		res = update_bank_profile(bank_code=other.bank_code)
+		self.assertEqual(res.get("status"), "error", f"duplicate registration number accepted: res={res}")
+		self.assertEqual(
+			frappe.db.get_value("A2C Participating Bank", bank.name, "bank_code"), bank.bank_code
+		)
+
+	def test_blank_registration_number_is_rejected(self):
+		from oan_a2c.api.v1.seller.onboarding import update_bank_profile
+
+		h = frappe.generate_hash(length=6)
+		bank = _bank(h, f"BL{h[:5]}")
+		admin = _user(f"bladmin-{h}@ex.com", BANK_ADMIN_ROLE)
+		_bind(admin, bank.name)
+
+		frappe.set_user(admin)
+		res = update_bank_profile(bank_code="  - ")
+		self.assertEqual(res.get("status"), "error", f"blank registration number accepted: res={res}")
+
 	# ---------- D15: an A2C Administrator is recognized as a platform admin ----------
 	# is_platform_admin now also returns True for the ADMIN_ROLE, not just the
 	# built-in Administrator user / System Manager.
