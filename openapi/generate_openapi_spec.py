@@ -1206,7 +1206,12 @@ REQ["UploadSupportingDocumentsRequest"] = OBJ(
 
 REQ["RequestOtpRequest"] = adapt_request_schema("RequestOTPSchema")
 REQ["VerifyOtpRequest"] = adapt_request_schema("VerifyOTPSchema")
-REQ["SubmitConsentRequest"] = adapt_request_schema("SubmitConsentSchema")
+REQ["ResendOtpRequest"] = OBJ(
+	{"lead_id": S(nullable=True), "consent_request": S()},
+	required=["consent_request"],
+)
+# The OTP is the consent now; the signed PDF form is optional.
+REQ["SubmitConsentRequest"] = adapt_request_schema("SubmitConsentSchema", new_required=["consent_request"])
 REQ["ReceiveConsentDataRequest"] = adapt_request_schema("ReceiveConsentDataSchema")
 
 _NOTIFICATION_IDS = {
@@ -2381,6 +2386,16 @@ ROUTES = [
 	),
 	R(
 		"post",
+		"/v1/consent/otp/resend",
+		"Resend the one-time code",
+		"Consent Management",
+		"bearer",
+		"ResendOtpRequest",
+		response="OtpRequestData",
+		legacy="oan_a2c.api.v1.consent.consent.resend_otp",
+	),
+	R(
+		"post",
 		"/v1/consent/requests",
 		"Submit a signed consent request",
 		"Consent Management",
@@ -2485,7 +2500,7 @@ ROUTES = [
 		legacy="oan_a2c.api.v1.dashboard.get_chart",
 	),
 ]
-assert len(ROUTES) == 101, f"expected 101 routes, got {len(ROUTES)}"
+assert len(ROUTES) == 102, f"expected 102 routes, got {len(ROUTES)}"
 
 data(
 	"ConsentReasonListData",

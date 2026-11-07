@@ -20,7 +20,7 @@
                   "    pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
                   "    var data = pm.response.json();",
                   "    pm.test('Has loginProviders', function () { pm.expect(data.loginProviders.length).to.be.above(0); });",
-                  "    var p = data.loginProviders[0];",
+                  "    var p = data.loginProviders.find(function (x) { return /e-?signet/i.test(x.name); }) || data.loginProviders[0];",
                   "    pm.environment.set('provider_id', p.id);",
                   "})();"
                 ],
@@ -195,7 +195,7 @@
           }
         },
         {
-          "name": "1e. eSignet Send OTP",
+          "name": "1e. eSignet Send OTP (skipped for PIN)",
           "event": [
             {
               "listen": "prerequest",
@@ -213,6 +213,7 @@
                   "(function() {",
                   "    pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
                   "    var b = pm.response.json();",
+                  "    if (pm.environment.get('esignet_auth_factor') === 'PIN') { return; }",
                   "    if (!b.response) {",
                   "        var e = (b.errors || [])[0] || {};",
                   "        throw new Error('eSignet send-otp error: ' + (e.errorCode || '?') + ' - ' + (e.errorMessage || JSON.stringify(b)));",
@@ -260,7 +261,7 @@
           }
         },
         {
-          "name": "1f. eSignet Authenticate OTP",
+          "name": "1f. eSignet Authenticate (OTP or PIN)",
           "event": [
             {
               "listen": "prerequest",
@@ -310,7 +311,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"requestTime\": \"{{now}}\",\n  \"request\": {\n    \"transactionId\": \"{{txn}}\",\n    \"individualId\": \"{{esignet_individual_id}}\",\n    \"challengeList\": [\n      {\n        \"authFactorType\": \"OTP\",\n        \"challenge\": \"{{esignet_otp}}\",\n        \"format\": \"alpha-numeric\"\n      }\n    ]\n  }\n}"
+              "raw": "{\n  \"requestTime\": \"{{now}}\",\n  \"request\": {\n    \"transactionId\": \"{{txn}}\",\n    \"individualId\": \"{{esignet_individual_id}}\",\n    \"challengeList\": [\n      {\n        \"authFactorType\": \"{{esignet_auth_factor}}\",\n        \"challenge\": \"{{esignet_otp}}\",\n        \"format\": \"{{esignet_challenge_format}}\"\n      }\n    ]\n  }\n}"
             },
             "url": {
               "raw": "{{esignet_url}}/authorization/v2/authenticate",
@@ -1356,7 +1357,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"loan_product\": \"{{loan_product}}\",\n  \"requested_amount\": 500,\n  \"loan_reason\": \"Seed and fertilizer for the next season\"\n}",
+              "raw": "{\n  \"loan_product\": \"{{loan_product}}\",\n  \"requested_amount\": 150000,\n  \"loan_reason\": \"Seed and fertilizer for the next season\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1520,7 +1521,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"requested_amount\": 800,\n  \"loan_reason\": \"Updated: seed, fertilizer and irrigation\"\n}",
+              "raw": "{\n  \"requested_amount\": 200000,\n  \"loan_reason\": \"Updated: seed, fertilizer and irrigation\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

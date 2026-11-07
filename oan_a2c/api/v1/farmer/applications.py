@@ -3,6 +3,7 @@ import json
 import frappe
 from frappe import _
 from frappe.utils import cint, flt
+from oan_auth_service.api.idempotency import idempotent
 from pydantic import BaseModel, Field
 
 from oan_a2c.a2c_marketplace.roles import DEVELOPMENT_AGENT_ROLE, FARMER_ROLE
@@ -215,6 +216,7 @@ def update_application(**kwargs):
 @validate_request(CreateFarmerApplicationSchema)
 @handle_api_errors
 @require_role([FARMER_ROLE])
+@idempotent
 def create_application(**kwargs):
 	"""Creates an Active application for the farmer."""
 	user = frappe.session.user
@@ -282,6 +284,7 @@ def create_application(**kwargs):
 @validate_request(LoanApplicationIDSchema)
 @handle_api_errors
 @require_role([FARMER_ROLE, DEVELOPMENT_AGENT_ROLE])
+@idempotent
 def submit_application(**kwargs):
 	"""Submits an Active application to the bank (transitions to In Transition)."""
 	application_id = kwargs.get("application_id")

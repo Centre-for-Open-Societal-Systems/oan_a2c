@@ -973,8 +973,11 @@ class TestLoanStatusReadPath(ApiTestCase):
 		app_row = next(r for r in list_res["data"] if r["application_id"] == app.name)
 		self.assertEqual(app_row["status"], "Active")
 
-		# Submit application
-		submit_res = submit_application(application_id=app.name)
+		# Submit application. `idempotent` reads frappe.request, which is unbound outside a
+		# web request unless an earlier test left a stub behind; pin a non-mutating stub so
+		# this test does not depend on test order.
+		with patch.object(frappe.local, "request", frappe._dict(method="GET"), create=True):
+			submit_res = submit_application(application_id=app.name)
 		self.assertEqual(submit_res["status"], "success")
 
 		# Check Submitted state in list and detail
@@ -1454,16 +1457,36 @@ class TestLoanStatusReadPath(ApiTestCase):
 				"status": "approved",
 			},
 			"farmer": {"id": 12345, "name": "Dynamic TestFarmer"},
+			# selected_data is the Aggregation Layer's beneficiary360 record; anything else
+			# it carries is kept verbatim in farmer_data_json.
 			"selected_data": {
-				"farmer": {
-					"Full Name": "Dynamic TestFarmer",
-					"Mobile Number": "+251911999888",
-					"Region": "Oromia",
-					"Woreda": "Ambo",
-					"Custom Dynamic Field": "Custom Dynamic Value",
-					"Soil Mineral Analysis": {"nitrogen": 45, "ph": 6.5},
-					"Irrigation Methods": ["Drip", "Rainfed"],
-				}
+				"beneficiary": {"foundationalId": f"FAYDA-{self.h}"},
+				"registries": [
+					{
+						"registryCode": "FARMER_REGISTRY",
+						"registers": [
+							{
+								"attributes": {
+									"farmer_personal_details": {
+										"demographic_info": {
+											"name": {"given_name": "Dynamic", "surname": "TestFarmer"},
+											"phone_number": "+251911999888",
+										}
+									},
+									"Custom Dynamic Field": "Custom Dynamic Value",
+									"Soil Mineral Analysis": {"nitrogen": 45, "ph": 6.5},
+									"Irrigation Methods": ["Drip", "Rainfed"],
+								},
+								"tables": [
+									{
+										"tableMnemonic": "FARM",
+										"attributes": {"place": {"name": "Ambo Kebele"}},
+									}
+								],
+							}
+						],
+					}
+				],
 			},
 		}
 
@@ -1480,7 +1503,7 @@ class TestLoanStatusReadPath(ApiTestCase):
 		profile_doc = frappe.get_doc("A2C Farmer Profile", profile_name)
 		self.assertEqual(profile_doc.first_name, "Dynamic")
 		self.assertEqual(profile_doc.last_name, "TestFarmer")
-		self.assertEqual(profile_doc.region, "Oromia")
+		self.assertEqual(profile_doc.kebele, "Ambo Kebele")
 		self.assertIsNotNone(profile_doc.farmer_data_json)
 
 		# Verify get_basic_profile returns standard fields AND dynamic farmer_data
@@ -1488,7 +1511,6 @@ class TestLoanStatusReadPath(ApiTestCase):
 		basic_res = get_basic_profile()
 		self.assertEqual(basic_res["status"], "success")
 		self.assertEqual(basic_res["data"]["first_name"], "Dynamic")
-		self.assertEqual(basic_res["data"]["region"], "Oromia")
 		self.assertIn("farmer_data", basic_res["data"])
 		self.assertIn("Custom Dynamic Field", json.dumps(basic_res["data"]["farmer_data"]))
 

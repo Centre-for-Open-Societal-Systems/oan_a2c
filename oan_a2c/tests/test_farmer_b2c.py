@@ -902,16 +902,17 @@ class TestFarmerProfileAndConsent(FarmerB2CFixtures):
 		create_application(loan_product=self.prod_1.name, requested_amount=200)
 
 		# Now Farmer B starts a new consent request which gets stuck in Pending OTP
-		with patch("oan_a2c.api.v1.consent.consent.OpenG2PConsentClient") as MockClient:
+		with patch("oan_a2c.api.v1.consent.consent.OpenG2PClient") as MockClient:
 			mock_inst = MockClient.return_value
-			mock_inst.get_farmer_by_fayda_id.return_value = {"id": "openg2p-id-b"}
-			mock_inst.request_otp.return_value = {
-				"transaction_id": f"TXN-NEW-{self.h}",
-				"masked_mobile": "091****2222",
+			mock_inst.lookup_beneficiary.return_value = {"internal_record_id": "openg2p-id-b"}
+			mock_inst.settings.partner_id = "DB-PARTNER-001"
+			mock_inst.create_otp_request.return_value = {
+				"id": f"TXN-NEW-{self.h}",
+				"otp_channel": "091****2222",
+				"otp_expires_at": None,
+				"purpose": {},
+				"grants": [],
 			}
-			mock_inst.session = MagicMock()
-			mock_inst.session.cookies = MagicMock()
-			mock_inst.session.cookies.get.return_value = "COOKIE"
 
 			otp_res = request_otp(fayda_id=f"fayda-b-{self.h}")
 			new_cr_name = otp_res["data"]["consent_request"]

@@ -72,16 +72,20 @@ bench --site mysite.localhost set-config secret_key "your-secret-key-here"
 
 ### OpenG2P Integration
 
-Used by the consent engine to interface with the OpenG2P service for data sharing and verification:
+The consent flow (`api/v1/consent/`) calls three OpenG2P services:
 
-```bash
-bench --site mysite.localhost set-config openg2p_base_url "https://api.openg2p.example.com"
-bench --site mysite.localhost set-config openg2p_db "openg2p_database_name"
-bench --site mysite.localhost set-config openg2p_username "api_username"
-bench --site mysite.localhost set-config openg2p_password "api_password"
-```
+| Step                                        | Service                                                                                       | Auth                                                  |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `search_farmer`                             | Registry Agent API `POST /agent_portal/vc/lookup_beneficiary`                                 | the caller's own agent-realm bearer token (forwarded) |
+| `request_otp` / `resend_otp` / `verify_otp` | Consent Manager `/consent/v1/partner-portal/consent-requests` (`method: otp`)                 | partner-realm token                                   |
+| `submit_consent`                            | Aggregation Layer `POST /dci/registry/sync/search` (`beneficiary360`, `authorize.consent_id`) | partner-realm token                                   |
 
-_Note: In Dockerized environments (like `frappe_docker`), you may alternatively pass these via environment variables if your container startup scripts template the site configs._
+Configure it in Desk under **A2C OpenG2P Settings** (single doctype, System Manager / A2C Administrator):
+endpoint URLs, the partner Keycloak client (`client_credentials`, or `password` for the dev client),
+`partner_id` (must match the token's `partner_id` claim), the consent purpose, data controller and data scopes.
+Secrets are `Password` fields, encrypted with the site's `encryption_key`.
+
+The old `openg2p_base_url` / `openg2p_db` / `openg2p_username` / `openg2p_password` site_config keys are no longer read.
 
 ## Running Tests
 
