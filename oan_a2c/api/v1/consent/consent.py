@@ -11,7 +11,7 @@ from oan_a2c.a2c_marketplace.roles import FARMER_ROLE
 from oan_a2c.api.utils import handle_api_errors, success_response, to_tz_aware_iso, validate_request
 from oan_a2c.api.v1.webhook_consent_data import validate_and_enqueue_consent
 
-from .bene360 import to_selected_data
+from .bene360 import extract_profile_fields
 from .openg2p_client import OpenG2PClient
 from .utils import generate_consent_receipt
 
@@ -496,13 +496,13 @@ def submit_consent(**kwargs):
 
 		# Aggregation Layer call — the farmer's registry data under the granted consent.
 		record = OpenG2PClient().fetch_beneficiary360(cr_doc.farmer_fayda_id, cr_doc.openg2p_consent_id)
-		selected_data = to_selected_data(record)
-		farmer = selected_data["farmer"]
-		if not farmer.get("Full Name"):
+		profile_fields = extract_profile_fields(record)
+		if not profile_fields.get("first_name"):
 			frappe.throw(
 				_("No farmer registry data was returned for Fayda ID '{0}'.").format(cr_doc.farmer_fayda_id),
 				frappe.DoesNotExistError,
 			)
+		full_name = f"{profile_fields['first_name']} {profile_fields.get('last_name', '')}".strip()
 
 		# A registry that failed or timed out is reported, not fatal: keep what came back.
 		warnings = (record.get("meta") or {}).get("warnings") or []
@@ -537,8 +537,8 @@ def submit_consent(**kwargs):
 				"approved_at": to_tz_aware_iso(now_datetime()),
 			},
 			# The registry record id the request was opened against in request_otp.
-			"farmer": {"id": cr_doc.farmer, "name": farmer.get("Full Name")},
-			"selected_data": selected_data,
+			"farmer": {"id": cr_doc.farmer, "name": full_name},
+			"selected_data": record,
 		}
 		validate_and_enqueue_consent(consent_payload, enforce_permission=False, enqueue_after_commit=True)
 
@@ -551,11 +551,10 @@ def submit_consent(**kwargs):
 		# Sync the lead's headline fields from the registry record.
 		farmer_preview = {}
 		if lead_id:
-			parts = farmer["Full Name"].split()
-			mobile = (farmer.get("Mobile Number") or [""])[0]
+			mobile = profile_fields.get("phone_number") or ""
 			farmer_preview = {
-				"given_name": parts[0].title(),
-				"family_name": " ".join(p.title() for p in parts[1:]),
+				"given_name": profile_fields["first_name"].title(),
+				"family_name": " ".join(p.title() for p in profile_fields.get("last_name", "").split()),
 				"email": "",
 				"phone_no": [mobile] if mobile else [],
 			}

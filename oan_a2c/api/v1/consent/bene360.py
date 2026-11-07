@@ -1,4 +1,4 @@
-"""Reshape an Aggregation Layer beneficiary360 record into consent `selected_data`.
+"""Read an Aggregation Layer beneficiary360 record into A2C Farmer Profile fields.
 
 The AL returns (oan-aggregation-api bene360.py, deploy/registries.yaml):
 
@@ -8,34 +8,39 @@ The AL returns (oan-aggregation-api bene360.py, deploy/registries.yaml):
 	      "tables": [{"tableMnemonic", "attributes": {...}, "tables": [...]}]}]}],
 	 "meta": {"warnings": [{"system", "code", "message"}], ...}}
 
-`process_consent_data` (webhook_consent_data.py) reads the first dict in
-`selected_data` through `build_field_getter`, keyed by the labels the legacy
-OpenG2P payload used ("Full Name", "Mobile Number", ...). This builds that dict
-from the FARMER_REGISTRY record and keeps the full registry tree alongside it,
-so nothing the AL returned is lost.
-
-To surface another registry field, add a line to FIELD_MAP (or TABLE_FIELD_MAP for
-a table row); no new code. The AL must expose the field first (its scope's
-`fields` in registries.yaml) and `process_consent_data` must read the label.
+`extract_profile_fields` is the one place that says which registry value feeds which
+profile column. To surface another field, add a line to ATTRIBUTE_FIELDS (a value under
+the register's attributes) or TABLE_FIELDS (a value in a table row). The AL must expose
+the field first (its scope's `fields` in registries.yaml) and the A2C Farmer Profile
+needs the column.
 """
+
+from frappe.utils import cint
 
 ACRE_TO_HECTARE = 0.40468564224
 
 FARMER_REGISTRY = "FARMER_REGISTRY"
+PERSONAL = "farmer_personal_details"
 
-# label -> dotted path under the register's `attributes`, "<scope>.<field path>".
-FIELD_MAP = {
-	"Gender": "farmer_personal_details.demographic_info.sex",
-	"Date of Birth": "farmer_personal_details.demographic_info.birth_date",
-	"Marital Status": "farmer_personal_details.marital_status",
-	"Education Level": "farmer_personal_details.education_level",
+
+def _capitalize(value):
+	return str(value).capitalize()
+
+
+# profile field -> ("<scope>.<dotted path>", transform), read under the register's `attributes`.
+ATTRIBUTE_FIELDS = {
+	"gender": (f"{PERSONAL}.demographic_info.sex", _capitalize),
+	"date_of_birth": (f"{PERSONAL}.demographic_info.birth_date", None),
+	"marital_status": (f"{PERSONAL}.marital_status", _capitalize),
+	"education_level": (f"{PERSONAL}.education_level", None),
 }
 
-# label -> (TABLE mnemonic, dotted path in the row). The first row at any depth wins.
-TABLE_FIELD_MAP = {
-	"Size of Family": ("HOUSEHOLD", "group_size"),
-	"Land Ownership Status": ("FARM", "land_tenure"),
-	"Kebele": ("FARM", "place.name"),
+# profile field -> (TABLE mnemonic, dotted path in the row, transform). The first row, at
+# any depth, that has a value wins.
+TABLE_FIELDS = {
+	"size_of_family": ("HOUSEHOLD", "group_size", cint),
+	"land_ownership_status": ("FARM", "land_tenure", None),
+	"kebele": ("FARM", "place.name", None),
 }
 
 
@@ -62,17 +67,12 @@ def _farmer_register(record):
 	return next(
 		(
 			reg
-			for registry in record.get("registries") or []
+			for registry in (record or {}).get("registries") or []
 			if registry.get("registryCode") == FARMER_REGISTRY
 			for reg in registry.get("registers") or []
 		),
 		None,
 	)
-
-
-def _full_name(register):
-	name = _dig(register.get("attributes") or {}, "farmer_personal_details.demographic_info.name") or {}
-	return " ".join(p for p in (name.get("given_name"), name.get("second_name"), name.get("surname")) if p)
 
 
 def _farmland_hectares(farms):
@@ -87,36 +87,42 @@ def _farmland_hectares(farms):
 	return round(hectares, 4)
 
 
-def to_selected_data(record) -> dict:
-	"""`{"farmer": {Label: value}, "registries": [...]}`; `farmer` is empty when the
-	farmer is in no FARMER_REGISTRY register (the AL answers 200 without a warning then)."""
-	registries = record.get("registries") or []
+def extract_profile_fields(record) -> dict:
+	"""A2C Farmer Profile columns from a beneficiary360 record; empty values are left out.
+
+	Empty when the farmer is in no FARMER_REGISTRY register (the AL answers 200 without a
+	warning then)."""
 	register = _farmer_register(record)
 	if not register:
-		return {"farmer": {}, "registries": registries}
+		return {}
 
 	attributes = register.get("attributes") or {}
-	phone = _dig(attributes, "farmer_personal_details.demographic_info.phone_number")
+	fields = {}
 
-	# Fields that need more than a path lookup.
-	farmer = {
-		"Full Name": _full_name(register),
-		"Mobile Number": [phone] if phone else [],
-		"Fayda ID": (record.get("beneficiary") or {}).get("foundationalId"),
-	}
+	# More than a path lookup: the name is split into parts, the Fayda ID is the
+	# beneficiary's foundational ID, and the farmland size is summed over the farms.
+	name = _dig(attributes, f"{PERSONAL}.demographic_info.name") or {}
+	fields["first_name"] = name.get("given_name")
+	fields["last_name"] = " ".join(p for p in (name.get("second_name"), name.get("surname")) if p)
+	fields["phone_number"] = _dig(attributes, f"{PERSONAL}.demographic_info.phone_number")
 
-	for label, path in FIELD_MAP.items():
-		farmer[label] = _dig(attributes, path)
+	fayda_id = (record.get("beneficiary") or {}).get("foundationalId")
+	if fayda_id:
+		fields["id_type"] = "uid"
+		fields["id_number"] = str(fayda_id)
 
-	for label, (mnemonic, path) in TABLE_FIELD_MAP.items():
-		farmer[label] = next(
+	for field, (path, transform) in ATTRIBUTE_FIELDS.items():
+		value = _dig(attributes, path)
+		fields[field] = transform(value) if transform and value not in (None, "") else value
+
+	for field, (mnemonic, path, transform) in TABLE_FIELDS.items():
+		value = next(
 			(v for row in _tables(register, mnemonic) if (v := _dig(row, path)) not in (None, "")), None
 		)
+		fields[field] = transform(value) if transform and value is not None else value
 
 	farms = list(_tables(register, "FARM"))
 	if farms:
-		farmer["Farmland Size (Hectares)"] = _farmland_hectares(farms)
+		fields["farmland_size_hectares"] = _farmland_hectares(farms)
 
-	# Drop empty values so the getter's defaults apply instead of blanks.
-	farmer = {k: v for k, v in farmer.items() if v not in (None, "", [])}
-	return {"farmer": farmer, "registries": registries}
+	return {k: v for k, v in fields.items() if v not in (None, "")}

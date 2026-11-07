@@ -35,12 +35,14 @@
       "description": "Keycloak base URL, e.g. https://keycloak-development.oanstaging.com",
       "fieldname": "keycloak_url",
       "fieldtype": "Data",
+      "options": "URL",
       "label": "Keycloak URL"
     },
     {
       "description": "e.g. https://consent-manager.development.oanstaging.com",
       "fieldname": "consent_manager_url",
       "fieldtype": "Data",
+      "options": "URL",
       "label": "Consent Manager URL"
     },
     {
@@ -51,12 +53,14 @@
       "description": "e.g. https://aggregation.development.oanstaging.com",
       "fieldname": "aggregation_url",
       "fieldtype": "Data",
+      "options": "URL",
       "label": "Aggregation Layer URL"
     },
     {
       "description": "Registry Agent API base URL (serves /agent_portal/vc/lookup_beneficiary). On dev this is currently the same host as the staff API, e.g. https://staff-farmer-development.oanstaging.com.",
       "fieldname": "agent_api_url",
       "fieldtype": "Data",
+      "options": "URL",
       "label": "Agent API URL"
     },
     {

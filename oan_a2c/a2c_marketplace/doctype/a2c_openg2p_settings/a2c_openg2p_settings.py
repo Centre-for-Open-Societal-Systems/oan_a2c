@@ -3,13 +3,11 @@
 
 from frappe.model.document import Document
 
-URL_FIELDS = ("keycloak_url", "consent_manager_url", "aggregation_url", "agent_api_url")
-
 
 class A2COpenG2PSettings(Document):
 	def validate(self):
 		# Endpoints are joined with absolute paths, so a trailing slash would
-		# produce `//consent/v1/...`.
-		for field in URL_FIELDS:
-			value = (self.get(field) or "").strip()
-			self.set(field, value.rstrip("/"))
+		# produce `//consent/v1/...`. Frappe checks the URL format (options: URL)
+		# but does not trim, so strip it here for every URL field on the doctype.
+		for df in self.meta.get("fields", {"fieldtype": "Data", "options": "URL"}):
+			self.set(df.fieldname, (self.get(df.fieldname) or "").rstrip("/"))
