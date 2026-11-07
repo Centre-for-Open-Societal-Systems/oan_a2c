@@ -372,8 +372,6 @@ def ensure_routes_registered() -> None:
 
 	_register_spec_routes()
 
-	from oan_a2c.api.auth import require_sso_for_development_agents
-
 	for rule in _rules:
 		if rule not in frappe.api.API_URL_MAP._rules:
 			frappe.api.API_URL_MAP.add(rule)
@@ -384,14 +382,12 @@ def ensure_routes_registered() -> None:
 		prefix=NAMESPACE,
 		exempt_paths=sorted(_exempt_paths),
 		api_key_paths=sorted({p for gw in _API_KEY_PATHS for p in (gw, f"/api{gw}")}),
-		revocation_check=require_sso_for_development_agents,
 	)
 
 	# Legacy RPC paths keep the JWT check they had before auth moved to oan_auth_service.
 	register_namespace(
 		prefix="/api/method/oan_a2c.",
 		api_key_paths=list(_LEGACY_RPC_API_KEY_PATHS),
-		revocation_check=require_sso_for_development_agents,
 	)
 	_REGISTERED = True
 
