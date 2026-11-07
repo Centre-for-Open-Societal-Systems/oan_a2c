@@ -33,7 +33,8 @@ class A2CLead(Document):
 		"""
 		A lead may only become 'Verified' once both exist and are linked to it:
 		  - at least one A2C Credit Information, and
-		  - an A2C Consent Request with status 'Approved'.
+		  - an A2C Consent Request with status 'Approved', and
+		  - an A2C Visit Schedule with status 'Completed'.
 		This guarantees credit info and an approved consent are in place before
 		verification, on every path (API, Desk, bulk edit).
 		"""
@@ -42,8 +43,8 @@ class A2CLead(Document):
 			"A2C Consent Request",
 			{"reference_doctype": "A2C Lead", "reference_name": self.name, "status": "Approved"},
 		)
-		has_scheduled_visit = frappe.db.exists(
-			"A2C Visit Schedule", {"lead": self.name, "status": ["in", ["Scheduled", "Completed"]]}
+		has_completed_visit = frappe.db.exists(
+			"A2C Visit Schedule", {"lead": self.name, "status": "Completed"}
 		)
 
 		missing = []
@@ -51,8 +52,8 @@ class A2CLead(Document):
 			missing.append(_("credit information"))
 		if not has_approved_consent:
 			missing.append(_("an approved consent request"))
-		if not has_scheduled_visit:
-			missing.append(_("a scheduled visit"))
+		if not has_completed_visit:
+			missing.append(_("a completed visit"))
 
 		if missing:
 			frappe.throw(
