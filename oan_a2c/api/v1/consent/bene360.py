@@ -27,6 +27,13 @@ def _capitalize(value):
 	return str(value).capitalize()
 
 
+def _first(value):
+	"""The registry sends a phone as a list (`["+2519..."]`); the profile keeps one number."""
+	if isinstance(value, list):
+		return next((v for v in value if v not in (None, "")), None)
+	return value
+
+
 # profile field -> ("<scope>.<dotted path>", transform), read under the register's `attributes`.
 ATTRIBUTE_FIELDS = {
 	"gender": (f"{PERSONAL}.demographic_info.sex", _capitalize),
@@ -104,7 +111,7 @@ def extract_profile_fields(record) -> dict:
 	name = _dig(attributes, f"{PERSONAL}.demographic_info.name") or {}
 	fields["first_name"] = name.get("given_name")
 	fields["last_name"] = " ".join(p for p in (name.get("second_name"), name.get("surname")) if p)
-	fields["phone_number"] = _dig(attributes, f"{PERSONAL}.demographic_info.phone_number")
+	fields["phone_number"] = _first(_dig(attributes, f"{PERSONAL}.demographic_info.phone_number"))
 
 	fayda_id = (record.get("beneficiary") or {}).get("foundationalId")
 	if fayda_id:

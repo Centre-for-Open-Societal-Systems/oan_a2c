@@ -123,7 +123,7 @@ def _lead_for_consent_request(cr_doc, claimed_lead_id=None) -> str | None:
 @handle_api_errors
 @rate_limit_per_user(limit=20, window=60)
 def search_farmer(**kwargs):
-	"""Find a farmer by Fayda ID. → Agent API lookup_beneficiary"""
+	"""Find a farmer by Fayda ID. → staff API search_in_a_register"""
 	fayda_id = kwargs.get("fayda_id")
 	lead_id = kwargs.get("lead_id")
 
@@ -544,9 +544,10 @@ def submit_consent(**kwargs):
 
 		# Generate and store the signed consent receipt.
 		receipt = generate_consent_receipt(consent_request)
-		frappe.db.set_value(
-			"A2C Consent Request", consent_request, "consent_receipt", receipt.get("signature")
-		)
+		if receipt:
+			frappe.db.set_value(
+				"A2C Consent Request", consent_request, "consent_receipt", receipt.get("signature")
+			)
 
 		# Sync the lead's headline fields from the registry record.
 		farmer_preview = {}

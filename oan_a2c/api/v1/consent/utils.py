@@ -3,16 +3,18 @@ import hmac
 import json
 
 import frappe
-from frappe import _
 from frappe.utils import now_datetime
 
 from oan_a2c.api.utils import to_tz_aware_iso
 
 
 def generate_consent_receipt(consent_request_name):
+	"""Signed receipt for a consent, or None when the site has no `secret_key`.
+
+	Nothing consumes the receipt, so a site without the key skips it rather than failing the consent."""
 	secret_key = frappe.conf.get("secret_key")
 	if not secret_key:
-		frappe.throw(_("secret_key not found in site_config.json"))
+		return None
 
 	consent = frappe.get_doc("A2C Consent Request", consent_request_name)
 
