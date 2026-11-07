@@ -973,8 +973,11 @@ class TestLoanStatusReadPath(ApiTestCase):
 		app_row = next(r for r in list_res["data"] if r["application_id"] == app.name)
 		self.assertEqual(app_row["status"], "Active")
 
-		# Submit application
-		submit_res = submit_application(application_id=app.name)
+		# Submit application. `idempotent` reads frappe.request, which is unbound outside a
+		# web request unless an earlier test left a stub behind; pin a non-mutating stub so
+		# this test does not depend on test order.
+		with patch.object(frappe.local, "request", frappe._dict(method="GET"), create=True):
+			submit_res = submit_application(application_id=app.name)
 		self.assertEqual(submit_res["status"], "success")
 
 		# Check Submitted state in list and detail

@@ -635,6 +635,7 @@ _FALLBACK_ROUTES = [
 	),
 	("POST", "/v1/consent/otp", "oan_a2c.api.v1.consent.consent.request_otp"),
 	("POST", "/v1/consent/otp/verify", "oan_a2c.api.v1.consent.consent.verify_otp"),
+	("POST", "/v1/consent/otp/resend", "oan_a2c.api.v1.consent.consent.resend_otp"),
 	("POST", "/v1/consent/requests", "oan_a2c.api.v1.consent.consent.submit_consent"),
 	("POST", "/v1/webhooks/consent-data", "oan_a2c.api.v1.webhook_consent_data.receive_consent_data"),
 	# Domain 10: Inbound Webhooks

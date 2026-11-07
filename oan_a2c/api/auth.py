@@ -2,6 +2,7 @@ from typing import Literal
 
 import frappe
 from frappe import _
+from oan_auth_service.api.utils import rate_limit_per_user, validate_mobile
 from pydantic import BaseModel, Field, field_validator
 
 from oan_a2c.a2c_marketplace.roles import (
@@ -14,7 +15,6 @@ from oan_a2c.a2c_marketplace.roles import (
 )
 from oan_a2c.api.router import prefixed
 from oan_a2c.api.utils import (
-	check_rate_limit,
 	handle_api_errors,
 	success_response,
 	validate_password_complexity,
@@ -322,7 +322,12 @@ def update_profile(
 		user.first_name = full_name.strip()
 		user.last_name = ""
 	if phone_number is not None:
-		user.mobile_no = phone_number.strip()
+		phone_number = phone_number.strip()
+		# Only a changed number is validated: clients resend the stored value on every
+		# save, and a legacy number must not block an unrelated name/language edit.
+		if phone_number and phone_number != user.mobile_no:
+			phone_number = validate_mobile(phone_number)
+		user.mobile_no = phone_number
 	if language is not None:
 		user.language = _resolve_language(language)
 	if gender is not None:
@@ -353,11 +358,10 @@ def update_profile(
 @me_route("/password", methods=("PATCH",), summary="Change password")
 @validate_request(ChangePasswordSchema)
 @handle_api_errors
+@rate_limit_per_user(limit=5, window=300)
 def change_password(current_password: str, new_password: str):
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Not permitted"), frappe.AuthenticationError)
-
-	check_rate_limit(f"rl:change_pwd:{frappe.session.user}", limit=5, window=300)
 
 	from frappe.utils.password import check_password
 	from frappe.utils.password import update_password as update_password_db

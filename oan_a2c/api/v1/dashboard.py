@@ -36,6 +36,7 @@ from collections import defaultdict
 import frappe
 from frappe import _
 from frappe.query_builder import DocType
+from frappe.rate_limiter import rate_limit
 from frappe.utils import getdate
 from pydantic import BaseModel, Field, field_validator
 
@@ -52,7 +53,7 @@ from oan_a2c.a2c_marketplace.dashboard_rollup import (
 	label,
 	norm,
 )
-from oan_a2c.api.utils import check_rate_limit, handle_api_errors, success_response, validate_request
+from oan_a2c.api.utils import handle_api_errors, success_response, validate_request
 
 CACHE_TTL_SECONDS = 900
 # Per client IP. The dashboards' BFF calls on behalf of every viewer from one
@@ -541,13 +542,9 @@ CHARTS = {
 
 @validate_request(ChartFilterSchema)
 @handle_api_errors
+@rate_limit(limit=RATE_LIMIT_PER_MINUTE, seconds=60)
 def get_chart(**kwargs):
 	"""Aggregate rows for one dashboard chart, narrowed by provider and location."""
-	check_rate_limit(
-		f"rl:dashboard_chart:{getattr(frappe.local, 'request_ip', 'guest')}",
-		limit=RATE_LIMIT_PER_MINUTE,
-		window=60,
-	)
 	chart_id = kwargs.get("chart_id")
 	build = CHARTS.get(chart_id)
 	if build is None:

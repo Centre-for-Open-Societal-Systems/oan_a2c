@@ -2,6 +2,7 @@ import re
 
 import frappe
 from frappe import _
+from oan_auth_service.api.utils import rate_limit_per_user
 from pydantic import BaseModel, Field, field_validator
 
 from oan_a2c.a2c_marketplace.doctype_schemas import (
@@ -22,7 +23,6 @@ from oan_a2c.api.router import prefixed
 from oan_a2c.api.utils import (
 	RequiredPhone,
 	SafeEmail,
-	check_rate_limit,
 	handle_api_errors,
 	success_response,
 	validate_request,
@@ -922,6 +922,7 @@ def update_user(
 @validate_request(ResetMemberPasswordSchema)
 @handle_api_errors
 @require_bank_role(BANK_ADMIN_ROLE)
+@rate_limit_per_user(limit=10, window=300)
 def reset_member_password(email: str, password: str):
 	"""Issue a fresh temporary password for a Bank Agent (forgotten-password path).
 
@@ -934,8 +935,6 @@ def reset_member_password(email: str, password: str):
 	That is deliberate — when the reason for the reset is a suspected compromise,
 	"issue a new password" has to also mean "cut off the current session".
 	"""
-	check_rate_limit(f"rl:reset_member_pwd:{frappe.session.user}", limit=10, window=300)
-
 	_assert_can_manage_member(email)
 
 	from oan_auth_service.api.v1.auth import issue_temporary_password

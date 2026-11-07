@@ -1,5 +1,5 @@
 import json
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 from typing import Any as DummyAny
 
 import frappe
@@ -23,14 +23,17 @@ class FarmerInfoSchema(BaseModel):
 	# A2C Farmer Profile on, so it is required rather than optional. OpenG2P always
 	# sends it; declaring that here means a malformed payload is rejected at
 	# validation with a clear error, instead of falling through to a weaker key and
-	# silently creating a profile nothing can later match.
-	id: int = Field(..., ge=1)
+	# silently creating a profile nothing can later match. A string is the registry
+	# record id from the Agent API (the Aggregation Layer path); an int is the
+	# legacy OpenG2P farmer id.
+	id: Annotated[int, Field(ge=1)] | Annotated[str, Field(min_length=1)]
 	farmer_id: Any | None = None
 	name: str | None = None
 
 
 class ConsentInfoSchema(BaseModel):
-	id: int | None = None
+	# Consent Manager consent ids are strings; legacy OpenG2P ids were ints.
+	id: int | str | None = None
 	consent_creation_request_id: str = Field(..., min_length=1)
 	consent_type: str | None = None
 	status: str | None = None

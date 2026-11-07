@@ -4026,6 +4026,44 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/VerifyOtpRequest'
+  /v1/consent/otp/resend:
+    post:
+      summary: Resend the one-time code
+      tags:
+      - Consent Management
+      operationId: post_v1_consent_otp_resend
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/OtpRequestData'
+        '400':
+          $ref: '#/components/responses/400ValidationError'
+        '401':
+          $ref: '#/components/responses/401Unauthorized'
+        '403':
+          $ref: '#/components/responses/403Forbidden'
+        '404':
+          $ref: '#/components/responses/404NotFound'
+        '429':
+          $ref: '#/components/responses/429RateLimited'
+        '500':
+          $ref: '#/components/responses/500InternalError'
+      security:
+      - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendOtpRequest'
   /v1/consent/requests:
     post:
       summary: Submit a signed consent request
@@ -5537,6 +5575,18 @@ components:
       required:
       - otp_code
       - consent_request
+    ResendOtpRequest:
+      type: object
+      properties:
+        lead_id:
+          type: string
+          nullable: true
+        consent_request:
+          minLength: 1
+          title: Consent Request
+          type: string
+      required:
+      - consent_request
     SubmitConsentRequest:
       type: object
       properties:
@@ -5571,8 +5621,6 @@ components:
           nullable: true
       required:
       - consent_request
-      - consent_form_filename
-      - consent_form_base64
     ReceiveConsentDataRequest:
       type: object
       properties:
