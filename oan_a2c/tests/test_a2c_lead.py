@@ -339,6 +339,25 @@ class TestLeadListAPI(unittest.TestCase):
 		self.assertEqual(res_page_2["pagination"]["page"], 2)
 		self.assertEqual(len(res_page_2["data"]), 2)
 
+	def test_get_leads_status_changed_at_is_the_latest_status_transition(self):
+		"""status_changed_at is the newest Status Changed event, or creation if there is none."""
+		from oan_a2c.api.v1.leads import get_leads
+
+		changed, untouched = self.leads[0], self.leads[1]
+		for stamp in ("2026-03-01 09:00:00", "2026-04-02 10:30:00"):
+			event = frappe.new_doc("A2C Lead Audit Event")
+			event.lead = changed
+			event.event_type = "Status Changed"
+			event.event_title = "Status Updated"
+			event.insert(ignore_permissions=True)
+			frappe.db.set_value("A2C Lead Audit Event", event.name, "creation", stamp, update_modified=False)
+
+		rows = {r["name"]: r for r in get_leads(search_query="+251922000")["data"]}
+
+		self.assertEqual(str(rows[changed]["status_changed_at"]), "2026-04-02 10:30:00")
+		self.assertNotEqual(rows[changed]["status_changed_at"], rows[changed]["creation"])
+		self.assertEqual(rows[untouched]["status_changed_at"], rows[untouched]["creation"])
+
 	def test_get_leads_search(self):
 		"""Verifies searching by phone number, Lead ID, and external ID works."""
 		from oan_a2c.api.v1.leads import get_leads
