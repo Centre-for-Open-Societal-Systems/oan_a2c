@@ -343,6 +343,18 @@ class TestInviteTeamMember(unittest.TestCase):
 		# The admin chose this password, so it may not survive first use.
 		self.assertEqual(frappe.db.get_value("User", invitee, "oan_must_change_password"), 1)
 
+	def test_invites_succeed_when_another_user_has_no_mobile_number(self):
+		frappe.db.set_value("User", self.bank_admin, "mobile_no", "", update_modified=False)
+		self.assertTrue(frappe.db.exists("User", {"mobile_no": ""}))
+		first = self._invitee("nophone1")
+		second = self._invitee("nophone2")
+		frappe.set_user(self.bank_admin)
+
+		for invitee in (first, second):
+			res = invite_team_member(email=invitee, full_name="No Phone", password="TempIssued1")
+			self.assertEqual(res.get("status"), "success")
+			self.assertTrue(frappe.db.exists("User", invitee))
+
 	def test_role_defaults_to_bank_agent_when_omitted(self):
 		invitee = self._invitee("default")
 		frappe.set_user(self.bank_admin)
