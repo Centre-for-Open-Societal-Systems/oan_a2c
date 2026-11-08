@@ -27,7 +27,7 @@ class TestRestRouter(RequestContextMixin, unittest.TestCase):
 
 		update_password(user=cls.test_email, pwd=cls.test_password)
 
-		if not frappe.conf.get("jwt_secrets") and not frappe.conf.get("encryption_key"):
+		if not frappe.conf.get("encryption_key"):
 			frappe.conf.encryption_key = "ci_cd_test_encryption_key_for_jwt"
 
 	@classmethod

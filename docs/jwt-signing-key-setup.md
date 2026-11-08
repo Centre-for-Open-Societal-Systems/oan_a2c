@@ -13,8 +13,6 @@ This guide covers a one-time manual setup on an already-running A2C site (develo
 
 Verifiers (APISIX, other apps) need no secret. They read the public half from `GET /api/v1/auth/keys` (JWKS).
 
-The old `jwt_secrets` (HS256) value is ignored by `oan_auth_service`. Leave it in place until the gateway verifies with JWKS.
-
 ## Prerequisites
 
 - SSH access to the backend host.
