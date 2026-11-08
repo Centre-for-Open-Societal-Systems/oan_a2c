@@ -1044,6 +1044,10 @@ def create_loan_application(**kwargs):
 		if field.fieldname not in fields_to_ignore and loan_app.meta.has_field(field.fieldname):
 			loan_app.set(field.fieldname, farmer_profile.get(field.fieldname))
 
+	# The registry may hold no phone for the farmer; the agent captured one on the lead.
+	if not loan_app.phone_number:
+		loan_app.phone_number = lead_doc.get("phone_number")
+
 	loan_app.loan_type = credit_info.loan_type
 	loan_app.loan_amount = flt(credit_info.loan_amount)
 	loan_app.requested_amount = flt(credit_info.loan_amount)

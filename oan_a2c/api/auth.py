@@ -2,6 +2,7 @@ from typing import Literal
 
 import frappe
 from frappe import _
+from oan_auth_service.api.utils import rate_limit_per_user, validate_mobile
 from pydantic import BaseModel, Field, field_validator
 
 from oan_a2c.a2c_marketplace.roles import (
@@ -14,7 +15,6 @@ from oan_a2c.a2c_marketplace.roles import (
 )
 from oan_a2c.api.router import prefixed
 from oan_a2c.api.utils import (
-	check_rate_limit,
 	handle_api_errors,
 	success_response,
 	validate_password_complexity,
@@ -116,30 +116,6 @@ def _get_user_bank_context(user_id: str) -> dict[str, str | None]:
 		"bank_name": bank_row.bank_name,
 		"bank_status": bank_row.status,
 	}
-
-
-AGENT_IAM_KEY = "agent"
-
-
-def require_sso_for_development_agents(user: str) -> str | None:
-	"""`revocation_check` for the a2c API namespaces: Development Agents sign in only through SSO.
-
-	A Development Agent account that was not provisioned by the OpenG2P IAM service
-	(an old local account with a password) is refused, whatever token it holds.
-	IAM-provisioned users carry their roles from IAM, so the role alone decides.
-	"""
-	from oan_auth_service.api.iam_users import is_delegated_user
-	from oan_auth_service.config import settings
-
-	# No agent IAM option is offered (the providers list is only `local`), so the
-	# password form is the only way in and must work.
-	if not any(s.key == AGENT_IAM_KEY for s in settings.iam_services()):
-		return None
-	if is_delegated_user(user):
-		return None
-	if DEVELOPMENT_AGENT_ROLE in frappe.get_roles(user):
-		return "Development Agents must sign in through SSO"
-	return None
 
 
 def access_token_claims(user: str, roles: list[str]) -> dict:
@@ -322,7 +298,12 @@ def update_profile(
 		user.first_name = full_name.strip()
 		user.last_name = ""
 	if phone_number is not None:
-		user.mobile_no = phone_number.strip()
+		phone_number = phone_number.strip()
+		# Only a changed number is validated: clients resend the stored value on every
+		# save, and a legacy number must not block an unrelated name/language edit.
+		if phone_number and phone_number != user.mobile_no:
+			phone_number = validate_mobile(phone_number)
+		user.mobile_no = phone_number
 	if language is not None:
 		user.language = _resolve_language(language)
 	if gender is not None:
@@ -353,11 +334,10 @@ def update_profile(
 @me_route("/password", methods=("PATCH",), summary="Change password")
 @validate_request(ChangePasswordSchema)
 @handle_api_errors
+@rate_limit_per_user(limit=5, window=300)
 def change_password(current_password: str, new_password: str):
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Not permitted"), frappe.AuthenticationError)
-
-	check_rate_limit(f"rl:change_pwd:{frappe.session.user}", limit=5, window=300)
 
 	from frappe.utils.password import check_password
 	from frappe.utils.password import update_password as update_password_db

@@ -1,5 +1,5 @@
 import json
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 from typing import Any as DummyAny
 
 import frappe
@@ -12,6 +12,7 @@ from oan_a2c.api.utils import (
 	success_response,
 	validate_request,
 )
+from oan_a2c.api.v1.consent.bene360 import extract_profile_fields
 
 
 class SelectedDataSchema(BaseModel):
@@ -23,14 +24,17 @@ class FarmerInfoSchema(BaseModel):
 	# A2C Farmer Profile on, so it is required rather than optional. OpenG2P always
 	# sends it; declaring that here means a malformed payload is rejected at
 	# validation with a clear error, instead of falling through to a weaker key and
-	# silently creating a profile nothing can later match.
-	id: int = Field(..., ge=1)
+	# silently creating a profile nothing can later match. A string is the registry
+	# record id from the Agent API (the Aggregation Layer path); an int is the
+	# legacy OpenG2P farmer id.
+	id: Annotated[int, Field(ge=1)] | Annotated[str, Field(min_length=1)]
 	farmer_id: Any | None = None
 	name: str | None = None
 
 
 class ConsentInfoSchema(BaseModel):
-	id: int | None = None
+	# Consent Manager consent ids are strings; legacy OpenG2P ids were ints.
+	id: int | str | None = None
 	consent_creation_request_id: str = Field(..., min_length=1)
 	consent_type: str | None = None
 	status: str | None = None
@@ -49,29 +53,6 @@ class ReceiveConsentDataSchema(BaseModel):
 	# `Any` keeps a malformed payload a clean 400 at validation, instead of falling
 	# through to a profile built entirely from defaults.
 	selected_data: dict[str, Any] | None = None
-
-
-def normalize_field_key(key):
-	"""Reduce an OpenG2P field label to a bare lowercase alphanumeric token so
-	that casing, spacing and punctuation drift do not break lookups, e.g.
-	"Number of Females ( Family )" and "Number of Females (Family)" both map to
-	"numberoffemalesfamily"."""
-	return "".join(ch for ch in str(key).lower() if ch.isalnum())
-
-
-def build_field_getter(farmer_info_dict):
-	"""Return a spelling-tolerant getter over an OpenG2P farmer info dict.
-
-	The returned `get(label, default=None)` normalizes the requested label the
-	same way as the stored keys, so field lookups keep working even when
-	OpenG2P changes a label's casing, spacing or punctuation.
-	"""
-	normalized = {normalize_field_key(k): v for k, v in (farmer_info_dict or {}).items()}
-
-	def get(label, default=None):
-		return normalized.get(normalize_field_key(label), default)
-
-	return get
 
 
 def download_cert_photo_to_file(url, lead_id):
@@ -179,38 +160,13 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		# Both `farmer` and its `id` are required by the schema, so this is always a
 		# populated block by the time validation has passed.
 		farmer_data = validated.farmer
-		farmer_info_dict = {}
-		# Find the first dictionary inside selected_data that contains farmer info
-		if isinstance(raw_selected_data, dict):
-			for _key, val in raw_selected_data.items():
-				if isinstance(val, dict):
-					farmer_info_dict = val
-					break
-			if not farmer_info_dict:
-				farmer_info_dict = raw_selected_data
-
-		# Spelling-tolerant accessor over the farmer info dict.
-		g = build_field_getter(farmer_info_dict)
-
-		full_name = g("Full Name", "")
-		if full_name:
-			name_parts = full_name.split(" ")
-		else:
+		# selected_data is the Aggregation Layer's beneficiary360 record.
+		profile_fields = extract_profile_fields(raw_selected_data)
+		if not profile_fields.get("first_name"):
 			name_parts = (farmer_data.name or "").split(" ")
-
-		first_name = name_parts[0] if len(name_parts) > 0 else ""
-		last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
-
-		# Mobile could be list or string
-		mobile_data = g("Mobile Number", g("Phone Number", []))
-		if isinstance(mobile_data, list) and mobile_data:
-			phone_number = str(mobile_data[0])
-		elif isinstance(mobile_data, str):
-			phone_number = mobile_data
-		else:
-			phone_number = ""
-
-		email = g("Email", "")
+			profile_fields["first_name"] = name_parts[0]
+			profile_fields["last_name"] = " ".join(name_parts[1:])
+		phone_number = profile_fields.get("phone_number") or ""
 
 		# Fetch Consent Request to check links
 		consent_doc = frappe.get_doc("A2C Consent Request", consent_doc_name)
@@ -220,100 +176,10 @@ def process_consent_data(data, consent_doc_name, consent_request_id):
 		# self-service consent has no lead at all, which is not an error.
 		lead_id = consent_doc.reference_name if consent_doc.reference_doctype == "A2C Lead" else None
 
-		# Parse Source of income
-		source_of_income_list = g("Source of Income", [])
-		source_of_income = (
-			", ".join([s.get("name") for s in source_of_income_list if isinstance(s, dict)])
-			if isinstance(source_of_income_list, list)
-			else source_of_income_list
-		)
-
-		# Parse farmland size
-		farmland_size_data = g("Farmland Size (Hectares)", [])
-		if isinstance(farmland_size_data, list):
-			farmland_size_hectares = ", ".join([str(x) for x in farmland_size_data])
-		else:
-			farmland_size_hectares = farmland_size_data
-
-		# Parse Certification ID
-		land_ids = g("Land ID", [])
-		if isinstance(land_ids, list):
-			certification_id = ", ".join([str(x) for x in land_ids])
-		else:
-			certification_id = land_ids
-
-		cert_photos = g("Certificate Provided", [])
-		certification_photo_url = (
-			cert_photos[0]
-			if isinstance(cert_photos, list) and len(cert_photos) > 0
-			else (cert_photos if isinstance(cert_photos, str) else None)
-		)
-
-		# OpenG2P provides the certificate photo as an external URL. Download it
-		# and store a local Frappe File attachment on the lead; on failure this
-		# falls back to keeping the original URL.
-		if certification_photo_url and lead_id:
-			certification_photo_url = download_cert_photo_to_file(certification_photo_url, lead_id)
-
-		fayda_id_list = g("Fayda ID", [])
-		national_id_list = g("National ID", [])
-
-		id_type = ""
-		id_number = ""
-
-		if fayda_id_list:
-			id_type = "uid"
-			id_number = (
-				fayda_id_list[0] if isinstance(fayda_id_list, list) and fayda_id_list else str(fayda_id_list)
-			)
-		elif national_id_list:
-			id_type = "national_id"
-			id_number = (
-				national_id_list[0]
-				if isinstance(national_id_list, list) and national_id_list
-				else str(national_id_list)
-			)
-
-		education_level = g("Education Level", "")
-
-		region_data = g("Region")
-		region = region_data.get("name") if isinstance(region_data, dict) else (region_data or "")
-
-		woreda_data = g("Woreda")
-		woreda = woreda_data.get("name") if isinstance(woreda_data, dict) else (woreda_data or "")
-
-		kebele_data = g("Kebele")
-		kebele = kebele_data.get("name") if isinstance(kebele_data, dict) else (kebele_data or "")
-
 		updates = {
-			"first_name": first_name,
-			"last_name": last_name,
-			"region": region,
-			"woreda": woreda,
-			"kebele": kebele,
-			"language": g("Language"),
-			"id_type": id_type,
-			"id_number": id_number,
+			**profile_fields,
 			"farmer_id": farmer_data.id,
 			"consent_id": consent_doc_name,
-			"phone_number": phone_number,
-			"email": email,
-			"date_of_birth": g("Date of Birth"),
-			"gender": (g("Gender") or "").capitalize(),
-			"marital_status": (g("Marital Status") or "").capitalize(),
-			"size_of_family": frappe.utils.cint(g("Size of Family")),
-			"number_of_children": frappe.utils.cint(g("Number of Children")),
-			"no_of_females_family": frappe.utils.cint(g("Number of Females (Family)")),
-			"source_of_income": source_of_income,
-			"education_level": education_level,
-			"family_member_owns_land_independently": frappe.utils.cint(g("Other Family Member Own Land")),
-			"total_farmland_size_as_landowner": frappe.utils.flt(g("Total Owned Land")),
-			"total_farmland_size_as_crop_sharing": frappe.utils.flt(g("Total Crop Sharing Land")),
-			"total_farmland_size_as_rented": frappe.utils.flt(g("Total Rented Land")),
-			"farmland_size_hectares": farmland_size_hectares,
-			"land_ownership_status": g("Land Ownership Status"),
-			"certification_id": certification_id,
-			"certification_photo_url": certification_photo_url,
 			# None on a status-only redelivery, which the loop below skips, so the
 			# blob captured by an earlier delivery survives.
 			"farmer_data_json": raw_consent_data_str if validated.selected_data is not None else None,

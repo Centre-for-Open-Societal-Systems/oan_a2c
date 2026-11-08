@@ -209,6 +209,7 @@ services:
     - /v1/banks/me/team/:userId/password-reset
     - /v1/consent/otp
     - /v1/consent/otp/verify
+    - /v1/consent/otp/resend
     - /v1/consent/requests
     methods:
     - POST

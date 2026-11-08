@@ -1,0 +1,182 @@
+{
+  "actions": [],
+  "creation": "2026-11-07 00:00:00.000000",
+  "description": "Endpoints and partner credentials for the OpenG2P Agent API, Consent Manager and Aggregation Layer.",
+  "doctype": "DocType",
+  "engine": "InnoDB",
+  "field_order": [
+    "endpoints_section",
+    "keycloak_url",
+    "consent_manager_url",
+    "column_break_endpoints",
+    "aggregation_url",
+    "agent_api_url",
+    "farmer_register_id",
+    "verify_ssl",
+    "partner_section",
+    "partner_realm",
+    "partner_grant_type",
+    "partner_client_id",
+    "partner_client_secret",
+    "column_break_partner",
+    "partner_id",
+    "partner_username",
+    "partner_password",
+    "consent_section",
+    "purpose_code",
+    "subject_id_type",
+    "timeframe"
+  ],
+  "fields": [
+    {
+      "fieldname": "endpoints_section",
+      "fieldtype": "Section Break",
+      "label": "Endpoints"
+    },
+    {
+      "description": "Keycloak base URL, e.g. https://keycloak-development.oanstaging.com",
+      "fieldname": "keycloak_url",
+      "fieldtype": "Data",
+      "options": "URL",
+      "label": "Keycloak URL"
+    },
+    {
+      "description": "e.g. https://consent-manager.development.oanstaging.com",
+      "fieldname": "consent_manager_url",
+      "fieldtype": "Data",
+      "options": "URL",
+      "label": "Consent Manager URL"
+    },
+    {
+      "fieldname": "column_break_endpoints",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "e.g. https://aggregation.development.oanstaging.com",
+      "fieldname": "aggregation_url",
+      "fieldtype": "Data",
+      "options": "URL",
+      "label": "Aggregation Layer URL"
+    },
+    {
+      "description": "Registry staff API base URL, used for the farmer search (POST /register-data/search_in_a_register), e.g. https://staff-farmer.development.oanstaging.com.",
+      "fieldname": "agent_api_url",
+      "fieldtype": "Data",
+      "options": "URL",
+      "label": "Farmer Registry Staff API URL"
+    },
+    {
+      "default": "a1a4d25a-1cd4-4356-abac-985a0b3c6bcd",
+      "description": "Id of the Farmer register in the farmer registry, searched for the farmer lookup.",
+      "fieldname": "farmer_register_id",
+      "fieldtype": "Data",
+      "label": "Farmer Register ID"
+    },
+    {
+      "default": "1",
+      "description": "Verify TLS certificates. Only turn off against a dev server with a self-signed certificate.",
+      "fieldname": "verify_ssl",
+      "fieldtype": "Check",
+      "label": "Verify SSL"
+    },
+    {
+      "fieldname": "partner_section",
+      "fieldtype": "Section Break",
+      "label": "Partner (Bank) Client"
+    },
+    {
+      "default": "partner",
+      "fieldname": "partner_realm",
+      "fieldtype": "Data",
+      "label": "Partner Realm"
+    },
+    {
+      "default": "client_credentials",
+      "fieldname": "partner_grant_type",
+      "fieldtype": "Select",
+      "label": "Grant Type",
+      "options": "client_credentials\npassword"
+    },
+    {
+      "fieldname": "partner_client_id",
+      "fieldtype": "Data",
+      "label": "Client ID"
+    },
+    {
+      "fieldname": "partner_client_secret",
+      "fieldtype": "Password",
+      "label": "Client Secret"
+    },
+    {
+      "fieldname": "column_break_partner",
+      "fieldtype": "Column Break"
+    },
+    {
+      "description": "Must equal the partner_id claim in the partner token; sent as header.sender_id to the Aggregation Layer.",
+      "fieldname": "partner_id",
+      "fieldtype": "Data",
+      "label": "Partner ID"
+    },
+    {
+      "depends_on": "eval:doc.partner_grant_type=='password'",
+      "fieldname": "partner_username",
+      "fieldtype": "Data",
+      "label": "Username"
+    },
+    {
+      "depends_on": "eval:doc.partner_grant_type=='password'",
+      "fieldname": "partner_password",
+      "fieldtype": "Password",
+      "label": "Password"
+    },
+    {
+      "fieldname": "consent_section",
+      "fieldtype": "Section Break",
+      "label": "Consent Defaults"
+    },
+    {
+      "default": "loan_origination",
+      "fieldname": "purpose_code",
+      "fieldtype": "Data",
+      "label": "Purpose Code"
+    },
+    {
+      "default": "FIN",
+      "description": "Type of the Fayda ID sent as the consent subject and used to query the Aggregation Layer. It must be one of the partner binding's allowed subject ID types; the Aggregation Layer currently accepts only FIN.",
+      "fieldname": "subject_id_type",
+      "fieldtype": "Data",
+      "label": "Subject ID Type"
+    },
+    {
+      "default": "Timeframe-Medium",
+      "fieldname": "timeframe",
+      "fieldtype": "Select",
+      "label": "Beneficiary-360 Timeframe",
+      "options": "Timeframe-Short\nTimeframe-Medium\nTimeframe-Long"
+    }
+  ],
+  "issingle": 1,
+  "links": [],
+  "modified": "2026-11-07 12:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "A2C Marketplace",
+  "name": "A2C OpenG2P Settings",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "create": 1,
+      "read": 1,
+      "role": "System Manager",
+      "write": 1
+    },
+    {
+      "create": 1,
+      "read": 1,
+      "role": "A2C Administrator",
+      "write": 1
+    }
+  ],
+  "sort_field": "modified",
+  "sort_order": "DESC",
+  "states": []
+}

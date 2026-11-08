@@ -1,0 +1,2170 @@
+{
+  "info": {
+    "name": "OAN A2C - Development Agent (Keycloak)",
+    "description": "Development Agent journey on the A2C backend. Signs in through the agent Keycloak realm via IAM (/v1/auth/iam/login), then works a lead for a farmer identified by Fayda ID, takes consent, and creates and reviews a loan application.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Defaults for values the requests below read; the environment wins when set.",
+          "function d(k, v) { if (!pm.variables.get(k)) { pm.variables.set(k, v); } }",
+          "var dt = new Date(Date.now() + 7 * 86400000);",
+          "d('visit_date', dt.toISOString().slice(0, 10));",
+          "d('visit_time', '10:00');",
+          "d('visit_region', 'Oromia'); d('visit_zone', 'East Shewa'); d('visit_woreda', 'Adama'); d('visit_kebele', 'Kebele 01');",
+          "d('visit_location', 'Farmer home'); d('visit_notes', 'Initial farm visit');",
+          "d('credit_purpose', 'Seed and fertilizer for the next season');",
+          "d('credit_loan_amount', '100000');",
+          "d('lead_update_reason', 'Updated by development agent');"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Login via Keycloak (Development Agent)",
+      "item": [
+        {
+          "name": "K1. Start Keycloak login (agent realm via IAM)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/auth/iam/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "iam",
+                "login"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"key\": \"{{keycloak_login_key}}\",\n  \"provider\": \"{{keycloak_login_key}}\",\n  \"return_url\": \"{{iam_return_url}}\"\n}"
+            },
+            "description": "Initiates OAuth2 login transaction via OpenG2P IAM for Development Agent.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "    if (pm.response.code !== 200) { console.error(pm.response.text()); }",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var jsonData = pm.response.json();",
+                  "var data = jsonData.data || jsonData;",
+                  "pm.test(\"redirect_url returned\", function () {",
+                  "    pm.expect(data).to.have.property(\"redirect_url\");",
+                  "});",
+                  "if (data && data.redirect_url) {",
+                  "    pm.collectionVariables.set(\"authorization_url\", data.redirect_url);",
+                  "    console.log(\"[K1] Authorization URL:\", data.redirect_url);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var key = pm.environment.get('keycloak_login_key') || 'agent';",
+                  "pm.collectionVariables.set('keycloak_login_key', key);",
+                  "pm.collectionVariables.set('iam_user', pm.environment.get('iam_user'));",
+                  "pm.collectionVariables.set('iam_password', pm.environment.get('iam_password'));",
+                  "pm.collectionVariables.set('keycloak_access_token', '');",
+                  "pm.collectionVariables.set('access_token', '');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "K2. Open Keycloak login form",
+          "protocolProfileBehavior": {
+            "followRedirects": true
+          },
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{authorization_url}}",
+              "host": [
+                "{{authorization_url}}"
+              ]
+            },
+            "description": "Fetches Keycloak login HTML page and extracts form action URL (mimics browser step).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var token = pm.collectionVariables.get(\"keycloak_access_token\") || pm.environment.get(\"keycloak_access_token\");",
+                  "var authUrl = pm.collectionVariables.get(\"authorization_url\");",
+                  "if (token || !authUrl) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", function () {",
+                  "    if (pm.response.code !== 200) { console.error(pm.response.text()); }",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var html = pm.response.text();",
+                  "var formMatch = html.match(/<form\\b[^>]*\\bid=[\"']kc-form-login[\"'][^>]*action=[\"']([^\"']+)[\"']/i);",
+                  "if (!formMatch) { formMatch = html.match(/action=[\"']([^\"']+)[\"']/i); }",
+                  "pm.test(\"Keycloak login form present\", function () {",
+                  "    pm.expect(formMatch).to.not.be.null;",
+                  "});",
+                  "if (formMatch) {",
+                  "    var actionUrl = formMatch[1].replace(/&amp;/g, \"&\");",
+                  "    pm.collectionVariables.set(\"kc_login_action\", actionUrl);",
+                  "    console.log(\"[K2] Keycloak login action:\", actionUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "K3. Sign in Development Agent (Keycloak)",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              }
+            ],
+            "url": {
+              "raw": "{{kc_login_action}}",
+              "host": [
+                "{{kc_login_action}}"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{iam_user}}",
+                  "type": "text"
+                },
+                {
+                  "key": "password",
+                  "value": "{{iam_password}}",
+                  "type": "text"
+                },
+                {
+                  "key": "credentialId",
+                  "value": "",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Posts credentials to Keycloak login form and captures 302 redirect location to IAM callback.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var token = pm.collectionVariables.get(\"keycloak_access_token\") || pm.environment.get(\"keycloak_access_token\");",
+                  "var actionUrl = pm.collectionVariables.get(\"kc_login_action\");",
+                  "if (token || !actionUrl) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Keycloak redirects with authorization code (302/303)\", function () {",
+                  "    pm.expect([302, 303]).to.include(pm.response.code);",
+                  "});",
+                  "var location = pm.response.headers.get(\"Location\") || \"\";",
+                  "pm.test(\"Callback location present\", function () {",
+                  "    pm.expect(location).to.not.be.empty;",
+                  "});",
+                  "if (location) {",
+                  "    pm.collectionVariables.set(\"iam_callback_url\", location);",
+                  "    console.log(\"[K3] IAM callback URL:\", location);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "K4. Complete IAM callback and retain access token",
+          "protocolProfileBehavior": {
+            "followRedirects": false
+          },
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{iam_callback_url}}",
+              "host": [
+                "{{iam_callback_url}}"
+              ]
+            },
+            "description": "Calls IAM callback to complete code exchange and extracts X-Access-Token cookie.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var token = pm.collectionVariables.get(\"keycloak_access_token\") || pm.environment.get(\"keycloak_access_token\");",
+                  "var cbUrl = pm.collectionVariables.get(\"iam_callback_url\");",
+                  "if (token || !cbUrl) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"IAM callback redirects after exchange (302/303/307)\", function () {",
+                  "    pm.expect([302, 303, 307]).to.include(pm.response.code);",
+                  "});",
+                  "var cookieHeaders = pm.response.headers.all().filter(function (h) {",
+                  "    return h.key.toLowerCase() === \"set-cookie\";",
+                  "});",
+                  "var tokens = cookieHeaders.map(function (h) {",
+                  "    var match = h.value.match(/^X-Access-Token=([^;]*)/i);",
+                  "    return match ? match[1].replace(/^\"|\"$/g, \"\") : null;",
+                  "}).filter(Boolean);",
+                  "var token = tokens[tokens.length - 1];",
+                  "pm.test(\"IAM issued access token\", function () {",
+                  "    pm.expect(token).to.be.a(\"string\").and.not.empty;",
+                  "});",
+                  "if (token) {",
+                  "    pm.collectionVariables.set(\"keycloak_access_token\", token);",
+                  "    console.log(\"[K4] Acquired keycloak_access_token from IAM cookie\");",
+                  "}",
+                  "if (token) { pm.collectionVariables.set('access_token', token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "K5. Who am I (verifies Development Agent token)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "auth",
+                "me"
+              ]
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "var d = pm.response.json().data || {};",
+                  "pm.test('Has A2C Development Agent role', function () { pm.expect(JSON.stringify(d)).to.include('A2C Development Agent'); });",
+                  "pm.environment.set('agent_user', d.user || '');"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Lead & Catalog",
+      "item": [
+        {
+          "name": "1. Create Lead Natively",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/leads",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"phone_number\": \"{{phone_number}}\",\n    \"first_name\": \"{{first_name}}\",\n    \"last_name\": \"{{last_name}}\",\n    \"email\": \"{{email}}\",\n    \"lead_source\": \"Agent Entry\",\n    \"external_id\": \"{{external_id}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "",
+                  "var env = (responseJson.message && responseJson.message.status) ? responseJson.message : responseJson;",
+                  "pm.test('Lead created', function () { pm.expect(env.status).to.eql('success'); });",
+                  "",
+                  "var data = env.data || {};",
+                  "if (data.lead_id) {",
+                  "    pm.collectionVariables.set('lead_id', data.lead_id);",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"lead_id\", data.lead_id); }",
+                  "    console.log('Captured lead_id:', data.lead_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('phone_number', '+2519' + Math.floor(10000000 + Math.random() * 90000000).toString());",
+                  "pm.variables.set('external_id', 'EXT-' + Math.floor(100000 + Math.random() * 900000).toString());",
+                  "pm.variables.set('first_name', pm.environment.get('first_name') || 'Test');",
+                  "pm.variables.set('last_name', pm.environment.get('last_name') || 'Farmer');",
+                  "pm.variables.set('email', 'dev.agent.farmer@example.com');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9. Get Lead Metadata (Forms Dropdown Options)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/leads/metadata",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads",
+                "metadata"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Get Lead Summary (Metrics Dashboard)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/leads/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads",
+                "summary"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Get Leads (Paginated Search & Filter)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/leads?start=0&page_length=20&search_query=&status=&lead_source=&start_date=&end_date=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads"
+              ],
+              "query": [
+                {
+                  "key": "start",
+                  "value": "0"
+                },
+                {
+                  "key": "page_length",
+                  "value": "20"
+                },
+                {
+                  "key": "search_query",
+                  "value": ""
+                },
+                {
+                  "key": "status",
+                  "value": ""
+                },
+                {
+                  "key": "lead_source",
+                  "value": ""
+                },
+                {
+                  "key": "start_date",
+                  "value": ""
+                },
+                {
+                  "key": "end_date",
+                  "value": ""
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Add Lead Comment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/leads/:id/comments",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads",
+                ":id",
+                "comments"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{lead_id}}",
+                  "description": "id parameter"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"content\": \"Field agent discussed agricultural profiles with farmer.\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Get Lead Timeline (History Log)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/leads/:id/timeline?event_type=",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads",
+                ":id",
+                "timeline"
+              ],
+              "query": [
+                {
+                  "key": "event_type",
+                  "value": ""
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{lead_id}}",
+                  "description": "id parameter"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "11. Get Lead Call Logs (Call History)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/leads/:id/call-logs",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads",
+                ":id",
+                "call-logs"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{lead_id}}",
+                  "description": "id parameter"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "14. Get Assignable Users",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/leads/assignable-users?search_query={{agent_search_query}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads",
+                "assignable-users"
+              ],
+              "query": [
+                {
+                  "key": "search_query",
+                  "value": "{{agent_search_query}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "20. Browse Products (Dev Agent)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/catalog/products?limit=20&start=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "catalog",
+                "products"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20"
+                },
+                {
+                  "key": "start",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () { pm.response.to.have.status(200); });",
+                  "var d = pm.response.json().data || {};",
+                  "var amt = Number(pm.environment.get('credit_loan_amount') || 100000);",
+                  "var list = d.products || [];",
+                  "var p = list.find(function (x) { return x.category && Number(x.min_amount) <= amt && (!x.max_amount || amt <= Number(x.max_amount)); }) || list.find(function (x) { return x.category; }) || list[0] || {};",
+                  "pm.test('Catalog has a product with a category', function () { pm.expect(p.category).to.be.ok; });",
+                  "if (p.name) { pm.collectionVariables.set('loan_product', p.name); pm.environment.set('loan_product', p.name); }",
+                  "var use = amt; if (p.min_amount) { use = Math.max(use, Number(p.min_amount)); } if (p.max_amount) { use = Math.min(use, Number(p.max_amount)); }",
+                  "pm.collectionVariables.set('credit_loan_amount', String(use));",
+                  "pm.collectionVariables.set('credit_loan_type', pm.environment.get('credit_loan_type') || 'Crop Loan');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Add Lead Credit Information",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/leads/:id/credit-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads",
+                ":id",
+                "credit-info"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{lead_id}}",
+                  "description": "id parameter"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"loan_type\": \"{{credit_loan_type}}\",\n    \"loan_amount\": {{credit_loan_amount}},\n    \"purpose_message\": \"{{credit_purpose}}\",\n    \"loan_product\": \"{{loan_product}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "13. Get Lead Credit Information",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/leads/:id/credit-info",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads",
+                ":id",
+                "credit-info"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{lead_id}}",
+                  "description": "id parameter"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Schedule Visit",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/visit-schedules",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "visit-schedules"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"visit_date\": \"{{visit_date}}\",\n    \"visit_time\": \"{{visit_time}}\",\n    \"region\": \"{{visit_region}}\",\n    \"zone\": \"{{visit_zone}}\",\n    \"woreda\": \"{{visit_woreda}}\",\n    \"kebele\": \"{{visit_kebele}}\",\n    \"meeting_location\": \"{{visit_location}}\",\n    \"notes\": \"{{visit_notes}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}",
+                  "",
+                  "var data = responseJson.message && responseJson.message.data ? responseJson.message.data : (responseJson.data || {});",
+                  "if (data.schedule_id) {",
+                  "    pm.collectionVariables.set('schedule_id', data.schedule_id);",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"schedule_id\", data.schedule_id); }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "12. Get Visit Schedules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/visit-schedules?lead_id={{lead_id}}&start=0&page_length=20",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "visit-schedules"
+              ],
+              "query": [
+                {
+                  "key": "lead_id",
+                  "value": "{{lead_id}}"
+                },
+                {
+                  "key": "start",
+                  "value": "0"
+                },
+                {
+                  "key": "page_length",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Consent (Fayda ID)",
+      "item": [
+        {
+          "name": "2. Get Consent Reasons",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/consent/reasons",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "consent",
+                "reasons"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var resp = pm.response.json();",
+                  "var env = (resp && typeof resp.message === 'object' && resp.message !== null) ? resp.message : resp;",
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('envelope status is success', function () { pm.expect(env.status).to.eql('success'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Get Consent Allowed Fields",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/consent/allowed-fields",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "consent",
+                "allowed-fields"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var resp = pm.response.json();",
+                  "var env = (resp && typeof resp.message === 'object' && resp.message !== null) ? resp.message : resp;",
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('envelope status is success', function () { pm.expect(env.status).to.eql('success'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Search Farmer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/consent/farmers?fayda_id={{fayda_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "consent",
+                "farmers"
+              ],
+              "query": [
+                {
+                  "key": "fayda_id",
+                  "value": "{{fayda_id}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var resp = pm.response.json();",
+                  "var env = (resp && typeof resp.message === 'object' && resp.message !== null) ? resp.message : resp;",
+                  "var data = env.data || {};",
+                  "",
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('envelope status is success', function () { pm.expect(env.status).to.eql('success'); });",
+                  "pm.test('farmer found', function () { pm.expect(data.farmer || data.farmer_db_id).to.not.be.undefined; });",
+                  "",
+                  "if (env.status === 'success') {",
+                  "    if (data.farmer_db_id !== undefined && data.farmer_db_id !== null) {",
+                  "        pm.collectionVariables.set('farmer_id', data.farmer_db_id.toString());",
+                  "        if (pm.environment && pm.environment.name) { pm.environment.set(\"farmer_id\", data.farmer_db_id.toString()); }",
+                  "    } else if (data.farmer && data.farmer.id) {",
+                  "        pm.collectionVariables.set('farmer_id', data.farmer.id.toString());",
+                  "        if (pm.environment && pm.environment.name) { pm.environment.set(\"farmer_id\", data.farmer.id.toString()); }",
+                  "    }",
+                  "    if (data.farmer && data.farmer.name) {",
+                  "        pm.collectionVariables.set('farmer_name', data.farmer.name);",
+                  "        if (pm.environment && pm.environment.name) { pm.environment.set(\"farmer_name\", data.farmer.name); }",
+                  "    }",
+                  "    console.log('Farmer found:', (data.farmer || {}).name, '(db id', data.farmer_db_id + ')');",
+                  "} else {",
+                  "    console.log('Search failed:', env.message);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Request OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/consent/otp",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "consent",
+                "otp"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fayda_id\": \"{{fayda_id}}\",\n  \"lead_id\": \"{{lead_id}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Envelope data: { consent_request, transaction_id, masked_phone }",
+                  "var resp = pm.response.json();",
+                  "var env = (resp && typeof resp.message === 'object' && resp.message !== null) ? resp.message : resp;",
+                  "var data = env.data || {};",
+                  "",
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('envelope status is success', function () { pm.expect(env.status).to.eql('success'); });",
+                  "pm.test('transaction_id returned', function () { pm.expect(data).to.have.property('transaction_id'); });",
+                  "pm.test('consent_request created', function () { pm.expect(data.consent_request).to.not.be.empty; });",
+                  "",
+                  "if (env.status === 'success') {",
+                  "    if (data.consent_request) { pm.collectionVariables.set('consent_request', data.consent_request); }",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"consent_request\", data.consent_request); }",
+                  "    if (data.transaction_id) { pm.collectionVariables.set('transaction_id', data.transaction_id.toString()); }",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"transaction_id\", data.transaction_id.toString()); }",
+                  "    if (data.masked_phone) { pm.collectionVariables.set('masked_phone', data.masked_phone); }",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"masked_phone\", data.masked_phone); }",
+                  "    console.log('OTP sent to', data.masked_phone, '| txn:', data.transaction_id, '| consent request:', data.consent_request);",
+                  "} else {",
+                  "    console.log('Request OTP failed:', env.message);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "5a. Find Latest OTP (S3 inbox)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{otp_inbox_list_url}}/?list-type=2&prefix=otp/&max-keys=1000",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var end = Date.now() + 4000; while (Date.now() < end) {}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var xml = pm.response.text();",
+                  "var keys = []; var re = /<Key>([^<]+)<\\/Key>/g; var m;",
+                  "while ((m = re.exec(xml)) !== null) { keys.push(m[1]); }",
+                  "keys = keys.filter(function (k) { return k.indexOf('otp/') === 0 && k.slice(-5) === '.json'; }).sort();",
+                  "pm.test('OTP file found', function () { pm.expect(keys.length).to.be.above(0); });",
+                  "if (keys.length) { pm.environment.set('latest_otp_key', keys[keys.length - 1]); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5b. Read Latest OTP (S3 inbox)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{otp_inbox_url}}/{{latest_otp_key}}",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "var b = {}; try { b = pm.response.json(); } catch (e) {}",
+                  "var otp = b.otp || b.otp_code || (b.request && b.request.otp);",
+                  "var tx = b.transaction_id || b.transactionID || b.transactionId;",
+                  "pm.test('OTP present', function () { pm.expect(otp).to.be.ok; });",
+                  "if (otp) { pm.environment.set('otp_code', String(otp)); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/consent/otp/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "consent",
+                "otp",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_request\": \"{{consent_request}}\",\n  \"transaction_id\": \"{{transaction_id}}\",\n  \"otp_code\": \"{{otp_code}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Envelope data: { lead_id, consent_request, transaction_id, status: 'OTP Verified' }",
+                  "var resp = pm.response.json();",
+                  "var env = (resp && typeof resp.message === 'object' && resp.message !== null) ? resp.message : resp;",
+                  "var data = env.data || {};",
+                  "",
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('envelope status is success', function () { pm.expect(env.status).to.eql('success'); });",
+                  "",
+                  "if (env.status === 'success') {",
+                  "    if (data.consent_request) { pm.collectionVariables.set('consent_request', data.consent_request); }",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"consent_request\", data.consent_request); }",
+                  "    if (data.transaction_id) { pm.collectionVariables.set('transaction_id', data.transaction_id.toString()); }",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"transaction_id\", data.transaction_id.toString()); }",
+                  "    console.log('OTP verified for consent request:', data.consent_request);",
+                  "} else {",
+                  "    console.log('Verify OTP failed:', env.message);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Auto-fetch the latest OTP dropped into the webhook sink by the OTP webhook so",
+                  "// you don't have to copy it by hand. Set `webhook_base_url` in your environment",
+                  "// to the sink's S3-compatible REST endpoint; leave it blank to enter OTPs manually.",
+                  "//",
+                  "// Flow: list the otp/ prefix -> pick the newest object (filenames are timestamp-",
+                  "// prefixed, so the lexicographically-greatest key is the latest) -> GET it ->",
+                  "// set otp_code. Postman waits for these async calls before sending Verify OTP.",
+                  "var base = pm.variables.get(\"webhook_base_url\");",
+                  "if (!base) {",
+                  "    console.warn(\"webhook_base_url is not set; skipping OTP auto-fetch. Enter the OTP manually.\");",
+                  "} else {",
+                  "    const listUrl = base.replace(/\\/+$/, \"\") + \"/?list-type=2&prefix=otp/\";",
+                  "    pm.sendRequest({ url: listUrl, method: \"GET\" }, function (err, res) {",
+                  "        if (err || !res) { console.error(\"OTP list request failed:\", err); return; }",
+                  "        let parsed;",
+                  "        try { parsed = xml2Json(res.text()); } catch (e) { console.error(\"Could not parse S3 listing XML:\", e); return; }",
+                  "        let contents = parsed && parsed.ListBucketResult && parsed.ListBucketResult.Contents;",
+                  "        if (!contents) { console.warn(\"No objects under otp/ prefix.\"); return; }",
+                  "        if (!Array.isArray(contents)) contents = [contents];",
+                  "        const keys = contents.map(function (o) { return o.Key; })",
+                  "                             .filter(function (k) { return k && k.endsWith(\".json\"); });",
+                  "        if (!keys.length) { console.warn(\"No .json OTP files found.\"); return; }",
+                  "        keys.sort(); // timestamp-prefixed names -> last is newest",
+                  "        const latestKey = keys[keys.length - 1];",
+                  "        const objUrl = base.replace(/\\/+$/, \"\") + \"/\" + latestKey;",
+                  "        pm.sendRequest({ url: objUrl, method: \"GET\" }, function (err2, res2) {",
+                  "            if (err2 || !res2) { console.error(\"Fetching latest OTP object failed:\", err2); return; }",
+                  "            let data;",
+                  "            try { data = res2.json(); } catch (e) { console.error(\"OTP object is not valid JSON:\", res2.text()); return; }",
+                  "            if (data.otp) {",
+                  "                pm.collectionVariables.set(\"otp_code\", String(data.otp));",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"otp_code\", String(data.otp)); }",
+                  "                console.log(\"otp_code set to\", data.otp, \"from\", latestKey);",
+                  "            } else {",
+                  "                console.warn(\"Latest OTP object had no 'otp' field:\", data);",
+                  "            }",
+                  "        });",
+                  "    });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6b. Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/consent/otp/resend",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "consent",
+                "otp",
+                "resend"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_request\": \"{{consent_request}}\"\n}"
+            },
+            "description": "Sends the farmer a new code (the previous one stops working). Consent Manager allows a resend every 60s, up to 2 resends per request. Use before Verify OTP."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Submit Consent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/consent/requests",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "consent",
+                "requests"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"consent_request\": \"{{consent_request}}\",\n  \"consent_type\": \"specific\",\n  \"consent_reason_id\": 1,\n  \"validity_months\": 12,\n  \"consent_form_filename\": \"signed_consent.pdf\",\n  \"consent_form_base64\": \"JVBERi0xLjQKMSAwIG9iago8PAovVHlwZSAvQ2F0YWxvZwovUGFnZXMgMiAwIFIKPj4KZW5kb2JqCjIgMCBvYmoKPDwKL1R5cGUgL1BhZ2VzCi9LaWRzIFszIDAgUl0KL0NvdW50IDEKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1BhcmVudCAyIDAgUgovTWVkaWFCb3ggWzAgMCA2MTIgNzkyXQo+PgplbmRvYmoKeHJlZgowIDQKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDA5IDAwMDAwIG4gCjAwMDAwMDAwNjIgMDAwMDAgbiAKMDAwMDAwMDExOSAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDQKL1Jvb3QgMSAwIFIKPj4Kc3RhcnR4cmVmCjIxMgolJUVPRgo=\",\n  \"allowed_data_field_ids\": [\n    1,\n    2\n  ]\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Envelope data: { lead_id, consent_request, status: 'Approved', openg2p_consent_id,",
+                  "//                   consent_receipt, farmer_preview: { given_name, family_name, email, phone_no: [] } }",
+                  "var resp = pm.response.json();",
+                  "var env = (resp && typeof resp.message === 'object' && resp.message !== null) ? resp.message : resp;",
+                  "var data = env.data || {};",
+                  "",
+                  "pm.test('HTTP 200', function () { pm.response.to.have.status(200); });",
+                  "pm.test('envelope status is success', function () { pm.expect(env.status).to.eql('success'); });",
+                  "pm.test('openg2p_consent_id returned', function () { pm.expect(data).to.have.property('openg2p_consent_id'); });",
+                  "pm.test('consent_receipt returned', function () { pm.expect(data).to.have.property('consent_receipt'); });",
+                  "",
+                  "if (env.status === 'success') {",
+                  "    if (data.openg2p_consent_id) { pm.collectionVariables.set('openg2p_consent_id', data.openg2p_consent_id.toString()); }",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"openg2p_consent_id\", data.openg2p_consent_id.toString()); }",
+                  "    if (data.consent_receipt) { pm.collectionVariables.set('consent_receipt', data.consent_receipt); }",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"consent_receipt\", data.consent_receipt); }",
+                  "    var preview = data.farmer_preview || {};",
+                  "    console.log('Consent approved. openg2p_consent_id:', data.openg2p_consent_id);",
+                  "    console.log('Farmer:', preview.given_name, preview.family_name, '| phone:', (preview.phone_no || []).join(', '));",
+                  "} else {",
+                  "    console.log('Submit consent failed:', env.message);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Loan Application",
+      "item": [
+        {
+          "name": "0. Mark lead Verified (required before a loan application)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/leads/:id/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "leads",
+                ":id",
+                "status"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{lead_id}}",
+                  "description": "id parameter"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"{{lead_update_status}}\",\n    \"reason\": \"{{lead_update_reason}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set('lead_update_status', 'Verified');",
+                  "pm.variables.set('lead_update_reason', 'Consent captured and farmer verified');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1. Create Loan Application (waits for consent data)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"lead_id\": \"{{lead_id}}\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var n = Number(pm.collectionVariables.get('loan_attempt') || 0);",
+                  "if (n > 0) { var end = Date.now() + 5000; while (Date.now() < end) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var body = {}; try { body = pm.response.json(); } catch (e) {}",
+                  "var msg = String(body.message || '');",
+                  "var n = Number(pm.collectionVariables.get('loan_attempt') || 0);",
+                  "if (pm.response.code === 400 && /No Farmer Profile/i.test(msg) && n < 24) {",
+                  "    pm.collectionVariables.set('loan_attempt', String(n + 1));",
+                  "    console.log('Consent data not processed yet, retrying (' + (n + 1) + ')');",
+                  "    pm.execution.setNextRequest(pm.info.requestName);",
+                  "} else {",
+                  "    pm.collectionVariables.set('loan_attempt', '0');",
+                  "    pm.test('Loan application created', function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "    var d = body.data || {};",
+                  "    var id = d.application_id || d.loan_application || d.name || d.id;",
+                  "    pm.test('Application id returned', function () { pm.expect(id).to.be.ok; });",
+                  "    if (id) { pm.collectionVariables.set('loan_application', String(id)); pm.environment.set('loan_application', String(id)); }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Get Basic Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications/:id/basic-profile?lead_id={{lead_id}}&include_consent_data=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications",
+                ":id",
+                "basic-profile"
+              ],
+              "query": [
+                {
+                  "key": "lead_id",
+                  "value": "{{lead_id}}"
+                },
+                {
+                  "key": "include_consent_data",
+                  "value": "1"
+                }
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{lead_id}}",
+                  "description": "id parameter"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (expectedStatus === 'error') {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 429, 500]);",
+                  "    } else if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        let errMsg = '';",
+                  "        if (responseJson.error && responseJson.error.message) {",
+                  "            errMsg = responseJson.error.message;",
+                  "        } else if (responseJson.message && responseJson.message.message) {",
+                  "            errMsg = responseJson.message.message;",
+                  "        } else {",
+                  "            errMsg = responseJson.message || responseJson.error || '';",
+                  "        }",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Update Basic Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications/:id/basic-profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications",
+                ":id",
+                "basic-profile"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{lead_id}}",
+                  "description": "id parameter"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"lead_id\": \"{{lead_id}}\",\n    \"email\": \"farmer@example.com\",\n    \"region\": \"Oromia\"\n}"
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Get Full Profile",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications/:id/full-profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications",
+                ":id",
+                "full-profile"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{loan_application}}",
+                  "description": "id parameter"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "17. Get Loan Metadata",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications/metadata",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications",
+                "metadata"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "12. Get Supporting Documents",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications/:id/documents",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications",
+                ":id",
+                "documents"
+              ],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "{{loan_application}}",
+                  "description": "id parameter"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (expectedStatus === 'error') {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([400, 401, 403, 404, 429, 500]);",
+                  "    } else if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        let errMsg = '';",
+                  "        if (responseJson.error && responseJson.error.message) {",
+                  "            errMsg = responseJson.error.message;",
+                  "        } else if (responseJson.message && responseJson.message.message) {",
+                  "            errMsg = responseJson.message.message;",
+                  "        } else {",
+                  "            errMsg = responseJson.message || responseJson.error || '';",
+                  "        }",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}",
+                  "if (responseJson.status === 'success' && responseJson.data && responseJson.data.length > 0) {",
+                  "    const fileAttachment = responseJson.data[0].file_attachment;",
+                  "    if (fileAttachment) {",
+                  "        pm.collectionVariables.set('file_id', fileAttachment);",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"file_id\", fileAttachment); }",
+                  "    }",
+                  "} else if (responseJson.message && responseJson.message.status === 'success' && responseJson.message.data && responseJson.message.data.length > 0) {",
+                  "    const fileAttachment = responseJson.message.data[0].file_attachment;",
+                  "    if (fileAttachment) {",
+                  "        pm.collectionVariables.set('file_id', fileAttachment);",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"file_id\", fileAttachment); }",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "18. Get All Loans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications?status=Approved&page=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "Approved"
+                },
+                {
+                  "key": "page",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}",
+                  "",
+                  "if (responseJson.status === 'success' && responseJson.results && responseJson.results.length > 0) {",
+                  "    pm.collectionVariables.set('loan_application', responseJson.results[0].application_id);",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"loan_application\", responseJson.results[0].application_id); }",
+                  "} else if (responseJson.message && responseJson.message.status === 'success' && responseJson.message.results && responseJson.message.results.length > 0) {",
+                  "    pm.collectionVariables.set('loan_application', responseJson.message.results[0].application_id);",
+                  "if (pm.environment && pm.environment.name) { pm.environment.set(\"loan_application\", responseJson.message.results[0].application_id); }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        },
+        {
+          "name": "19. Get Loan Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/loan-applications/summary",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "v1",
+                "loan-applications",
+                "summary"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var responseJson = pm.response.json();",
+                  "var expectedStatus = pm.iterationData.get('expected_status') || 'success';",
+                  "",
+                  "pm.test('Response status check', function () {",
+                  "    if (responseJson.message && responseJson.message.status) {",
+                  "        pm.expect(responseJson.message.status).to.eql(expectedStatus);",
+                  "    } else if (responseJson.status) {",
+                  "        pm.expect(responseJson.status).to.eql(expectedStatus);",
+                  "    } else {",
+                  "        pm.expect(pm.response.code).to.be.oneOf([200, 201, 202]);",
+                  "    }",
+                  "});",
+                  "",
+                  "var expectedMsg = pm.iterationData.get('expected_message');",
+                  "if (expectedStatus === 'error' && expectedMsg) {",
+                  "    pm.test('Error message verification', function () {",
+                  "        const errMsg = responseJson.message && responseJson.message.message ? responseJson.message.message : (responseJson.message || '');",
+                  "        pm.expect(errMsg.toString().toLowerCase()).to.include(expectedMsg.toLowerCase());",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

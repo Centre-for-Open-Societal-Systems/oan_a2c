@@ -58,13 +58,12 @@ This document provides a tabular, bordered-ready specification for all APIs cove
 > **Rate limiting.** `oan_auth_service` limits only the password-recovery flows itself. Login, register and refresh
 > are limited at the APISIX gateway (`public-auth` tier, per IP). A request that reaches the app directly is unlimited.
 
-> **Development Agents sign in only through SSO.** They authenticate with the OpenG2P IAM service (Keycloak behind
+> **Development Agents normally sign in through SSO.** They authenticate with the OpenG2P IAM service (Keycloak behind
 > it); the frontend's `/api/auth/sso/*` routes run that login and forward IAM's access token as the Bearer token.
 > `oan_auth_service` picks the `OAN IAM Service` row by the token's `iss`, validates the token with that IAM, creates
 > the local user on first sign-in (`<hash>@iam.internal`) and sets its roles from the IAM client named by the row's
 > `application`, plus the row's `default_roles`. A local (password) account holding
-> `A2C Development Agent` is refused on every API call (`require_sso_for_development_agents` in `api/auth.py`), so
-> `POST /v1/auth/login` is not a way in for them.
+> `A2C Development Agent` can also use `POST /v1/auth/login`.
 
 ### 2.1 POST /v1/auth/login
 

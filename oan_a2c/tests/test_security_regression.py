@@ -211,7 +211,7 @@ class TestSecurityRegression(unittest.TestCase):
 		from oan_a2c.api.v1.seller.onboarding import update_bank_profile
 
 		h = frappe.generate_hash(length=6)
-		other = _bank(h, f"OT{h[:5]}")
+		other = _bank(h, f"OT{h[:5].upper()}")
 		bank = _bank(f"{h}x", f"MY{h[:5]}")
 		admin = _user(f"dupadmin-{h}@ex.com", BANK_ADMIN_ROLE)
 		_bind(admin, bank.name)

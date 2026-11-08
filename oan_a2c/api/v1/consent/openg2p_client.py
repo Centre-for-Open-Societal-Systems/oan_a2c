@@ -1,11 +1,34 @@
+"""Client for the OpenG2P stack behind the consent flow.
+
+Three services, two credentials:
+
+- Registry staff API (`/register-data/search_in_a_register`) — finds the farmer
+  by national ID. Called with the *caller's own* bearer token: Development Agents
+  sign in through the OpenG2P IAM, so the token on this request is already one
+  the registry accepts.
+- Consent Manager partner portal (`/consent/v1/partner-portal/*`) — raises the
+  OTP consent request and verifies the code the farmer received.
+- Aggregation Layer (`/dci/registry/sync/search`, beneficiary360) — returns the
+  farmer's registry data against the granted `consent_id`.
+
+The CM and AL are called with the bank's *partner* token (Keycloak partner realm),
+configured in the `A2C OpenG2P Settings` single doctype.
+"""
+
 import os
 import time
-from typing import Optional, Union
+import uuid
+from typing import Any
 
 import frappe
 import requests
 from frappe import _
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from frappe.utils import now_datetime
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+
+SETTINGS_DOCTYPE = "A2C OpenG2P Settings"
+TOKEN_CACHE_KEY = "openg2p_partner_token"
+TIMEOUT = (5, 15)
 
 
 class DriftWarnModel(BaseModel):
@@ -59,165 +82,188 @@ class DriftWarnModel(BaseModel):
 			pass
 
 
-from typing import Any
+# ─── Response schemas ─────────────────────────────────────────────────────────
 
 
-class OpenG2PResponse(DriftWarnModel):
-	success: bool
-	message: str | None = None
-	data: Any | None = None
+# The Farmer register's id in the farmer registry (g2p_register_definitions); overridable in settings.
+FARMER_REGISTER_ID = "a1a4d25a-1cd4-4356-abac-985a0b3c6bcd"
 
 
-class OpenG2PFarmerSchema(DriftWarnModel):
-	id: int | str
-	name: str
-	mobile: str | None = None
-	phone: str | None = None
-	profile_image_url: str | None = None
-	otp_identifier_type: str | None = None
+# Default consent subject type (settings `subject_id_type` overrides): the Aggregation Layer only accepts the Fayda FIN.
+SUBJECT_ID_TYPE = "FIN"
 
 
-class OpenG2PSearchFarmerResponse(OpenG2PResponse):
-	data: dict[str, list[OpenG2PFarmerSchema]] = Field(default_factory=dict)
+def _fayda_digits(value) -> str:
+	"""A Fayda ID with any "FAN-" prefix and spacing removed, so IDs compare by their digits."""
+	return "".join(ch for ch in str(value or "") if ch.isdigit())
 
 
-class OpenG2POTPData(DriftWarnModel):
-	transaction_id: str
-	masked_mobile: str | None = "XXXX"
-	# Added after OpenG2P drift: request_otp now also returns email masking and
-	# identifier provenance. Modelled as optional so older responses still parse.
-	masked_email: str | None = None
-	identifier_type: str | None = None
-	identifier_source: str | None = None
+class AgentLookupResult(DriftWarnModel):
+	internal_record_id: str
+	register_id: str
+	record_name: str | None = None
+	# False when the record exists but is not ACTIVE in the registry.
+	eligible: bool = True
+	reason: str | None = None
 
 
-class OpenG2POTPResponse(OpenG2PResponse):
-	data: OpenG2POTPData
+class SubjectId(DriftWarnModel):
+	type: str
+	value: str
 
 
-class OpenG2PSubmitConsentData(DriftWarnModel):
-	consent_request_id: int | str | None = None
-	consent_id: int | str | None = None
-	consent_creation_request_id: int | str | None = None
-	id: int | str | None = None
-	# Farmer profile returned inline by OpenG2P (keyed by farmer id). Declared
-	# so Pydantic preserves it through model_dump() instead of dropping it.
-	response_data: dict | None = None
-	# Added after OpenG2P drift: submit_consent now returns the upstream
-	# auto-approval decision. `status` is the authoritative consent outcome —
-	# consuming code must NOT assume every submission is approved.
-	status: str | None = None
-	auto_approved: bool | None = None
-	auto_approval_failed: bool | None = None
-	auto_approve_method: str | None = None
-	error_details: str | None = None
+class CMConsentRequest(DriftWarnModel):
+	id: str
+	status: str
+	method: str | None = None
+	use_case: str | None = None
+	subject_id: SubjectId
+	subject_identifiers: list[SubjectId] = []
+	purpose: dict[str, Any] = {}
+	grants: list[dict[str, Any]] = []
+	valid_from: str | None = None
+	valid_until: str | None = None
+	created_by: str | None = None
+	created_at: str | None = None
+	submitted_at: str | None = None
+	verified_by: str | None = None
+	verified_at: str | None = None
+	verification_note: str | None = None
+	consent_id: str | None = None
+	subject_authentication: dict[str, Any] | None = None
+	# Where the code went and when it stops working; the code itself is never returned.
+	otp_channel: str | None = None
+	otp_expires_at: str | None = None
 
 
-class OpenG2PSubmitConsentResponse(OpenG2PResponse):
-	data: OpenG2PSubmitConsentData
+class CMConsent(DriftWarnModel):
+	consent_id: str
+	status: str
+	subject_id: SubjectId
+	subject_identifiers: list[SubjectId] = []
+	purpose: dict[str, Any] = {}
+	grants: list[dict[str, Any]] = []
+	valid_from: str | None = None
+	valid_until: str | None = None
+	assurance: dict[str, Any] | None = None
+	use_case: str | None = None
+	consent_request_id: str | None = None
+	created_at: str | None = None
+	revoked_at: str | None = None
+	receipt_id: str | None = None
 
 
-class OpenG2PConsentClient:
-	# TEMPORARY (dev only): the OpenG2P dev server uses a self-signed TLS
-	# certificate. Set to False to skip certificate verification so requests
-	# succeed against it. MUST be True in production — disabling this exposes
-	# the connection to man-in-the-middle attacks.
-	VERIFY_SSL = True
+class CMBinding(DriftWarnModel):
+	data_controller: str
+	allowed_data_scopes: list[str] = []
+	allowed_purposes: list[str] = []
+	allowed_subject_id_types: list[str] = []
+	max_validity_duration: str | None = None
+	consent_method: str = "partner_signed"
 
-	def __init__(self, portal_session_id=None, cookie_dict=None):
-		self.base_url = frappe.conf.get("openg2p_base_url")
-		self.db = frappe.conf.get("openg2p_db", "")
 
-		# Portal user — for consent creation
-		self.username = frappe.conf.get("openg2p_username", "")
-		self.password = frappe.conf.get("openg2p_password", "")
+# User-facing text for the Consent Manager's `{"error": code}` replies
+# (consent-management otp_consent_service.py). Anything not listed — e.g. the
+# OTP provider's wrong/expired-code reasons on verify — is surfaced as sent.
+CM_ERROR_MESSAGES = {
+	"otp_unavailable": "The OTP service is unavailable. Please try again later.",
+	"subject_otp_limit_reached": "Too many OTPs have been sent to this farmer. Please try again later.",
+	"resend_too_soon": "Please wait a minute before requesting another OTP.",
+	"resend_limit_reached": "The OTP resend limit has been reached. Please start a new consent request.",
+	"not_found": "The consent request was not found.",
+}
 
-		if not self.base_url or not self.username or not self.password:
+# The Aggregation Layer refuses a search with `{"error": reason, "detail": ...}`.
+AL_ERROR_MESSAGES = {
+	"no_subject_consent": "The farmer's consent was not found or is no longer valid.",
+	"consent_withdrawn": "The farmer has withdrawn this consent.",
+	"subject_mismatch": "The consent does not belong to this farmer.",
+	"purpose_mismatch": "The consent was given for a different purpose.",
+	"no_scope_permitted": "The consent does not cover any of the requested data.",
+	"consent_check_failed": "The consent could not be checked. Please try again later.",
+}
+
+
+class OpenG2PClient:
+	"""Stateless: every call reads the cached settings and partner token."""
+
+	def __init__(self):
+		self.settings = frappe.get_cached_doc(SETTINGS_DOCTYPE)
+		required = (
+			"keycloak_url",
+			"consent_manager_url",
+			"aggregation_url",
+			"partner_client_id",
+			"partner_id",
+		)
+		missing = [f for f in required if not self.settings.get(f)]
+		if missing:
 			frappe.log_error(
-				"OpenG2P is not fully configured (base_url/username/password missing in site_config.json).",
+				f"A2C OpenG2P Settings is missing: {', '.join(missing)}",
 				"OpenG2P Configuration",
 			)
 			frappe.throw(_("OpenG2P integration is not configured. Please contact the administrator."))
 
-		self.session = requests.Session()  # portal user session
+		self.session = requests.Session()
 		# OpenG2P uses an internal CA ("OpenG2P Local CA"). When verifying, point
 		# requests at the CA bundle that includes it (REQUESTS_CA_BUNDLE, else the
 		# system bundle) rather than plain True, which would use certifi and fail.
-		# This is set on the session AND passed explicitly to session.send(), which
-		# otherwise bypasses this setting.
-		if self.VERIFY_SSL:
+		if self.settings.verify_ssl:
 			self.session.verify = os.environ.get("REQUESTS_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt")
 		else:
 			self.session.verify = False
-			# Silence the per-request InsecureRequestWarning while verification is off.
 			requests.packages.urllib3.disable_warnings(
 				requests.packages.urllib3.exceptions.InsecureRequestWarning
 			)
-		self.portal_session_id = portal_session_id
-		self.cookie_dict = cookie_dict
-
-		if cookie_dict:
-			requests.utils.cookiejar_from_dict(cookie_dict, cookiejar=self.session.cookies)
-		elif portal_session_id:
-			from urllib.parse import urlparse
-
-			domain = urlparse(self.base_url).hostname
-			self.session.cookies.set("session_id", portal_session_id, domain=domain)
-		else:
-			# Cache the portal authentication session
-			cached_cookies = frappe.cache().get_value("openg2p_portal_session_cookies")
-			if cached_cookies:
-				requests.utils.cookiejar_from_dict(cached_cookies, cookiejar=self.session.cookies)
-			else:
-				self._authenticate(self.session, self.username, self.password)
-				new_cookies = requests.utils.dict_from_cookiejar(self.session.cookies)
-				if new_cookies:
-					frappe.cache().set_value(
-						"openg2p_portal_session_cookies", new_cookies, expires_in_sec=1800
-					)
 
 	# -------------------------------------------------------------------------
 	# Internal helpers
 	# -------------------------------------------------------------------------
 
-	def _authenticate(self, session, username, password):
-		url = f"{self.base_url}/web/session/authenticate"
-		payload = {
-			"jsonrpc": "2.0",
-			"method": "call",
-			"params": {"db": self.db, "login": username, "password": password},
-		}
+	def _partner_token(self) -> str:
+		cached = frappe.cache().get_value(TOKEN_CACHE_KEY)
+		if cached:
+			return cached
+
+		s = self.settings
+		data = {"grant_type": s.partner_grant_type or "client_credentials", "client_id": s.partner_client_id}
+		client_secret = s.get_password("partner_client_secret", raise_exception=False)
+		if client_secret:
+			data["client_secret"] = client_secret
+		if data["grant_type"] == "password":
+			data["username"] = s.partner_username
+			data["password"] = s.get_password("partner_password", raise_exception=False)
+
+		url = f"{s.keycloak_url}/realms/{s.partner_realm or 'partner'}/protocol/openid-connect/token"
 		try:
-			response = session.post(url, json=payload, timeout=(5, 10))
-			response.raise_for_status()
-			result = response.json()
-			if result.get("result", {}).get("uid"):
-				return
-			# Keep the internal username out of the client-facing error; log the
-			# detail server-side only.
+			response = self.session.post(url, data=data, timeout=TIMEOUT)
+		except requests.exceptions.RequestException as e:
+			frappe.log_error(f"Keycloak connection error: {e}", "OpenG2P Connection")
+			frappe.throw(_("Unable to reach OpenG2P. Please try again later."))
+
+		if not response.ok:
+			# Keep the client id out of the client-facing error; log it server-side.
 			frappe.log_error(
-				f"OpenG2P authentication failed for user: {username}",
+				f"Partner token request failed for client {s.partner_client_id}: "
+				f"{response.status_code} {response.text[:500]}",
 				"OpenG2P Authentication",
 			)
 			frappe.throw(_("Unable to authenticate with OpenG2P. Please try again later."))
-		except requests.exceptions.RequestException as e:
-			frappe.log_error(
-				f"OpenG2P connection error during authentication "
-				f"(transaction_id={self.portal_session_id}): {e}",
-				"OpenG2P Connection",
-			)
-			frappe.throw(_("Unable to reach OpenG2P. Please try again later."))
 
-	def _refresh_portal_session(self):
-		"""Clears cached session cookies, re-authenticates, and updates cache."""
-		frappe.cache().delete_value("openg2p_portal_session_cookies")
-		self.session.cookies.clear()
-		self._authenticate(self.session, self.username, self.password)
-		new_cookies = requests.utils.dict_from_cookiejar(self.session.cookies)
-		if new_cookies:
-			frappe.cache().set_value("openg2p_portal_session_cookies", new_cookies, expires_in_sec=1800)
+		body = response.json()
+		token = body["access_token"]
+		# Expire our copy a little before Keycloak does, so a token is never sent
+		# in its last seconds.
+		ttl = max(int(body.get("expires_in") or 300) - 30, 30)
+		frappe.cache().set_value(TOKEN_CACHE_KEY, token, expires_in_sec=ttl)
+		return token
 
-	def _call_rpc(self, endpoint, method, params, attempt=0):
+	def _request(self, method, url, *, token=None, json=None, headers=None, error_messages=None, attempt=0):
+		"""Send one request and return the decoded JSON body.
+
+		`token=None` means "use the partner token" (refreshed once on a 401).
+		Non-2xx replies are turned into frappe exceptions with a user-facing message.
+		"""
 		if frappe.cache().get_value("cb:openg2p") == "open":
 			frappe.throw(
 				_(
@@ -225,285 +271,267 @@ class OpenG2PConsentClient:
 				)
 			)
 
-		url = f"{self.base_url}{endpoint}"
-		payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
+		use_partner_token = token is None
+		bearer = self._partner_token() if use_partner_token else token
+		headers = {**(headers or {}), "Authorization": f"Bearer {bearer}"}
+
 		try:
-			session = self.session
-			session_id = None
-			if hasattr(self, "portal_session_id") and self.portal_session_id:
-				session_id = self.portal_session_id
-			else:
-				for cookie in session.cookies:
-					if cookie.name == "session_id":
-						session_id = cookie.value
-						break
-
-			headers = {"Content-Type": "application/json"}
-			if session_id:
-				headers["X-Openerp-Session-Id"] = session_id
-
-			frappe.logger().debug(f"[DEBUG RPC] Sending to {endpoint}")
-
-			req = requests.Request("POST", url, json=payload, headers=headers)
-			prepared = session.prepare_request(req)
-
-			# session.send() bypasses requests' environment/session merging, so
-			# neither session.verify nor REQUESTS_CA_BUNDLE is applied unless we
-			# pass verify explicitly. Forward the session's verify setting.
-			response = session.send(prepared, timeout=(5, 10), verify=session.verify)
-			response.raise_for_status()
-			data = response.json()
-
-			if "error" in data:
-				err = data["error"]
-				msg = err.get("data", {}).get("message") or err.get("message") or "Unknown OpenG2P Error"
-
-				# Check for session expiration to retry transparently
-				if (
-					not getattr(self, "cookie_dict", None)
-					and not getattr(self, "portal_session_id", None)
-					and any(
-						x in msg.lower()
-						for x in ["session", "expired", "authentication", "logged out", "access denied"]
-					)
-				):
-					self._refresh_portal_session()
-					return self._call_rpc(endpoint, method, params, attempt=attempt)
-
-				frappe.log_error(f"OpenG2P RPC error on {endpoint}: {msg}", "OpenG2P Error")
-				frappe.throw(_("OpenG2P request could not be completed. Please try again later."))
-
-			result = data.get("result")
-			if isinstance(result, dict) and result.get("success") is False:
-				# Unlike the JSON-RPC "error" branch above (protocol/traceback-level,
-				# kept generic to avoid leaking internals), a success=False result is an
-				# application-level, user-facing failure — "Invalid OTP", "OTP expired",
-				# etc. Surface that upstream message so the caller sees actionable
-				# feedback instead of a misleading "try again later".
-				upstream_msg = (result.get("message") or "").strip()
-				frappe.log_error(
-					f"OpenG2P returned failure on {endpoint}: {upstream_msg or 'Unknown error'}",
-					"OpenG2P Error",
-				)
-				if upstream_msg:
-					frappe.throw(_(upstream_msg))
-				frappe.throw(_("OpenG2P request could not be completed. Please try again later."))
-
-			# Reset circuit breaker failure count on success
-			frappe.cache().delete_value("cb:openg2p_fails")
-			return result
-
+			response = self.session.request(method, url, json=json, headers=headers, timeout=TIMEOUT)
 		except requests.exceptions.RequestException as e:
 			if attempt < 2:
 				time.sleep(0.5 * (2**attempt))
-				return self._call_rpc(endpoint, method, params, attempt=attempt + 1)
+				return self._request(
+					method,
+					url,
+					token=token,
+					json=json,
+					headers=headers,
+					error_messages=error_messages,
+					attempt=attempt + 1,
+				)
 
 			fails = int(frappe.cache().get_value("cb:openg2p_fails") or 0) + 1
 			frappe.cache().set_value("cb:openg2p_fails", fails, expires_in_sec=60)
 			if fails >= 3:
 				frappe.cache().set_value("cb:openg2p", "open", expires_in_sec=60)
 
-			txn_id = (params or {}).get("fayda_otp_transaction_id") or self.portal_session_id
-			frappe.log_error(
-				f"OpenG2P connection error on {endpoint} (transaction_id={txn_id}): {e}",
-				"OpenG2P Connection",
-			)
+			frappe.log_error(f"OpenG2P connection error on {url}: {e}", "OpenG2P Connection")
 			frappe.throw(_("Unable to reach OpenG2P. Please try again later."))
 
+		if response.status_code == 401 and use_partner_token and attempt == 0:
+			# The cached token was revoked or expired early: fetch a fresh one once.
+			frappe.cache().delete_value(TOKEN_CACHE_KEY)
+			return self._request(
+				method, url, json=json, headers=headers, error_messages=error_messages, attempt=1
+			)
+
+		if response.ok:
+			frappe.cache().delete_value("cb:openg2p_fails")
+			return response.json() if response.content else {}
+
+		frappe.log_error(
+			f"OpenG2P returned {response.status_code} on {url}: {response.text[:1000]}", "OpenG2P Error"
+		)
+		try:
+			body = response.json()
+		except ValueError:
+			body = {}
+		code = (body.get("error") or body.get("detail") or "") if isinstance(body, dict) else ""
+		if not isinstance(code, str):
+			# FastAPI 422s carry a list of field errors in `detail`.
+			code = ""
+
+		status = response.status_code
+		message = (error_messages or {}).get(code)
+		if not message and code.startswith("request is '"):
+			message = _("This consent request is no longer pending ({0}).").format(code[len("request is ") :])
+		if status in (401, 403) and not message:
+			frappe.throw(_("OpenG2P refused the request: not authorised."), frappe.PermissionError)
+		if status == 404:
+			frappe.throw(_(message or "Not found in OpenG2P."), frappe.DoesNotExistError)
+		if status >= 500 and not message:
+			frappe.throw(_("OpenG2P request could not be completed. Please try again later."))
+		# 4xx with an application-level reason (wrong OTP, rate limits, consent refusals):
+		# surface it so the caller sees actionable feedback.
+		frappe.throw(_(message or code or "OpenG2P request could not be completed."))
+
+	@staticmethod
+	def _parse(model, body, what):
+		try:
+			return model.model_validate(body)
+		except ValidationError as e:
+			frappe.log_error(f"{what} response validation failed: {e!s}", "OpenG2P Error")
+			frappe.throw(_("Invalid response from OpenG2P ({0}).").format(what))
+
 	# -------------------------------------------------------------------------
-	# Farmer lookup — uses normal portal session
+	# Agent API — farmer lookup
 	# -------------------------------------------------------------------------
 
-	def get_farmer_by_fayda_id(self, fayda_id):
-		"""
-		Find farmer's res.partner ID by Fayda/national ID using the Odoo backend endpoint.
-		"""
-		cache_key = f"farmer_by_fayda:{fayda_id}"
+	def lookup_beneficiary(self, national_id) -> dict:
+		"""Find the farmer's registry record by national (Fayda) ID."""
+		cache_key = f"farmer_by_fayda:{national_id}"
 		cached = frappe.cache().get_value(cache_key)
 		if cached:
 			return cached
 
-		params = {"query": fayda_id}
-		frappe.logger().debug("Calling Odoo /consent/search_farmer")
+		if not self.settings.agent_api_url:
+			frappe.throw(_("OpenG2P integration is not configured. Please contact the administrator."))
 
-		result = self._call_rpc("/consent/search_farmer", "call", params)
-		frappe.logger().debug("Odoo search_farmer response received")
+		auth_header = frappe.get_request_header("Authorization") or ""
+		token = auth_header[7:] if auth_header.lower().startswith("bearer ") else ""
+		if not token:
+			frappe.throw(
+				_("An agent sign-in is required to search the farmer registry."), frappe.PermissionError
+			)
 
-		# Cleanly validate the entire response structure with Pydantic
-		response = OpenG2PSearchFarmerResponse.model_validate(result)
-		farmers = response.data.get("farmers")
-		if farmers:
-			farmer_model = farmers[0]
-			if farmer_model.profile_image_url:
-				try:
-					if farmer_model.profile_image_url.startswith("/"):
-						full_url = f"{self.base_url}{farmer_model.profile_image_url}"
-					else:
-						full_url = farmer_model.profile_image_url
-
-					img_resp = self.session.get(full_url, timeout=(5, 10))
-					if img_resp.status_code == 200:
-						import base64
-
-						content_type = img_resp.headers.get("Content-Type") or "image/png"
-						b64_data = base64.b64encode(img_resp.content).decode("utf-8")
-						farmer_model.profile_image_url = f"data:{content_type};base64,{b64_data}"
-				except Exception as e:
-					frappe.logger().warning(f"Failed to fetch profile image for farmer: {e}")
-
-			farmer_data = farmer_model.model_dump()
-			frappe.cache().set_value(cache_key, farmer_data, expires_in_sec=3600)
-			return farmer_data
-
-		frappe.throw(_("Farmer with Fayda ID '{0}' not found .").format(fayda_id), frappe.DoesNotExistError)
-
-	# -------------------------------------------------------------------------
-	# Partner lookup — uses normal portal session
-	# -------------------------------------------------------------------------
-
-	def get_partner_allowed_data_field_ids(self):
-		"""Fetch allowed_data_field_ids for a consent partner using Odoo API."""
-		try:
-			result = self.get_consent_allowed_fields()
-			if result and isinstance(result, dict):
-				fields_data = result.get("data", [])
-				if isinstance(fields_data, list):
-					return [f["id"] for f in fields_data if isinstance(f, dict) and "id" in f]
-			return []
-		except Exception as e:
-			frappe.logger().error(f"Failed to fetch allowed_data_field_ids: {e!s}")
-			return []
-
-	# -------------------------------------------------------------------------
-	# OTP — calls Fayda directly (bypasses Odoo session dependency)
-	# -------------------------------------------------------------------------
-
-	def request_otp(self, farmer_id):
-		# WORKAROUND FOR ODOO 17 FRESH SESSION BUG:
-		# We must initialize Odoo's internal session dictionary before requesting an OTP.
-		# Calling verify_otp with a dummy transaction but a valid farmer_id reaches
-		# _get_fayda_otp_session_store and forces Werkzeug to initialize and flush `{}`.
-		frappe.logger().debug("[DEBUG] Priming Odoo session")
-		prime_payload = {
-			"jsonrpc": "2.0",
-			"method": "call",
-			"params": {"farmer_id": farmer_id, "transaction_id": "DUMMY_INIT", "otp_code": "000"},
+		wanted = _fayda_digits(national_id)
+		envelope = {
+			"request_header": {
+				"request_id": str(uuid.uuid4()),
+				"request_timestamp": now_datetime().isoformat(),
+				"sender_app_mnemonic": "oan_a2c",
+				"sender_app_url": frappe.utils.get_url(),
+			},
+			"request_body": {
+				# The registry's search text indexes the bare foundational (Fayda) number, so a "FAN-" prefix is dropped.
+				"pagination_request": {"current_page": 1, "page_size": 10, "search_text": wanted},
+				"request_payload": {
+					"register_id": self.settings.get("farmer_register_id") or FARMER_REGISTER_ID
+				},
+			},
 		}
-		try:
-			self.session.post(
-				f"{self.base_url}/consent/fayda/verify_otp", json=prime_payload, timeout=(5, 10)
+		# iam_core's CsrfMiddleware wants the double-submit pair on every POST, even
+		# with a bearer token: the same random value as X-CSRF-Token cookie and header.
+		csrf = frappe.generate_hash(length=32)
+		body = self._request(
+			"POST",
+			f"{self.settings.agent_api_url}/register-data/search_in_a_register",
+			token=token,
+			json=envelope,
+			headers={"X-CSRF-Token": csrf, "Cookie": f"X-CSRF-Token={csrf}"},
+		)
+
+		header = body.get("response_header") or {}
+		if str(header.get("response_status", "")).upper() == "ERROR":
+			error_message = header.get("response_error_message") or ""
+			frappe.log_error(
+				f"Registry search_in_a_register error {header.get('response_error_code')}: {error_message}",
+				"OpenG2P Error",
 			)
-		except requests.exceptions.RequestException as e:
-			# Observability: log connectivity error specifically, but do not raise since it's best-effort priming
-			frappe.logger().warning(f"OpenG2P session priming failed due to connectivity issue: {e!s}")
-		except Exception as e:
-			# Log any other unexpected exception for debugging purposes
-			frappe.logger().debug(
-				f"OpenG2P session priming returned expected dummy error or other exception: {e!s}"
+			frappe.throw(_(error_message or "Farmer lookup failed."))
+
+		# A search is a text match, so only a hit whose foundational ID is exactly this one counts.
+		hits = (body.get("response_body") or {}).get("response_payload") or []
+		match = next((h for h in hits if _fayda_digits(h.get("foundational_id")) == wanted), None)
+		if not match:
+			frappe.throw(
+				_("Farmer with Fayda ID '{0}' not found.").format(national_id), frappe.DoesNotExistError
 			)
-
-		params = {"farmer_id": farmer_id}
-		frappe.logger().debug("Calling Odoo /consent/fayda/request_otp")
-		result = self._call_rpc("/consent/fayda/request_otp", "call", params)
-		frappe.logger().debug("Odoo request_otp response received")
-
-		# Cleanly validate response using Pydantic
-		try:
-			response = OpenG2POTPResponse.model_validate(result)
-		except ValidationError as e:
-			frappe.log_error(f"OTP Response Validation Failed: {e!s}", "OTP Request Error")
-			frappe.throw(_("Invalid response from OpenG2P OTP Request."))
-
-		return {"transaction_id": response.data.transaction_id, "masked_mobile": response.data.masked_mobile}
-
-	def verify_otp(self, farmer_id, transaction_id, otp_code):
-		"""
-		Calls Odoo's /consent/fayda/verify_otp endpoint.
-		"""
-		params = {"farmer_id": str(farmer_id), "transaction_id": transaction_id, "otp_code": str(otp_code)}
-		frappe.logger().debug("Calling Odoo /consent/fayda/verify_otp")
-		result = self._call_rpc("/consent/fayda/verify_otp", "call", params)
-		frappe.logger().debug("Odoo verify_otp response received")
-
-		# Cleanly validate response using Pydantic
-		try:
-			response = OpenG2PResponse.model_validate(result)
-		except ValidationError as e:
-			frappe.log_error(f"OTP Verification Response Validation Failed: {e!s}", "OTP Verify Error")
-			frappe.throw(_("Invalid response from OpenG2P OTP Verification."))
-
-		return response.model_dump()
-
-	def submit_consent(
-		self,
-		farmer_db_id,
-		consent_type,
-		consent_reason_id,
-		allowed_data_field_ids,
-		attachment_base64,
-		attachment_filename,
-		fayda_otp_transaction_id=None,
-		validity_months=None,
-	):
-		params = {
-			"farmer_id": farmer_db_id,
-			"consent_type": consent_type,
-			"consent_reason_id": consent_reason_id,
-			"allowed_data_field_ids": allowed_data_field_ids,
-			"attachment_base64": attachment_base64,
-			"attachment_filename": attachment_filename,
+		payload = {
+			"internal_record_id": match.get("internal_record_id"),
+			"register_id": self.settings.get("farmer_register_id") or FARMER_REGISTER_ID,
+			"record_name": match.get("record_name"),
 		}
-		if fayda_otp_transaction_id:
-			params["fayda_otp_transaction_id"] = fayda_otp_transaction_id
-		if validity_months is not None:
-			params["validity_months"] = validity_months
 
-		frappe.logger().debug("Calling Odoo /api/consent/submit_consent")
-		result = self._call_rpc("/api/consent/submit_consent", "call", params)
-		frappe.logger().debug("Odoo submit_consent response received")
+		farmer = self._parse(AgentLookupResult, payload, "lookup_beneficiary").model_dump()
+		frappe.cache().set_value(cache_key, farmer, expires_in_sec=3600)
+		return farmer
 
-		# Cleanly validate response using Pydantic
-		try:
-			response = OpenG2PSubmitConsentResponse.model_validate(result)
-		except ValidationError as e:
-			frappe.log_error(f"Submit Consent Response Validation Failed: {e!s}", "Submit Consent Error")
-			frappe.throw(_("Invalid response from OpenG2P Consent Submission."))
+	# -------------------------------------------------------------------------
+	# Consent Manager — OTP consent
+	# -------------------------------------------------------------------------
 
-		# Expected-but-missing check: the farmer profile is delivered inline via
-		# response_data. Warn (don't fail) if it's absent so a silent no-op in
-		# the downstream save doesn't go unnoticed.
-		if not response.data.response_data:
-			frappe.logger().warning(
-				"OpenG2P submit_consent response has no response_data — "
-				"farmer profile will not be saved from the inline payload."
+	def _cm(self, path):
+		return f"{self.settings.consent_manager_url}/consent/v1/partner-portal{path}"
+
+	def create_otp_request(self, national_id) -> dict:
+		"""Raise a consent request with method "otp"; the CM sends the farmer a code.
+
+		What is asked for comes from the partner's Consent Manager bindings: every binding
+		that allows our purpose contributes its data controller and all its allowed scopes,
+		so the binding is the one place that decides the farmer-facing scope.
+		"""
+		purpose = self.settings.purpose_code or "loan_origination"
+		grants = [
+			{"data_controller": b["data_controller"], "data_scopes": b["allowed_data_scopes"]}
+			for b in self.get_bindings()
+			if purpose in b["allowed_purposes"] and b["allowed_data_scopes"]
+		]
+		if not grants:
+			frappe.throw(
+				_(
+					"The Consent Manager allows no data scopes for purpose '{0}'. Please contact the administrator."
+				).format(purpose)
 			)
 
-		return response.model_dump()
+		body = {
+			"method": "otp",
+			"subject_id": {
+				"type": self.settings.get("subject_id_type") or SUBJECT_ID_TYPE,
+				"value": _fayda_digits(national_id),
+			},
+			"purpose": {"code": purpose},
+			"grants": grants,
+		}
+		result = self._request(
+			"POST", self._cm("/consent-requests"), json=body, error_messages=CM_ERROR_MESSAGES
+		)
+		return self._parse(CMConsentRequest, result, "create consent request").model_dump()
 
-	def get_consent_reasons(self):
-		"""Fetch all active consent reasons from OpenG2P."""
-		cache_key = "openg2p_consent_reasons"
+	def verify_otp(self, request_id, otp) -> dict:
+		"""Verify the farmer's code; a correct code grants the consent."""
+		result = self._request(
+			"POST",
+			self._cm(f"/consent-requests/{request_id}/verify-otp"),
+			json={"otp": str(otp)},
+			error_messages=CM_ERROR_MESSAGES,
+		)
+		return self._parse(CMConsent, result, "verify OTP").model_dump()
+
+	def resend_otp(self, request_id) -> dict:
+		result = self._request(
+			"POST", self._cm(f"/consent-requests/{request_id}/resend-otp"), error_messages=CM_ERROR_MESSAGES
+		)
+		return self._parse(CMConsentRequest, result, "resend OTP").model_dump()
+
+	def get_bindings(self) -> list[dict]:
+		"""What this partner may ask for: data controllers, scopes, purposes."""
+		cache_key = "openg2p_partner_bindings"
 		cached = frappe.cache().get_value(cache_key)
 		if cached:
 			return cached
 
-		frappe.logger().debug("Calling Odoo /api/consent/reasons")
-		result = self._call_rpc("/api/consent/reasons", "call", {})
-		frappe.logger().debug("Odoo get_consent_reasons response received")
-		if result:
-			frappe.cache().set_value(cache_key, result, expires_in_sec=3600)
-		return result
+		result = self._request("GET", self._cm("/bindings"), error_messages=CM_ERROR_MESSAGES)
+		bindings = [self._parse(CMBinding, b, "bindings").model_dump() for b in (result or [])]
+		frappe.cache().set_value(cache_key, bindings, expires_in_sec=3600)
+		return bindings
 
-	def get_consent_allowed_fields(self):
-		"""Fetch allowed data fields for a partner from OpenG2P."""
-		cache_key = "openg2p_consent_allowed_fields"
-		cached = frappe.cache().get_value(cache_key)
-		if cached:
-			return cached
+	# -------------------------------------------------------------------------
+	# Aggregation Layer — farmer data
+	# -------------------------------------------------------------------------
 
-		frappe.logger().debug("Calling Odoo /api/consent/allowed_data_fields")
-		result = self._call_rpc("/api/consent/allowed_data_fields", "call", {})
-		frappe.logger().debug("Odoo get_consent_allowed_fields response received")
-		if result:
-			frappe.cache().set_value(cache_key, result, expires_in_sec=3600)
-		return result
+	def fetch_beneficiary360(self, national_id, consent_id) -> dict:
+		"""Return the beneficiary360 record (`reg_records[0]`) for a granted consent."""
+		body = {
+			"header": {"sender_id": self.settings.partner_id, "receiver_id": "aggregation-layer"},
+			"message": {
+				"transaction_id": frappe.generate_hash(length=20),
+				"search_request": [
+					{
+						"reference_id": frappe.generate_hash(length=20),
+						"search_criteria": {
+							"query_type": "beneficiary360",
+							"query": {
+								"@context": "https://schemas.openg2p.org/beneficiary360/v1/context.jsonld",
+								"foundationalId": _fayda_digits(national_id),
+								"timeframe": self.settings.timeframe or "Timeframe-Medium",
+								"sections": ["REGISTRIES"],
+							},
+							"purpose": {"code": self.settings.purpose_code or "loan_origination"},
+							"authorize": {"consent_id": consent_id},
+						},
+					}
+				],
+			},
+		}
+		result = self._request(
+			"POST",
+			f"{self.settings.aggregation_url}/dci/registry/sync/search",
+			json=body,
+			error_messages=AL_ERROR_MESSAGES,
+		)
+
+		header = result.get("header") or {}
+		search_response = ((result.get("message") or {}).get("search_response") or [{}])[0]
+		if header.get("status") != "succ" or search_response.get("status") not in (None, "succ"):
+			frappe.log_error(
+				f"Aggregation Layer rejected the search: {header.get('status_reason_code')} "
+				f"{header.get('status_reason_message')}",
+				"OpenG2P Error",
+			)
+			frappe.throw(_("The farmer registries are unavailable right now. Please try again later."))
+
+		records = (search_response.get("data") or {}).get("reg_records") or []
+		if not records:
+			frappe.throw(_("No registry data was returned for this farmer."), frappe.DoesNotExistError)
+		return records[0]
