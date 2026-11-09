@@ -6,6 +6,7 @@ filter-composition in list_catalog narrows rather than replaces.
 """
 
 import unittest
+from unittest.mock import patch
 
 
 class FarmerB2CFixtures(unittest.TestCase):
@@ -112,10 +113,22 @@ class FarmerB2CFixtures(unittest.TestCase):
 		frappe.db.rollback()
 		super().tearDownClass()
 
+	def setUp(self):
+		import frappe
+
+		# These tests call endpoint functions directly. Give the shared idempotency
+		# decorator a non-mutating request so it bypasses request-key handling, as it
+		# did before oan_auth_service added the decorator to mutation endpoints.
+		frappe.local.request = frappe._dict(method="GET", headers={})
+		self.enterContext(patch("frappe.sendmail"))
+
 	def tearDown(self):
 		import frappe
 
 		frappe.set_user("Administrator")
+		if hasattr(frappe.local, "request"):
+			delattr(frappe.local, "request")
+		super().tearDown()
 
 
 class TestSavedProducts(FarmerB2CFixtures):

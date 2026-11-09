@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import frappe
 
@@ -325,6 +326,7 @@ class TestInviteTeamMember(unittest.TestCase):
 	def setUp(self):
 		frappe.local.response = frappe._dict()
 		frappe.set_user("Administrator")
+		self.sendmail = self.enterContext(patch("frappe.sendmail"))
 
 	def _invitee(self, tag: str) -> str:
 		email = f"iu_{tag}_{self.suffix}@oan.test"
@@ -342,6 +344,33 @@ class TestInviteTeamMember(unittest.TestCase):
 		self.assertIn(BANK_AGENT_ROLE, frappe.get_roles(invitee))
 		# The admin chose this password, so it may not survive first use.
 		self.assertEqual(frappe.db.get_value("User", invitee, "oan_must_change_password"), 1)
+
+	def test_new_agent_receives_invitation_email(self):
+		invitee = self._invitee("email")
+		frappe.set_user(self.bank_admin)
+
+		res = invite_team_member(email=invitee, full_name="Invited Agent", password="TempIssued1")
+
+		self.assertEqual(res.get("status"), "success")
+		self.sendmail.assert_called_once()
+		mail = self.sendmail.call_args.kwargs
+		self.assertEqual(mail["recipients"], [invitee])
+		self.assertEqual(mail["template"], "team_invitation")
+		self.assertEqual(mail["args"]["email"], invitee)
+		self.assertEqual(mail["args"]["temporary_password"], "TempIssued1")
+		self.assertTrue(mail["args"]["login_url"].endswith("/login/bank-agent"))
+		self.assertTrue(mail["redact_message_after_send"])
+
+	def test_invitation_rolls_back_when_email_cannot_be_queued(self):
+		invitee = self._invitee("email_failure")
+		frappe.set_user(self.bank_admin)
+		self.sendmail.side_effect = RuntimeError("mail queue unavailable")
+
+		with patch.object(frappe.db, "rollback") as rollback:
+			res = invite_team_member(email=invitee, full_name="Undelivered Agent", password="TempIssued1")
+
+		self.assertEqual(res.get("code"), "VALIDATION_ERROR")
+		rollback.assert_called_once()
 
 	def test_invites_succeed_when_another_user_has_no_mobile_number(self):
 		frappe.db.set_value("User", self.bank_admin, "mobile_no", "", update_modified=False)

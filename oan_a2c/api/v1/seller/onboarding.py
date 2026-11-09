@@ -712,7 +712,9 @@ def invite_team_member(email: str, full_name: str, password: str, role: str = BA
 	if not bank:
 		frappe.throw(_("No bank associated with the current user."))
 
-	if frappe.db.exists("User", email):
+	is_new_user = not frappe.db.exists("User", email)
+
+	if not is_new_user:
 		is_in_this_bank = frappe.db.exists(
 			"User Permission", {"user": email, "allow": "A2C Participating Bank", "for_value": bank}
 		)
@@ -757,6 +759,24 @@ def invite_team_member(email: str, full_name: str, password: str, role: str = BA
 				}
 			)
 			perm.insert(ignore_permissions=True)
+
+		if is_new_user:
+			frontend_url = str(frappe.conf.get("a2c_frontend_url") or frappe.utils.get_url()).rstrip("/")
+			bank_name = frappe.db.get_value("A2C Participating Bank", bank, "bank_name") or _("your bank")
+			frappe.sendmail(
+				recipients=[email],
+				subject=_("You have been invited to {0} on Access to Credit").format(bank_name),
+				template="team_invitation",
+				args={
+					"full_name": full_name,
+					"bank_name": bank_name,
+					"email": email,
+					"temporary_password": password,
+					"login_url": f"{frontend_url}/login/bank-agent",
+				},
+				add_unsubscribe_link=0,
+				redact_message_after_send=True,
+			)
 	except Exception as e:
 		frappe.db.rollback()
 		frappe.throw(_("Failed to invite team member: {0}").format(str(e)))
