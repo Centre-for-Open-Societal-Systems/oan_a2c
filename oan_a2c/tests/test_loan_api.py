@@ -989,9 +989,7 @@ class TestLoanStatusReadPath(ApiTestCase):
 		self.assertEqual(detail_submitted["data"]["sequence"], 1)
 		self.assertFalse(detail_submitted["data"]["is_terminal"])
 		self.assertFalse(detail_submitted["data"]["is_successful"])
-		self.assertEqual(
-			detail_submitted["data"]["submitted_at"], submit_res["data"]["submitted_at"]
-		)
+		self.assertEqual(detail_submitted["data"]["submitted_at"], submit_res["data"]["submitted_at"])
 
 		list_submitted = list_applications()
 		app_row_sub = next(r for r in list_submitted["data"] if r["application_id"] == app.name)
