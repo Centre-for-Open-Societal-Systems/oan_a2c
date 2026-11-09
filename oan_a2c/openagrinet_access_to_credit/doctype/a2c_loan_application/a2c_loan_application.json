@@ -10,6 +10,7 @@
  "field_order": [
   "application_id",
   "status",
+  "submitted_at",
   "stage_id",
   "stage_label",
   "current_step",
@@ -91,6 +92,12 @@
    "label": "Status",
    "options": "Active\nIn Transition\nCompleted\nRejected\nCancelled",
    "search_index": 1
+  },
+  {
+   "fieldname": "submitted_at",
+   "fieldtype": "Datetime",
+   "label": "Submitted At",
+   "read_only": 1
   },
   {
    "fieldname": "stage_id",

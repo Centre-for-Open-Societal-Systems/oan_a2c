@@ -2,7 +2,7 @@ import json
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt
+from frappe.utils import cint, flt, now_datetime
 from oan_auth_service.api.idempotency import idempotent
 from pydantic import BaseModel, Field
 
@@ -86,6 +86,7 @@ def list_applications(**kwargs):
 			"loan_product_name",
 			"bank",
 			"creation",
+			"submitted_at",
 		],
 		order_by=order_by,
 		limit_start=offset,
@@ -99,6 +100,7 @@ def list_applications(**kwargs):
 		r["loan_amount"] = float(r["loan_amount"]) if r.get("loan_amount") else 0.0
 		r["requested_amount"] = float(r["requested_amount"]) if r.get("requested_amount") else 0.0
 		r["creation"] = to_tz_aware_iso(r["creation"])
+		r["submitted_at"] = to_tz_aware_iso(r["submitted_at"]) if r.get("submitted_at") else None
 
 	pagination = {
 		"page": page,
@@ -152,6 +154,7 @@ def get_application(**kwargs):
 		"current_step": cint(doc.current_step),
 		"loan_officer": doc.loan_officer,
 		"creation": to_tz_aware_iso(doc.creation),
+		"submitted_at": to_tz_aware_iso(doc.submitted_at) if doc.submitted_at else None,
 		"date_of_birth": str(doc.date_of_birth) if doc.date_of_birth else None,
 		"gender": doc.gender,
 		"marital_status": doc.marital_status,
@@ -302,5 +305,10 @@ def submit_application(**kwargs):
 		doc.db_set("stage_label", initial_stage["label"])
 
 	apply_status_transition(doc, "In Transition")
+	submitted_at = now_datetime()
+	doc.db_set("submitted_at", submitted_at)
 
-	return success_response(message="Application submitted successfully")
+	return success_response(
+		data={"submitted_at": to_tz_aware_iso(submitted_at)},
+		message="Application submitted successfully",
+	)

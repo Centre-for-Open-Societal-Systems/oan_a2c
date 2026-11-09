@@ -964,6 +964,7 @@ class TestLoanStatusReadPath(ApiTestCase):
 		# Check Active state in list and detail
 		detail_res = get_application(application_id=app.name)
 		self.assertEqual(detail_res["data"]["status"], "Active")
+		self.assertIsNone(detail_res["data"]["submitted_at"])
 		self.assertIsNone(detail_res["data"]["stage_id"])
 		self.assertIsNone(detail_res["data"]["sequence"])
 		self.assertFalse(detail_res["data"]["is_terminal"])
@@ -979,6 +980,7 @@ class TestLoanStatusReadPath(ApiTestCase):
 		with patch.object(frappe.local, "request", frappe._dict(method="GET"), create=True):
 			submit_res = submit_application(application_id=app.name)
 		self.assertEqual(submit_res["status"], "success")
+		self.assertIsNotNone(submit_res["data"]["submitted_at"])
 
 		# Check Submitted state in list and detail
 		detail_submitted = get_application(application_id=app.name)
@@ -987,12 +989,16 @@ class TestLoanStatusReadPath(ApiTestCase):
 		self.assertEqual(detail_submitted["data"]["sequence"], 1)
 		self.assertFalse(detail_submitted["data"]["is_terminal"])
 		self.assertFalse(detail_submitted["data"]["is_successful"])
+		self.assertEqual(
+			detail_submitted["data"]["submitted_at"], submit_res["data"]["submitted_at"]
+		)
 
 		list_submitted = list_applications()
 		app_row_sub = next(r for r in list_submitted["data"] if r["application_id"] == app.name)
 		self.assertEqual(app_row_sub["status"], "Submitted")
 		self.assertEqual(app_row_sub["stage_id"], self.stages_bank_1["Submitted"].stage_id)
 		self.assertEqual(app_row_sub["sequence"], 1)
+		self.assertEqual(app_row_sub["submitted_at"], submit_res["data"]["submitted_at"])
 
 		# Clean up
 		frappe.set_user("Administrator")
