@@ -348,6 +348,9 @@ def change_password(current_password: str, new_password: str):
 		frappe.clear_messages()
 		raise frappe.AuthenticationError(_("Current password is incorrect."))
 
+	if current_password == new_password:
+		frappe.throw(_("New password must be different from the current password."), frappe.ValidationError)
+
 	update_password_db(user=frappe.session.user, pwd=new_password, logout_all_sessions=False)
 
 	return success_response(message=_("Password changed successfully."))
