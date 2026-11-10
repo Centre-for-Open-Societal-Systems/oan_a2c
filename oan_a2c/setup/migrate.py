@@ -2,6 +2,7 @@ import frappe
 from frappe.installer import update_site_config
 
 from oan_a2c.a2c_marketplace.roles import BANK_ADMIN_ROLE, FARMER_ROLE
+from oan_a2c.setup.administrative_areas import seed_administrative_areas
 from oan_a2c.setup.custom_fields import setup_custom_fields
 from oan_a2c.setup.roles import setup_roles
 
@@ -23,9 +24,11 @@ def after_install():
 	setup_roles()
 	setup_custom_fields()
 	setup_self_registerable_roles()
+	seed_administrative_areas()
 
 
 def after_migrate():
 	setup_roles()
 	setup_custom_fields()
 	setup_self_registerable_roles()
+	seed_administrative_areas()
