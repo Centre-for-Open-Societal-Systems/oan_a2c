@@ -458,6 +458,7 @@ def get_full_profile(**kwargs):
 		"loan_officer": doc.loan_officer,
 		"loan_officer_name": loan_officer_name,
 		"creation": to_tz_aware_iso(doc.creation),
+		"submitted_at": to_tz_aware_iso(doc.submitted_at) if doc.submitted_at else None,
 		"date_of_birth": str(doc.date_of_birth) if doc.date_of_birth else None,
 		"gender": doc.gender,
 		"marital_status": doc.marital_status,
@@ -728,6 +729,7 @@ def get_all_loans(**kwargs):
 		"kebele",
 		"phone_number",
 		"creation",
+		"submitted_at",
 	]
 	if can_see_step:
 		fields.append("current_step as step")
@@ -750,6 +752,7 @@ def get_all_loans(**kwargs):
 		if can_see_step:
 			r["step"] = cint(r.get("step"))
 		r["creation"] = to_tz_aware_iso(r["creation"])
+		r["submitted_at"] = to_tz_aware_iso(r["submitted_at"]) if r.get("submitted_at") else None
 
 	total_pages = -(-total_records // page_size)
 	has_next = offset + page_size < total_records
