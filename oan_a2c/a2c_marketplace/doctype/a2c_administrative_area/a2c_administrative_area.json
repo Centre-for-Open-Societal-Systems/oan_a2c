@@ -1,0 +1,208 @@
+{
+  "actions": [],
+  "allow_rename": 1,
+  "autoname": "autoname",
+  "creation": "2026-11-10 12:00:00.000000",
+  "doctype": "DocType",
+  "editable_grid": 1,
+  "engine": "InnoDB",
+  "field_order": [
+    "area_name",
+    "code",
+    "path_code",
+    "level_name",
+    "country",
+    "col_tree",
+    "parent_administrative_area",
+    "is_group",
+    "depth",
+    "is_active",
+    "sec_validity",
+    "valid_from",
+    "valid_to",
+    "sec_nsm",
+    "lft",
+    "rgt",
+    "old_parent"
+  ],
+  "fields": [
+    {
+      "fieldname": "area_name",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Area Name",
+      "reqd": 1
+    },
+    {
+      "description": "Official administrative code from the registry, e.g. ET04 (Oromia), ET043434 (Ambo). Identity for external sync; not used in ticket numbers.",
+      "fieldname": "code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Administrative Code"
+    },
+    {
+      "description": "Materialized dotted code path, e.g. ET.OROM.BISH.K01",
+      "fieldname": "path_code",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Path Code",
+      "read_only": 1,
+      "permlevel": 1
+    },
+    {
+      "default": "Region",
+      "fieldname": "level_name",
+      "fieldtype": "Select",
+      "in_list_view": 1,
+      "label": "Level / Tier Name",
+      "options": "Country\nRegion\nZone\nWoreda\nKebele\nCounty\nSub-County\nWard\nState\nDistrict\nTaluka\nVillage\nOther",
+      "reqd": 1
+    },
+    {
+      "fieldname": "country",
+      "fieldtype": "Data",
+      "in_list_view": 1,
+      "label": "Country"
+    },
+    {
+      "fieldname": "col_tree",
+      "fieldtype": "Column Break"
+    },
+    {
+      "fieldname": "parent_administrative_area",
+      "fieldtype": "Link",
+      "ignore_user_permissions": 1,
+      "label": "Parent Administrative Area",
+      "options": "A2C Administrative Area"
+    },
+    {
+      "default": "0",
+      "fieldname": "is_group",
+      "fieldtype": "Check",
+      "label": "Is Group"
+    },
+    {
+      "default": "0",
+      "fieldname": "depth",
+      "fieldtype": "Int",
+      "label": "Tree Depth",
+      "read_only": 1,
+      "permlevel": 1
+    },
+    {
+      "default": "1",
+      "fieldname": "is_active",
+      "fieldtype": "Check",
+      "label": "Active"
+    },
+    {
+      "fieldname": "sec_validity",
+      "fieldtype": "Section Break",
+      "label": "Effective Dates"
+    },
+    {
+      "fieldname": "valid_from",
+      "fieldtype": "Date",
+      "label": "Valid From"
+    },
+    {
+      "fieldname": "valid_to",
+      "fieldtype": "Date",
+      "label": "Valid To"
+    },
+    {
+      "fieldname": "sec_nsm",
+      "fieldtype": "Section Break",
+      "hidden": 1,
+      "label": "Nested Set"
+    },
+    {
+      "fieldname": "lft",
+      "fieldtype": "Int",
+      "hidden": 1,
+      "label": "Left",
+      "no_copy": 1,
+      "read_only": 1,
+      "permlevel": 1
+    },
+    {
+      "fieldname": "rgt",
+      "fieldtype": "Int",
+      "hidden": 1,
+      "label": "Right",
+      "no_copy": 1,
+      "read_only": 1,
+      "permlevel": 1
+    },
+    {
+      "fieldname": "old_parent",
+      "fieldtype": "Link",
+      "hidden": 1,
+      "label": "Old Parent",
+      "options": "A2C Administrative Area"
+    }
+  ],
+  "grid_page_length": 50,
+  "index_web_pages_for_search": 1,
+  "is_tree": 1,
+  "links": [],
+  "modified": "2026-11-10 12:00:00.000000",
+  "modified_by": "Administrator",
+  "module": "A2C Marketplace",
+  "name": "A2C Administrative Area",
+  "naming_rule": "By script",
+  "nsm_parent_field": "parent_administrative_area",
+  "owner": "Administrator",
+  "permissions": [
+    {
+      "role": "A2C Administrator",
+      "create": 1,
+      "write": 1,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "share": 1,
+      "print": 1,
+      "email": 1
+    },
+    {
+      "role": "System Manager",
+      "create": 1,
+      "write": 1,
+      "delete": 0,
+      "read": 1,
+      "report": 1,
+      "export": 1,
+      "share": 1,
+      "print": 1,
+      "email": 1
+    },
+    {
+      "role": "A2C Bank Admin",
+      "read": 1,
+      "report": 1
+    },
+    {
+      "role": "A2C Bank Agent",
+      "read": 1,
+      "report": 1
+    },
+    {
+      "role": "A2C Development Agent",
+      "read": 1,
+      "report": 1
+    },
+    {
+      "role": "A2C Farmer",
+      "read": 1,
+      "report": 1
+    }
+  ],
+  "row_format": "Dynamic",
+  "rows_threshold_for_grid_search": 20,
+  "sort_field": "lft",
+  "sort_order": "ASC",
+  "states": [],
+  "title_field": "area_name"
+}

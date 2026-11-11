@@ -457,6 +457,20 @@ data(
 	OBJ({"term_id": S(), "term_name": S(), "values": ARR(S())}, required=["term_id", "term_name"]),
 )
 data("CategoryListData", OBJ({"categories": ARR(REF("TaxonomyTerm"))}, required=["categories"]))
+data(
+	"AdministrativeAreaListData",
+	OBJ(
+		{
+			"areas": ARR(
+				OBJ({"area_id": S(), "area_name": S(), "code": S(), "path_code": S(), "level_name": S()})
+			),
+			"count": I(),
+		},
+		required=["areas"],
+		description="Areas of one tier; the other fields echo the query.",
+		confidence="inferred",
+	),
+)
 data("TagListData", OBJ({"tags": ARR(REF("TagTerm"))}, required=["tags"]))
 data(
 	"AttributeListData",
@@ -1342,6 +1356,16 @@ QP["ListProducts"] = [
 	},
 	*PAGE_PARAMS,
 ]
+QP["AdministrativeAreas"] = [
+	{"name": n, "in": "query", "required": False, "schema": S(nullable=True), "description": d}
+	for n, d in (
+		("parent", "Parent area name, path_code or comma-separated list; omit for top-level regions."),
+		("level_name", "Tier to return: Region, Zone, Woreda or Kebele."),
+		("search", "Match on area name."),
+		("ancestors_of", "Return the breadcrumb chain down to this area instead."),
+		("limit", "Maximum rows (default 100, max 500)."),
+	)
+]
 QP["CatalogList"] = query_params_from_schema("FarmerCatalogSchema")
 QP["GetBankDetails"] = []  # bank id moves to path
 QP["ListLeads"] = query_params_from_schema("GetLeadsSchema")
@@ -1798,6 +1822,16 @@ ROUTES = [
 		response="MessageData",
 		path_params=[("id", "Product document id")],
 		legacy="oan_a2c.api.v1.seller.taxonomy.set_product_attributes",
+	),
+	R(
+		"get",
+		"/v1/administrative-areas",
+		"List administrative areas",
+		"Bank Cataloging",
+		"public",
+		query="AdministrativeAreas",
+		response="AdministrativeAreaListData",
+		legacy="oan_a2c.api.v1.administrative_areas.get_areas",
 	),
 	R(
 		"get",

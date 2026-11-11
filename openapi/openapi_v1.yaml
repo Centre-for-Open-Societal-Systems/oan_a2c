@@ -1261,6 +1261,38 @@ paths:
         '500': *id006
       security:
       - BearerAuth: []
+  /v1/administrative-areas:
+    get:
+      summary: List administrative areas
+      tags:
+      - Bank Cataloging
+      operationId: get_v1_administrative_areas
+      x-legacy-rpc-method: oan_a2c.api.v1.administrative_areas.get_areas
+      parameters:
+      - {name: parent, in: query, required: false, schema: {type: string, nullable: true}, description: "Parent area name, path_code or comma-separated list; omit for top-level regions."}
+      - {name: level_name, in: query, required: false, schema: {type: string, nullable: true}, description: "Tier to return: Region, Zone, Woreda or Kebele."}
+      - {name: search, in: query, required: false, schema: {type: string, nullable: true}, description: "Match on area name."}
+      - {name: ancestors_of, in: query, required: false, schema: {type: string, nullable: true}, description: "Return the breadcrumb chain down to this area instead."}
+      - {name: limit, in: query, required: false, schema: {type: integer, nullable: true}, description: "Maximum rows (default 100, max 500)."}
+      responses:
+        '200':
+          description: Successful operation.
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSuccessResponse'
+                - type: object
+                  properties:
+                    data:
+                      $ref: '#/components/schemas/AdministrativeAreaListData'
+        '400': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '429': *id005
+        '500': *id006
+      security: []
   /v1/taxonomy/tags:
     get:
       summary: List marketplace tags
@@ -5689,6 +5721,16 @@ components:
             $ref: '#/components/schemas/TaxonomyTerm'
       required:
       - categories
+    AdministrativeAreaListData:
+      type: object
+      properties:
+        areas:
+          type: array
+          items:
+            type: object
+            properties: {area_id: {type: string}, area_name: {type: string}, code: {type: string}, path_code: {type: string}, level_name: {type: string}}
+        count: {type: integer}
+      required: [areas]
     TagListData:
       type: object
       properties:
