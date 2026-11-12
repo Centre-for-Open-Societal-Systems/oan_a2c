@@ -27,6 +27,39 @@ secrets:
     create: true
     name: oan-a2c-jwt
 
+global:
+  # Domain of the environment, e.g. development.oanstaging.com. iamServices builds its hosts from it.
+  baseDomain: ""
+
+# Login options of the A2C portal: one `OAN IAM Service` row each, written into the DB by the
+# iam-services Job on every install and upgrade (templates/iam-services.yaml) and matched by `key`.
+# Keys are the DocType's field names; default_roles is a list of role names. Values are templates.
+# An environment that changes one entry repeats the whole list, as Helm replaces lists.
+# Rows removed from the list stay in the DB. An empty list turns the Job off.
+iamServices:
+- key: agent
+  label: Agent
+  enabled: 1
+  sort_order: 20
+  base_url: "https://staff-iam.{{ .Values.global.baseDomain }}"
+  provider_id: 1
+  issuer: "https://keycloak.{{ .Values.global.baseDomain }}/realms/staff"
+  client_id: staff-portal
+  application: oan-client
+- key: beneficiary
+  label: National ID (eSignet)
+  enabled: 1
+  sort_order: 30
+  base_url: "https://bene-iam.{{ .Values.global.baseDomain }}"
+  provider_id: 11
+  issuer: "https://esignet.{{ .Values.global.baseDomain }}"
+
+iamServicesJob:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  # Runs of the sync, 30 seconds apart, while the site-config job migrates.
+  attempts: 20
+
 frappe:
   image:
     # Set per environment. package_chart.py needs both keys to exist.

@@ -7,6 +7,10 @@
 # - frappe.image.tag: the Jenkins tag `develop-<build>` (locally: `develop`)
 # - frappe.dbHost: set below, the shared PostgreSQL of the oan-frappe-common release (namespace frappe-common)
 
+global:
+  # The hosts of the iamServices login options (chart values.yaml) follow it.
+  baseDomain: development.oanstaging.com
+
 frappe:
   image:
     # Jenkinsfile ECR_REPO `oan-a2c-service`. A local build tagged with this name is used without

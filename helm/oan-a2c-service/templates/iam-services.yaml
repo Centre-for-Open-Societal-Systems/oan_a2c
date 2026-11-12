@@ -1,0 +1,87 @@
+{{- if .Values.iamServices }}
+{{- /*
+Writes iamServices into the `OAN IAM Service` table of the site on every install and upgrade, the way
+the OpenG2P IAM seeds its login_providers table from its values. Nothing goes into site_config.json.
+
+The Secret holds the list after tpl, so hosts follow global.baseDomain. The Job waits until create-site
+has installed oan_a2c, then runs oan_a2c.setup.iam_services.sync_iam_services, which creates or updates
+each row by `key`. The site-config job migrates at the same time, so a failed run is retried: a field
+added in this release exists only once that migrate is done.
+
+The Job reuses the image, service account, security context and sites volume of the frappe subchart.
+*/ -}}
+{{- $_ := required "global.baseDomain is required: iamServices builds its hosts from it" .Values.global.baseDomain }}
+{{- $frappe := dict "Values" .Values.frappe "Release" .Release "Chart" (dict "Name" "frappe") }}
+{{- $fullname := include "frappe.fullname" $frappe }}
+{{- $job := .Values.iamServicesJob }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $fullname }}-iam-services
+  labels:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+type: Opaque
+stringData:
+  iam_services.json: {{ tpl (toJson .Values.iamServices) . | quote }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $fullname }}-iam-services-{{ now | date "20060102150405" }}
+  labels:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  backoffLimit: {{ $job.backoffLimit }}
+  ttlSecondsAfterFinished: {{ $job.ttlSecondsAfterFinished }}
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "frappe.serviceAccountName" $frappe }}
+      {{- with .Values.frappe.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.frappe.podSecurityContext | nindent 8 }}
+      containers:
+      - name: iam-services
+        image: "{{ .Values.frappe.image.repository }}:{{ .Values.frappe.image.tag }}"
+        imagePullPolicy: {{ .Values.frappe.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.frappe.securityContext | nindent 10 }}
+        workingDir: /home/frappe/frappe-bench
+        command: ["bash", "-c"]
+        args:
+        - |
+          set -euo pipefail
+          until bench --site "$SITE_NAME" list-apps 2>/dev/null | grep -q '^oan_a2c'; do
+            echo "waiting for site $SITE_NAME"; sleep 10
+          done
+          for attempt in $(seq 1 {{ $job.attempts }}); do
+            if bench --site "$SITE_NAME" execute oan_a2c.setup.iam_services.sync_iam_services; then
+              exit 0
+            fi
+            echo "attempt $attempt of {{ $job.attempts }} failed; retrying in 30s"; sleep 30
+          done
+          exit 1
+        env:
+        - name: SITE_NAME
+          value: {{ required "frappe.jobs.createSite.siteName is required" .Values.frappe.jobs.createSite.siteName | quote }}
+        - name: OAN_IAM_SERVICES
+          valueFrom:
+            secretKeyRef:
+              name: {{ $fullname }}-iam-services
+              key: iam_services.json
+        volumeMounts:
+        - name: sites-dir
+          mountPath: /home/frappe/frappe-bench/sites
+          {{- if .Values.frappe.persistence.worker.subPath }}
+          subPath: {{ .Values.frappe.persistence.worker.subPath | quote }}
+          {{- end }}
+      volumes:
+      - name: sites-dir
+        persistentVolumeClaim:
+          claimName: {{ default $fullname .Values.frappe.persistence.worker.existingClaim }}
+{{- end }}
