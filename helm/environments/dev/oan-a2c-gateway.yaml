@@ -14,7 +14,7 @@ ingressClassName: apisix
 
 # Namespace of the APISIX release, which owns the consumers shared by several apps
 # (the IVR vendor). Routes whitelist them as `<this>_<name>`.
-sharedConsumerNamespace: apisix
+sharedConsumerNamespace: api6-gateway
 
 # Domain of this environment; hosts below are built from it (the chart runs them through tpl).
 global:
