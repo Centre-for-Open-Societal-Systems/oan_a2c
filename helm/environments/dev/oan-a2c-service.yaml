@@ -1,17 +1,22 @@
 # Values for the oan-a2c-service chart (helm/oan-a2c-service).
-# Target: the A2C app cluster (not provisioned yet). The same file runs a local
-# single-node cluster (docs/a2c.md, "Local").
-# Release `a2c`, namespace `a2c-develop`.
+# Target: the oan_dev k3s node, installed by the Jenkins stage "develop → oan_dev (helm)"
+# (ci/deploy-helm-dev.sh). The same file runs a local single-node cluster (docs/a2c.md, "Local").
+# Release `a2c`, namespace `a2c`.
 #
 # Set at install, not here:
-# - frappe.image.tag: the Jenkins tag `develop-<build>` (locally: `develop`)
+# - frappe.image.tag: the Jenkins tag `<__version__>-develop.<build>` (locally: `develop`)
 # - frappe.dbHost: set below, the shared PostgreSQL of the oan-frappe-common release (namespace frappe-common)
 
 frappe:
   image:
-    # Jenkinsfile ECR_REPO `oan-a2c-service`. A local build tagged with this name is used without
-    # a pull (pullPolicy IfNotPresent).
-    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan-a2c-service
+    # Jenkinsfile ECR_REPO `oan/oan-a2c-service/a2c-service`. A local build tagged with this name
+    # is used without a pull (pullPolicy IfNotPresent).
+    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan-a2c-service/a2c-service
+
+  # ECR login for the image and the seed image. ci/deploy-helm-dev.sh refreshes it on every
+  # deploy (the token lasts 12 hours); locally, create it by hand or drop this.
+  imagePullSecrets:
+    - name: ecr-pull-secret
 
   dbHost: oan-frappe-common-db-postgresql-subchart.frappe-common.svc.cluster.local
   dbRootUser: postgres
