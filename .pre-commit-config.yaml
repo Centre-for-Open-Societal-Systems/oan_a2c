@@ -15,6 +15,7 @@ repos:
       - id: check-json
       - id: check-toml
       - id: check-yaml
+        args: [--allow-multiple-documents]
         # Helm templates hold Go template syntax, which is not YAML until rendered.
         exclude: ^(apisix/k8s|helm/[^/]+)/templates/
       - id: debug-statements

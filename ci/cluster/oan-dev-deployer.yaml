@@ -1,0 +1,83 @@
+# Deploy identity of the Jenkins pipeline on the oan_dev k3s node (see docs/operations/oan-dev-deploy.md).
+# Apply with ci/cluster/bootstrap-oan-dev.sh. Holds no secret data: Kubernetes fills the token Secret.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins-a2c-deployer
+  namespace: a2c
+---
+# Token the Jenkins kubeconfig credential carries (Kubernetes no longer makes one for a ServiceAccount).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jenkins-a2c-deployer-token
+  namespace: a2c
+  annotations:
+    kubernetes.io/service-account.name: jenkins-a2c-deployer
+type: kubernetes.io/service-account-token
+---
+# Full control inside the a2c namespace only: the `a2c` and `a2c-gateway` Helm releases, their Secrets and Jobs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-a2c-deployer
+  namespace: a2c
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-a2c-deployer
+    namespace: a2c
+---
+# Gateway deploy: find the Redis Service of the APISIX release.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jenkins-read-services
+  namespace: api6-gateway
+rules:
+  - apiGroups: [""]
+    resources: [services]
+    verbs: [get, list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-read-services
+  namespace: api6-gateway
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jenkins-read-services
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-a2c-deployer
+    namespace: a2c
+---
+# App deploy: copy the shared Postgres password into the a2c namespace. This one Secret only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: jenkins-read-db-secret
+  namespace: frappe-common
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    resourceNames: [oan-frappe-common-db]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-read-db-secret
+  namespace: frappe-common
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: jenkins-read-db-secret
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-a2c-deployer
+    namespace: a2c

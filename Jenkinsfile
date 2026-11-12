@@ -3,15 +3,13 @@
 //  GitHub Organization folder (multibranch).
 //
 //  Per branch (all publish to the ECR repo `oan/oan-a2c-service/a2c-service`):
-//    develop     -> build + push + ci/deploy-ec2.sh
-//                   (EC2 docker-compose deploy to BACKEND_IP:/opt/oan_a2c)
-//                   + ci/deploy-helm-dev.sh (helm upgrade --install of release `a2c`,
-//                   namespace A2C_NAMESPACE, on the oan_dev k3s node OAN_DEV_IP)
+//    develop     -> build + push + ci/deploy-helm-dev.sh (helm upgrade --install of release `a2c`,
+//                   namespace A2C_NAMESPACE, on the oan_dev k3s node, from a VPN deploy agent)
 //                   + ci/deploy-gateway.sh (APISIX routes, chart apisix/k8s, only when the spec,
-//                   apisix/ or the gateway values changed; same SSH path as the helm deploy)
+//                   apisix/ or the gateway values changed; same kubeconfig as the helm deploy)
 //    staging_aws -> build + push + SSH docker-compose deploy to a SEPARATE stack on
 //                   the SAME box (BACKEND_IP:${STAGING_APP_DIR}, compose project
-//                   oan_a2c_staging). Coexists with develop's /opt/oan_a2c stack.
+//                   oan_a2c_staging).
 //    staging_ati -> build + push + ci/update-kustomize-ati.sh
 //                   (GitOps: bump oan-kustomize `staging` overlay; ArgoCD on node 41 syncs)
 //
@@ -32,7 +30,7 @@
 //         <branch>-latest                  moving alias (convenience)
 //
 //  Agent needs: docker(+buildx), aws cli v2, git, kustomize.
-//  Credentials: AWS_ACCOUNT_ID (string), backend-ssh-key (ssh), oan-dev-ssh-key (ssh, oan_dev),
+//  Credentials: AWS_ACCOUNT_ID (string), backend-ssh-key (ssh), oan-dev-kubeconfig (file, ci/cluster/),
 //               oan-deployer (GitHub App).
 //  NOTE: `aws ecr get-login-password` uses the agent's ambient AWS identity, which
 //        must have ECR push on `oan/oan-a2c-service/a2c-service`.
@@ -53,7 +51,6 @@ pipeline {
     FRAPPE_PATH     = 'https://github.com/frappe/frappe'
     BACKEND_IP      = '10.0.2.100'
     STAGING_APP_DIR = '/opt/oan_a2c_staging'   // staging_aws stack (separate from /opt/oan_a2c)
-    OAN_DEV_IP      = '10.0.1.131'             // oan_dev k3s node (helm + kubectl), private address
     A2C_NAMESPACE   = 'a2c'
   }
 
@@ -158,46 +155,25 @@ pipeline {
           }
           sh 'python3 ci/package_chart.py package'
         }
+        // The deploy stages run on the VPN deploy agent, which gets the archive from here.
+        stash name: 'built-chart', includes: 'built-chart/**'
       }
     }
 
     // ---------------------- per-branch deploy ----------------------
 
-    stage('develop → EC2') {
-      when { branch 'develop' }
-      steps {
-        withCredentials([
-          string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
-          sshUserPrivateKey(credentialsId: 'backend-ssh-key',
-                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
-          string(credentialsId: 'encryption_key_develop', variable: 'ENCRYPTION_KEY'),
-          string(credentialsId: 'secret_key_develop', variable: 'SECRET_KEY'),
-          string(credentialsId: 'jwt_secrets_develop', variable: 'JWT_SECRETS'),
-          string(credentialsId: 'openg2p_password_develop', variable: 'OPENG2P_PASSWORD')
-        ]) {
-          sh '''#!/usr/bin/env bash
-            set -euo pipefail
-            chmod +x ci/deploy-ec2.sh
-            AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} SSH_KEY=${SSH_KEY} SSH_USER=${SSH_USER} \
-            BACKEND_IP=${BACKEND_IP} BUILD_NUMBER=${BUILD_NUMBER} \
-            ECR_REPO=${ECR_REPO} IMMUTABLE_TAG=${IMMUTABLE_TAG} AWS_REGION=${AWS_REGION} \
-            ENCRYPTION_KEY="${ENCRYPTION_KEY}" SECRET_KEY="${SECRET_KEY}" \
-            JWT_SECRETS="${JWT_SECRETS}" OPENG2P_PASSWORD="${OPENG2P_PASSWORD}" \
-            bash ci/deploy-ec2.sh
-          '''
-        }
-      }
-    }
-
     // develop -> Helm release `a2c` on the oan_dev k3s node, from the archive 'Package chart' built.
     // First run installs, later runs upgrade; the chart generates its admin, secret-key and JWT Secrets.
     stage('develop → oan_dev (helm)') {
-      when { branch 'develop' }
+      when { beforeAgent true; branch 'develop' }
+      agent { label 'oan-ci-deploy' }   // VPN agent with helm, kubectl and aws that reaches the oan_dev API
+      options { timeout(time: 45, unit: 'MINUTES') }
       steps {
+        checkout scm
+        unstash 'built-chart'
         withCredentials([
           string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
-          sshUserPrivateKey(credentialsId: 'oan-dev-ssh-key',
-                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+          file(credentialsId: 'oan-dev-kubeconfig', variable: 'KUBECONFIG')
         ]) {
           sh 'bash ci/deploy-helm-dev.sh'
         }
@@ -208,6 +184,7 @@ pipeline {
     // Runs only when the spec, the generated routes or the gateway values changed.
     stage('develop → gateway (apisix)') {
       when {
+        beforeAgent true
         allOf {
           branch 'develop'
           anyOf {
@@ -217,11 +194,11 @@ pipeline {
           }
         }
       }
+      agent { label 'oan-ci-deploy' }
+      options { timeout(time: 15, unit: 'MINUTES') }
       steps {
-        withCredentials([
-          sshUserPrivateKey(credentialsId: 'oan-dev-ssh-key',
-                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
-        ]) {
+        checkout scm
+        withCredentials([file(credentialsId: 'oan-dev-kubeconfig', variable: 'KUBECONFIG')]) {
           sh 'bash ci/deploy-gateway.sh'
         }
       }
@@ -393,7 +370,7 @@ SSHEOF
     }
     // ---------------------- Helm chart publish (same name as the image) ----------------------
     // Adds the archive built by 'Package chart' to repository/develop/ of oan-helm, only after
-    // the EC2, oan_dev and gateway deploys succeeded.
+    // the oan_dev and gateway deploys succeeded.
     stage('Publish chart') {
       when { branch 'develop' }
       steps {
