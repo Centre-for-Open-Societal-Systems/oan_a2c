@@ -1,3 +1,7 @@
+// DEPRECATED: this pipeline still pushes to the legacy ECR repo `oan/a2c` with
+// <branch>-<build> tags and publishes no Helm chart. The current pipeline is `Jenkinsfile`,
+// which pushes to `oan-a2c-service` (same name as the Helm chart), uses the git-derived version
+// as the image tag, and packages and publishes the chart to oan-helm.
 pipeline {
     agent any
 

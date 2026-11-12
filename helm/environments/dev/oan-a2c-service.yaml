@@ -1,0 +1,49 @@
+# Values for the oan-a2c-service chart (helm/oan-a2c-service).
+# Target: the A2C app cluster (not provisioned yet). The same file runs a local
+# single-node cluster (docs/a2c.md, "Local").
+# Release `a2c`, namespace `a2c-develop`.
+#
+# Set at install, not here:
+# - frappe.image.tag: the Jenkins tag `develop-<build>` (locally: `develop`)
+# - frappe.dbHost: set below, the shared PostgreSQL of the oan-frappe-common release (namespace frappe-common)
+
+frappe:
+  image:
+    # Jenkinsfile ECR_REPO `oan-a2c-service`. A local build tagged with this name is used without
+    # a pull (pullPolicy IfNotPresent).
+    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan-a2c-service
+
+  dbHost: oan-frappe-common-db-postgresql-subchart.frappe-common.svc.cluster.local
+  dbRootUser: postgres
+
+  persistence:
+    worker:
+      # ReadWriteMany from the NFS server, see nfs-csi.yaml.
+      storageClass: nfs-csi
+
+  siteConfig:
+    values:
+      host_name: https://a2c-backend.development.oanstaging.com
+    # Demo data. Build and push from oan-service-helm: seed/Dockerfile with SERVICE=a2c.
+    seed:
+      enabled: true
+      image:
+        repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/a2c-seed
+        tag: demo-20261108
+
+  # The central APISIX gateway runs in another cluster and reaches Frappe on this node port
+  # (web.port in oan-a2c-gateway.yaml). Allow it in the node's security group from the
+  # gateway cluster's addresses only.
+  gatewayAccess:
+    enabled: true
+    web:
+      nodePort: 30810
+
+  jobs:
+    configure:
+      # The NFS export maps every client to uid/gid 1000 (all_squash), so the volume is
+      # already owned by the Frappe user. The upstream root `chown -R` only races with Pods
+      # that write into sites/ while the jobs run, and its failure fails the job.
+      fixVolume: false
+    createSite:
+      siteName: a2c-backend.development.oanstaging.com
