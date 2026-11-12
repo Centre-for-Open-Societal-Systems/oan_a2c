@@ -20,10 +20,24 @@ def setup_self_registerable_roles():
 		update_site_config("jwt_self_registerable_roles", current_roles)
 
 
+def setup_desk_home_page():
+	"""Open the desk on the workspace instead of the setup wizard.
+
+	`bench new-site` stores `setup-wizard` as the desk home page, and only the wizard's last step
+	resets it. A site created by a job never runs the wizard, and `bench migrate` marks Frappe's
+	setup complete as soon as a non-admin user exists (the seeded demo users). The desk then boots
+	into the wizard, which sends it back to /desk, and the page reloads in a loop. A home page an
+	admin chose is left alone.
+	"""
+	if frappe.db.get_default("desktop:home_page") == "setup-wizard":
+		frappe.db.set_default("desktop:home_page", "workspace")
+
+
 def after_install():
 	setup_roles()
 	setup_custom_fields()
 	setup_self_registerable_roles()
+	setup_desk_home_page()
 	seed_administrative_areas()
 
 
@@ -31,4 +45,5 @@ def after_migrate():
 	setup_roles()
 	setup_custom_fields()
 	setup_self_registerable_roles()
+	setup_desk_home_page()
 	seed_administrative_areas()
