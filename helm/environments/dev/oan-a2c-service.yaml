@@ -13,10 +13,8 @@ frappe:
     # is used without a pull (pullPolicy IfNotPresent).
     repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan-a2c-service/a2c-service
 
-  # ECR login for the image and the seed image. ci/deploy-helm-dev.sh refreshes it on every
-  # deploy (the token lasts 12 hours); locally, create it by hand or drop this.
-  imagePullSecrets:
-    - name: ecr-pull-secret
+  # No imagePullSecrets on oan_dev: the node pulls from ECR with its IAM role (kubelet
+  # ecr-credential-provider, docs/operations/oan-dev-deploy.md). Locally, a locally built image needs no pull.
 
   dbHost: oan-frappe-common-db-postgresql-subchart.frappe-common.svc.cluster.local
   dbRootUser: postgres

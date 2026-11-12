@@ -27,7 +27,7 @@ ClusterRoles), the deploy fails with a forbidden error; grant that one thing in 
    description. Delete every local copy of the file.
 3. On a shell on the `oan-ci-deploy` agent, check access:
    `KUBECONFIG=<file> kubectl auth can-i create secrets -n a2c` (yes) and `-n default` (no).
-   The agent also needs `helm` 3.10+, `kubectl` and the `aws` cli with ECR read.
+   The agent also needs `helm` 3.10+ and `kubectl`. It needs no AWS access.
 
 ## Rotate or revoke
 
@@ -36,3 +36,19 @@ ClusterRoles), the deploy fails with a forbidden error; grant that one thing in 
 - Revoke: delete the Jenkins credential and `kubectl delete -f ci/cluster/oan-dev-deployer.yaml`.
 
 Never commit the kubeconfig, its token or `ca.crt`.
+
+## Image pulls (node side)
+
+The node pulls from ECR with its own IAM role, so the deploy keeps no pull Secret and the agent needs no AWS
+access. One-time setup on the oan_dev node (done 2026-11-12):
+
+1. Instance profile `oan-services-dev-ecr-pull` on the EC2 instance: `ecr:GetAuthorizationToken`, and
+   `ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`, `ecr:BatchCheckLayerAvailability` on the repositories it pulls.
+2. `ecr-credential-provider` (cloud-provider-aws, v1.37.0 from `artifacts.k8s.io`) in
+   `/var/lib/rancher/credentialprovider/bin/`, with `/var/lib/rancher/credentialprovider/config.yaml`
+   (`matchImages: "*.dkr.ecr.*.amazonaws.com"`, `get-credentials`).
+3. `/etc/rancher/k3s/config.yaml`: `kubelet-arg` lines `image-credential-provider-config=` and
+   `image-credential-provider-bin-dir=` pointing at them, then `systemctl restart k3s`.
+
+A new node needs the same three steps. A pull failing with 401 or `no basic auth credentials` means the
+role, the binary or the kubelet args are missing.
