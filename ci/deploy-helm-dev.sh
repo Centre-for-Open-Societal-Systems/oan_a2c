@@ -29,10 +29,17 @@ kubectl -n "${NS}" create secret generic oan-frappe-common-db \
   --from-literal=password="$(kubectl -n frappe-common get secret oan-frappe-common-db -o jsonpath='{.data.password}' | base64 -d)" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# No --atomic: a failed first install would uninstall the release, generated Secrets included.
+# --atomic only once a revision has deployed: a failed or cancelled upgrade then rolls back to it.
+# Before that there is nothing to roll back to, and --atomic would uninstall the release, the
+# a2c-frappe PVC with the site's files included.
+ATOMIC=()
+if helm -n "${NS}" history a2c -o json 2>/dev/null | grep -q '"status":"deployed"'; then
+  ATOMIC=(--atomic)
+fi
 if ! helm upgrade --install a2c "${CHART_TGZ}" --namespace "${NS}" -f "${VALUES}" \
   --set frappe.image.tag="${IMMUTABLE_TAG}" \
   --set frappe.siteConfig.seed.image.tag="${IMMUTABLE_TAG}" \
+  ${ATOMIC[@]+"${ATOMIC[@]}"} \
   --wait --wait-for-jobs --timeout 30m; then
   echo "=== helm upgrade failed ==="
   helm -n "${NS}" history a2c --max 3 || true
