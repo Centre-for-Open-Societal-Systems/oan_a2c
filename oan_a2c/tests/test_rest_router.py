@@ -64,6 +64,8 @@ class TestRestRouter(RequestContextMixin, unittest.TestCase):
 
 	def test_public_auth_login_route_dispatch(self):
 		"""Test routing POST /v1/auth/login to oan_auth_service's login handler."""
+		frappe.cache.delete_keys("oan_auth:")
+		frappe.cache.delete_keys("rl:")
 		builder = EnvironBuilder(
 			path="/v1/auth/login",
 			method="POST",

@@ -55,9 +55,10 @@ bench --site mysite.localhost set-config jwt_refresh_token_ttl_remember_me 25920
 bench --site mysite.localhost set-config jwt_self_registerable_roles '["A2C Bank Admin", "A2C Farmer"]' --parse
 
 # Development Agents sign in only through the OpenG2P IAM service (SSO). IAM logins are
-# not site config: a System Manager adds one `OAN IAM Service` row per IAM login in the
-# desk (base URL, provider id, issuer, application, return origins). See "Delegated login"
-# in oan_auth_service's README. Give Development Agents the client role
+# not site config: each is one `OAN IAM Service` row (base URL, provider id, issuer,
+# application). On Kubernetes the chart writes them from `iamServices`
+# (helm/oan-a2c-service/values.yaml); locally a System Manager adds them in the desk.
+# See "Delegated login" in oan_auth_service's README. Give Development Agents the client role
 # `A2C Development Agent` on the row's `application` (role names are used as-is). A local
 # (password) account holding that role is refused on every API call.
 
@@ -84,6 +85,8 @@ Configure it in Desk under **A2C OpenG2P Settings** (single doctype, System Mana
 endpoint URLs, the partner Keycloak client (`client_credentials`, or `password` for the dev client),
 `partner_id` (must match the token's `partner_id` claim), the consent purpose, data controller and data scopes.
 Secrets are `Password` fields, encrypted with the site's `encryption_key`.
+On Kubernetes the chart writes these fields on every deploy: the URLs and `partner_id` from `openg2pSettings`,
+the partner credentials from the Secret `oan-a2c-openg2p-partner` (see helm/oan-a2c-service/values.yaml).
 
 The old `openg2p_base_url` / `openg2p_db` / `openg2p_username` / `openg2p_password` site_config keys are no longer read.
 

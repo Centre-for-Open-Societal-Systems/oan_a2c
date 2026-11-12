@@ -14,6 +14,8 @@
 # - oan-frappe-common-db (key `password`): the `postgres` password, copied from the frappe-common namespace
 # - oan-a2c-sentry (key `dsn`): Sentry DSN. Optional.
 # - oan-a2c-seed (key `password`): password for the demo users. Optional.
+# - oan-a2c-openg2p-partner (keys `client_id`, `client_secret`, `username`, `password`): the A2C
+#   partner client of the consent integration, see `openg2pPartnerSecret`. Optional.
 
 # Set create=false to bring your own Secret with the same name and keys.
 secrets:
@@ -26,6 +28,57 @@ secrets:
   jwt:
     create: true
     name: oan-a2c-jwt
+
+global:
+  # Domain of the environment, e.g. development.oanstaging.com. iamServices builds its hosts from it.
+  baseDomain: ""
+
+# Login options of the A2C portal: one `OAN IAM Service` row each, written into the DB by the
+# site-settings Job on every install and upgrade (templates/site-settings.yaml) and matched by `key`.
+# Keys are the DocType's field names; default_roles is a list of role names. Values are templates.
+# An environment that changes one entry repeats the whole list, as Helm replaces lists.
+# Rows removed from the list stay in the DB. An empty list turns the Job off.
+iamServices:
+- key: agent
+  label: Agent
+  enabled: 1
+  sort_order: 20
+  base_url: "https://staff-iam.{{ .Values.global.baseDomain }}"
+  provider_id: 1
+  issuer: "https://keycloak.{{ .Values.global.baseDomain }}/realms/staff"
+  client_id: staff-portal
+  application: oan-client
+- key: beneficiary
+  label: National ID (eSignet)
+  enabled: 1
+  sort_order: 30
+  base_url: "https://bene-iam.{{ .Values.global.baseDomain }}"
+  provider_id: 11
+  issuer: "https://esignet.{{ .Values.global.baseDomain }}"
+
+# Fields of `A2C OpenG2P Settings` (the consent integration), written into the DB by the same Job.
+# Field names are the DocType's; values are templates. Empty values are skipped, so the DB keeps
+# what it has. Fields left out keep their DocType default or desk value.
+openg2pSettings:
+  keycloak_url: "https://keycloak.{{ .Values.global.baseDomain }}"
+  consent_manager_url: "https://consent-manager.{{ .Values.global.baseDomain }}"
+  aggregation_url: "https://aggregation.{{ .Values.global.baseDomain }}"
+  agent_api_url: "https://staff-farmer.{{ .Values.global.baseDomain }}"
+  # Must equal the partner_id claim of the partner token.
+  partner_id: A2C Service
+
+# Secret with the credentials of the A2C partner client in the `partner` Keycloak realm, registered
+# by hand once per environment. Keys, each optional: client_id, client_secret, username, password
+# (username and password for partner_grant_type `password`). A missing key or Secret keeps the DB
+# value. Empty name: no credentials from Kubernetes.
+openg2pPartnerSecret:
+  name: oan-a2c-openg2p-partner
+
+siteSettingsJob:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400
+  # Runs of the sync, 30 seconds apart, while the site-config job migrates.
+  attempts: 20
 
 frappe:
   image:

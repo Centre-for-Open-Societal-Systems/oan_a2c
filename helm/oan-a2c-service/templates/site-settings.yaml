@@ -1,0 +1,106 @@
+{{- if or .Values.iamServices .Values.openg2pSettings }}
+{{- /*
+Writes iamServices (`OAN IAM Service` rows) and openg2pSettings (`A2C OpenG2P Settings`) into the DB
+of the site on every install and upgrade, the way the OpenG2P IAM seeds its login_providers table from
+its values. Nothing goes into site_config.json.
+
+The Secret holds both after tpl, so hosts follow global.baseDomain. The partner credentials come from
+the Secret openg2pPartnerSecret names; each key is optional, and a missing one keeps the DB value.
+The Job waits until create-site has installed oan_a2c, then runs oan_a2c.setup.site_settings.sync. The
+site-config job migrates at the same time, so a failed run is retried: a field added in this release
+exists only once that migrate is done.
+
+The Job reuses the image, service account, security context and sites volume of the frappe subchart.
+*/ -}}
+{{- $_ := required "global.baseDomain is required: iamServices and openg2pSettings build their hosts from it" .Values.global.baseDomain }}
+{{- $frappe := dict "Values" .Values.frappe "Release" .Release "Chart" (dict "Name" "frappe") }}
+{{- $fullname := include "frappe.fullname" $frappe }}
+{{- $job := .Values.siteSettingsJob }}
+{{- $partner := .Values.openg2pPartnerSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $fullname }}-site-settings
+  labels:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+type: Opaque
+stringData:
+  iam_services.json: {{ tpl (toJson (default list .Values.iamServices)) . | quote }}
+  openg2p_settings.json: {{ tpl (toJson (default dict .Values.openg2pSettings)) . | quote }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $fullname }}-site-settings-{{ now | date "20060102150405" }}
+  labels:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  backoffLimit: {{ $job.backoffLimit }}
+  ttlSecondsAfterFinished: {{ $job.ttlSecondsAfterFinished }}
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "frappe.serviceAccountName" $frappe }}
+      {{- with .Values.frappe.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.frappe.podSecurityContext | nindent 8 }}
+      containers:
+      - name: site-settings
+        image: "{{ .Values.frappe.image.repository }}:{{ .Values.frappe.image.tag }}"
+        imagePullPolicy: {{ .Values.frappe.image.pullPolicy }}
+        securityContext:
+          {{- toYaml .Values.frappe.securityContext | nindent 10 }}
+        workingDir: /home/frappe/frappe-bench
+        command: ["bash", "-c"]
+        args:
+        - |
+          set -euo pipefail
+          until bench --site "$SITE_NAME" list-apps 2>/dev/null | grep -q '^oan_a2c'; do
+            echo "waiting for site $SITE_NAME"; sleep 10
+          done
+          for attempt in $(seq 1 {{ $job.attempts }}); do
+            if bench --site "$SITE_NAME" execute oan_a2c.setup.site_settings.sync; then
+              exit 0
+            fi
+            echo "attempt $attempt of {{ $job.attempts }} failed; retrying in 30s"; sleep 30
+          done
+          exit 1
+        env:
+        - name: SITE_NAME
+          value: {{ required "frappe.jobs.createSite.siteName is required" .Values.frappe.jobs.createSite.siteName | quote }}
+        - name: OAN_IAM_SERVICES
+          valueFrom:
+            secretKeyRef:
+              name: {{ $fullname }}-site-settings
+              key: iam_services.json
+        - name: OAN_OPENG2P_SETTINGS
+          valueFrom:
+            secretKeyRef:
+              name: {{ $fullname }}-site-settings
+              key: openg2p_settings.json
+        {{- if $partner.name }}
+        {{- range $env, $key := dict "OAN_OPENG2P_PARTNER_CLIENT_ID" "client_id" "OAN_OPENG2P_PARTNER_CLIENT_SECRET" "client_secret" "OAN_OPENG2P_PARTNER_USERNAME" "username" "OAN_OPENG2P_PARTNER_PASSWORD" "password" }}
+        - name: {{ $env }}
+          valueFrom:
+            secretKeyRef:
+              name: {{ $partner.name }}
+              key: {{ $key }}
+              optional: true
+        {{- end }}
+        {{- end }}
+        volumeMounts:
+        - name: sites-dir
+          mountPath: /home/frappe/frappe-bench/sites
+          {{- if .Values.frappe.persistence.worker.subPath }}
+          subPath: {{ .Values.frappe.persistence.worker.subPath | quote }}
+          {{- end }}
+      volumes:
+      - name: sites-dir
+        persistentVolumeClaim:
+          claimName: {{ default $fullname .Values.frappe.persistence.worker.existingClaim }}
+{{- end }}
