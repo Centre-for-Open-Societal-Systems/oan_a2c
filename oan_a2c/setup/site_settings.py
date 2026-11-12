@@ -9,6 +9,7 @@ import json
 import os
 
 import frappe
+from frappe import _
 
 IAM_SERVICE_DOCTYPE = "OAN IAM Service"
 OPENG2P_SETTINGS_DOCTYPE = "A2C OpenG2P Settings"
@@ -40,7 +41,7 @@ def sync_iam_services():
 	for entry in entries:
 		key = entry.get("key")
 		if not key:
-			frappe.throw(f"Every entry of {IAM_SERVICES_ENV} needs a `key`.")
+			frappe.throw(_("Every entry of {0} needs a `key`.").format(IAM_SERVICES_ENV))
 		doc = (
 			frappe.get_doc(IAM_SERVICE_DOCTYPE, key)
 			if frappe.db.exists(IAM_SERVICE_DOCTYPE, key)
@@ -52,7 +53,11 @@ def sync_iam_services():
 			elif meta.has_field(fieldname):
 				doc.set(fieldname, value)
 			else:
-				frappe.throw(f"{IAM_SERVICES_ENV}[{key}]: {IAM_SERVICE_DOCTYPE} has no field `{fieldname}`.")
+				frappe.throw(
+					_("{0}[{1}]: {2} has no field `{3}`.").format(
+						IAM_SERVICES_ENV, key, IAM_SERVICE_DOCTYPE, fieldname
+					)
+				)
 		doc.save(ignore_permissions=True)
 	print(f"{IAM_SERVICE_DOCTYPE}: {len(entries)} row(s) written")
 
@@ -77,7 +82,7 @@ def sync_openg2p_settings():
 	meta = frappe.get_meta(OPENG2P_SETTINGS_DOCTYPE)
 	unknown = sorted(fieldname for fieldname in values if not meta.has_field(fieldname))
 	if unknown:
-		frappe.throw(f"{OPENG2P_SETTINGS_DOCTYPE} has no field {', '.join(unknown)}.")
+		frappe.throw(_("{0} has no field {1}.").format(OPENG2P_SETTINGS_DOCTYPE, ", ".join(unknown)))
 	doc = frappe.get_single(OPENG2P_SETTINGS_DOCTYPE)
 	doc.update(values)
 	doc.save(ignore_permissions=True)
