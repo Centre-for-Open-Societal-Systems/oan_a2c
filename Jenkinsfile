@@ -85,8 +85,14 @@ pipeline {
             IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
             SEED_IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_SEED_REPO}"
 
-            # Build seed container (carries demo data from openg2p-data and load.py)
+            # Build seed container (carries demo data from openg2p-data and load.py). Pass the commit
+            # openg2p-data develop points at: an unchanged build-arg would let the layer cache keep
+            # serving an old clone after the data is fixed.
+            OPENG2P_DATA_REF=$(git ls-remote https://github.com/Centre-for-Open-Societal-Systems/openg2p-data.git refs/heads/develop | cut -f1)
+            test -n "${OPENG2P_DATA_REF}" || { echo "Could not resolve openg2p-data develop" >&2; exit 1; }
+            echo "openg2p-data develop is ${OPENG2P_DATA_REF}"
             DOCKER_BUILDKIT=1 docker buildx build \
+              --build-arg OPENG2P_DATA_REF=${OPENG2P_DATA_REF} \
               --tag ${SEED_IMAGE_URI}:${IMMUTABLE_TAG} \
               --tag ${SEED_IMAGE_URI}:${MOVING_TAG} \
               --load ci/seed
