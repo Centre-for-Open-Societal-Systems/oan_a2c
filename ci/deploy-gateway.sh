@@ -4,7 +4,7 @@
 #
 # The routes are generated from openapi/openapi_v1.public.yaml (apisix/generate_apisix_config_from_spec.py)
 # and committed, so this installs what is in git. Runs on the deploy agent with the kubeconfig of
-# ci/cluster/oan-dev-deployer.yaml (Jenkins binds it as KUBECONFIG); the agent needs helm and kubectl.
+# the shared deployer ServiceAccount of oan-service-helm cluster/ (Jenkins binds it as KUBECONFIG); the agent needs helm and kubectl.
 # APISIX and its Ingress Controller are a separate release (namespace GATEWAY_APISIX_NAMESPACE); this chart
 # only holds ApisixRoute/ApisixUpstream objects, which the controller picks up.
 # Manage the gateway with this chart or with `adc sync`, never both (apisix/README.md).

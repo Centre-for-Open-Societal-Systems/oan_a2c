@@ -30,7 +30,7 @@
 //         <branch>-latest                  moving alias (convenience)
 //
 //  Agent needs: docker(+buildx), aws cli v2, git, kustomize.
-//  Credentials: AWS_ACCOUNT_ID (string), backend-ssh-key (ssh), oan-dev-kubeconfig (file, ci/cluster/),
+//  Credentials: AWS_ACCOUNT_ID (string), backend-ssh-key (ssh), oan-dev-kubeconfig (file, oan-service-helm cluster/),
 //               oan-deployer (GitHub App).
 //  NOTE: `aws ecr get-login-password` uses the agent's ambient AWS identity, which
 //        must have ECR push on `oan/oan-a2c-service/a2c-service`.
