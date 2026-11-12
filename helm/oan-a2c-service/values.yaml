@@ -1,0 +1,145 @@
+# Defaults for OAN A2C (Access to Credit). Everything sits under `frappe`, the values of the
+# frappe chart this one depends on. Per-environment values live in
+# environments/<env>/values/oan-a2c-service.yaml.
+#
+# Set at install, not here:
+# - frappe.image.tag: the Jenkins tag `develop-<build>` (locally: `develop`)
+# - frappe.dbHost: the PostgreSQL server (set in the environment file)
+# Image repositories, the seed image and dbRootUser are per environment.
+# Secrets created outside Git, in the release namespace:
+# - oan-frappe-common-db (key `password`): the `postgres` password, copied from the frappe-common namespace
+# - oan-a2c-admin (key `password`): Frappe Administrator password
+# - oan-a2c-jwt (key `jwt_v1.pem`): unencrypted RSA private key, at least 2048 bits
+# - oan-a2c-secret-key (key `secret_key`): signs consent receipts
+# - oan-a2c-sentry (key `dsn`): Sentry DSN. Optional.
+# - oan-a2c-seed (key `password`): password for the demo users. Optional.
+
+frappe:
+  image:
+    # Set per environment. package_chart.py needs both keys to exist.
+    repository: ""
+    tag: ""
+
+  # PostgreSQL runs outside the cluster. The create-site job reads the password of dbRootUser
+  # from Secret oan-frappe-common-db, a copy of the one the frappe-common release creates.
+  dbHost: ""
+  dbPort: 5432
+  dbExistingSecret: oan-frappe-common-db
+  dbExistingSecretPasswordKey: password
+  postgresql-sts:
+    enabled: false
+
+  siteConfig:
+    enabled: true
+    values:
+      jwt_current_kid: v1
+      jwt_private_keys:
+        v1: keys/jwt_v1.pem
+      jwt_self_registerable_roles:
+      - A2C Bank Admin
+      - A2C Farmer
+    secretValues:
+      # generate_consent_receipt signs consent receipts with it and throws without it.
+      secret_key:
+        secretName: oan-a2c-secret-key
+        secretKey: secret_key
+    files:
+    # oan_auth_service refuses every login without it.
+    - path: keys/jwt_v1.pem
+      secretName: oan-a2c-jwt
+      secretKey: jwt_v1.pem
+    seed:
+      userPasswordSecret:
+        name: oan-a2c-seed
+
+  # FRAPPE_STREAM_LOGGING sends frappe.logger output to stdout for the cluster log collector.
+  # FRAPPE_SENTRY_DSN is optional: without the Secret, Sentry stays off.
+  nginx:
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPU: 75
+      targetMemory: 75
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+  worker:
+    gunicorn:
+      envVars: &frappeEnv
+      - name: FRAPPE_STREAM_LOGGING
+        value: "1"
+      - name: FRAPPE_SENTRY_DSN
+        valueFrom:
+          secretKeyRef:
+            name: oan-a2c-sentry
+            key: dsn
+            optional: true
+      autoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 3
+        targetCPU: 75
+        targetMemory: 75
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+    default:
+      envVars: *frappeEnv
+      autoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 3
+        targetCPU: 75
+        targetMemory: 75
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+    short:
+      envVars: *frappeEnv
+      autoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 3
+        targetCPU: 75
+        targetMemory: 75
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+    long:
+      envVars: *frappeEnv
+      autoscaling:
+        enabled: true
+        minReplicas: 1
+        maxReplicas: 3
+        targetCPU: 75
+        targetMemory: 75
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+    scheduler:
+      envVars: *frappeEnv
+  socketio:
+    envVars: *frappeEnv
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 3
+      targetCPU: 75
+      targetMemory: 75
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+
+  jobs:
+    createSite:
+      adminExistingSecret: oan-a2c-admin
+      installApps:
+      - oan_auth_service
+      - oan_a2c

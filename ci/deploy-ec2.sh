@@ -10,6 +10,7 @@ set -e
 : "${BACKEND_IP:?BACKEND_IP is required}"
 : "${BUILD_NUMBER:?BUILD_NUMBER is required}"
 : "${ECR_REPO:?ECR_REPO is required}"
+: "${IMMUTABLE_TAG:?IMMUTABLE_TAG is required}"
 : "${AWS_REGION:?AWS_REGION is required}"
 
 # Secrets, injected by Jenkins (withCredentials). These are deliberately NOT
@@ -32,7 +33,7 @@ case "${JWT_SECRETS}" in
 esac
 
 echo "=== Deploying to EC2: ${BACKEND_IP} ==="
-echo "=== Image: ${ECR_REPO}:develop-${BUILD_NUMBER} ==="
+echo "=== Image: ${ECR_REPO}:${IMMUTABLE_TAG} ==="
 
 ssh -i "${SSH_KEY}" \
     -o StrictHostKeyChecking=no \
@@ -59,14 +60,14 @@ ssh -i "${SSH_KEY}" \
         docker login --username AWS --password-stdin \
         ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
-    echo "=== Pointing .env at ${ECR_REPO}:develop-${BUILD_NUMBER} (rewrites whole line) ==="
+    echo "=== Pointing .env at ${ECR_REPO}:${IMMUTABLE_TAG} (rewrites whole line) ==="
     # Rewrite the ENTIRE ECR_IMAGE line rather than sed the tag in place: this migrates
     # the stack from the legacy oan-a2c repo to oan/a2c on the first build, and is
     # robust regardless of what repo/tag the .env currently holds.
     # NOTE: no backticks in this comment -- it lives inside the unquoted <<SSHEOF heredoc,
     # so backticks would be command-substituted on the Jenkins agent (that broke build #23/#24:
     # "oan-a2c: command not found" / "oan/a2c: No such file or directory").
-    sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:develop-${BUILD_NUMBER}|" .env
+    sed -i "s|^ECR_IMAGE=.*|ECR_IMAGE=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMMUTABLE_TAG}|" .env
 
     echo "=== Pulling new image ==="
     docker compose pull

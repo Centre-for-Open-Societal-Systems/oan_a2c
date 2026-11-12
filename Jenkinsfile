@@ -2,7 +2,7 @@
 //  Jenkinsfile — oan_a2c (Frappe app). Single pipeline for the `oan-package`
 //  GitHub Organization folder (multibranch).
 //
-//  Per branch (all publish to the namespaced ECR repo `oan/a2c`):
+//  Per branch (all publish to the ECR repo `oan/oan-a2c-service/a2c-service`):
 //    develop     -> build + push + ci/deploy-ec2.sh
 //                   (EC2 docker-compose deploy to BACKEND_IP:/opt/oan_a2c)
 //    staging_aws -> build + push + SSH docker-compose deploy to a SEPARATE stack on
@@ -11,7 +11,7 @@
 //    staging_ati -> build + push + ci/update-kustomize-ati.sh
 //                   (GitOps: bump oan-kustomize `staging` overlay; ArgoCD on node 41 syncs)
 //
-//  develop + staging_aws were migrated off the legacy `oan-a2c` repo onto `oan/a2c`
+//  develop + staging_aws were migrated off the legacy `oan-a2c` repo onto `oan/oan-a2c-service/a2c-service`
 //  (staging_ati was already there). Both deploy scripts rewrite the WHOLE ECR_IMAGE
 //  line in the box `.env`, so the first build after this change repoints the stack
 //  automatically — no manual .env edit needed.
@@ -19,17 +19,18 @@
 //
 //  NOTE (staging_aws prereq): ${STAGING_APP_DIR} must be provisioned on BACKEND_IP
 //  before the first staging_aws build — a copy of /opt/oan_a2c with its own .env
-//  (ECR_IMAGE on oan/a2c) and DISTINCT host ports (dev uses frontend 8080 and
-//  gateway 8000-8001; give staging e.g. 8090 and 8010-8011) plus its own site, so the
+//  (ECR_IMAGE on oan/oan-a2c-service/a2c-service) and DISTINCT host ports (dev uses frontend 8080 and
+//  kong 8000-8001; give staging e.g. 8090 and 8010-8011) plus its own site, so the
 //  two stacks don't collide. Same box, different image tag + different compose app.
 //
-//  Tags:  <branch>-<build>   immutable, pinned by oan-kustomize / deploy-ec2.sh
-//         <branch>-latest    moving alias (convenience)
+//  Tags:  develop: <__version__>-develop.<build>, e.g. 0.0.0-develop.57 (= chart version)
+//         staging_*: <branch>-<build>      immutable, pinned by oan-kustomize / deploy-ec2.sh
+//         <branch>-latest                  moving alias (convenience)
 //
 //  Agent needs: docker(+buildx), aws cli v2, git, kustomize.
 //  Credentials: AWS_ACCOUNT_ID (string), backend-ssh-key (ssh), oan-deployer (GitHub App).
 //  NOTE: `aws ecr get-login-password` uses the agent's ambient AWS identity, which
-//        must have ECR push on `oan/a2c`.
+//        must have ECR push on `oan/oan-a2c-service/a2c-service`.
 // =============================================================================
 pipeline {
   agent any
@@ -53,17 +54,17 @@ pipeline {
     stage('Resolve') {
       steps {
         script {
-          // All branches publish to the namespaced repo now (develop + staging_aws
-          // migrated off legacy `oan-a2c`; staging_ati was already here).
-          env.ECR_REPO      = 'oan/a2c'
-          // staging_ati / staging_aws publish under hyphenated `staging-ati-` / `staging-aws-`
-          // prefixes (not the branch-derived `staging_ati-` / `staging_aws-`) so the immutable
-          // tags read staging-ati-<build> / staging-aws-<build>, uniform across all repos.
-          // develop keeps its branch-name tag.
+          // One ECR repo for every branch: oan/oan-a2c-service/a2c-service (must exist in ECR).
+          // develop tag = chart version = <__version__>-develop.<build_number>, e.g. 0.0.0-develop.57
+          // (ci/package_chart.py version). staging_aws / staging_ati keep <prefix>-<build>.
+          env.ECR_REPO      = 'oan/oan-a2c-service/a2c-service'
           def tagPrefix     = (env.BRANCH_NAME == 'staging_ati') ? 'staging-ati'
                             : (env.BRANCH_NAME == 'staging_aws') ? 'staging-aws'
                             : env.BRANCH_NAME
           env.IMMUTABLE_TAG = "${tagPrefix}-${env.BUILD_NUMBER}"
+          if (env.BRANCH_NAME == 'develop') {
+            env.IMMUTABLE_TAG = sh(returnStdout: true, script: 'python3 ci/package_chart.py version').trim()
+          }
           env.MOVING_TAG    = "${tagPrefix}-latest"
           echo "branch=${env.BRANCH_NAME}  repo=${env.ECR_REPO}  tag=${env.IMMUTABLE_TAG}"
         }
@@ -118,6 +119,10 @@ pipeline {
             aws ecr get-login-password --region ${AWS_REGION} \
               | docker login --username AWS --password-stdin "${REGISTRY}"
 
+            # The repository is named after the Helm chart; create it on the first build.
+            aws ecr describe-repositories --region ${AWS_REGION} --repository-names "${ECR_REPO}" >/dev/null 2>&1 \
+              || aws ecr create-repository --region ${AWS_REGION} --repository-name "${ECR_REPO}" >/dev/null
+
             docker push ${IMAGE_URI}:${IMMUTABLE_TAG}
             docker push ${IMAGE_URI}:${MOVING_TAG}       # same digest -> ECR dedups
 
@@ -126,6 +131,25 @@ pipeline {
             docker rmi ${IMAGE_URI}:${IMMUTABLE_TAG} ${IMAGE_URI}:${MOVING_TAG} || true
             echo "Pushed ${IMAGE_URI}:${IMMUTABLE_TAG} (+ ${MOVING_TAG})"
           '''
+        }
+      }
+    }
+
+    // Flow (develop): Resolve (version) -> Build image -> Push to ECR -> Package chart -> deploy -> Publish chart.
+    // helm/oan-a2c-service is zipped with this build's image before the deploy; the deploy uses the
+    // same version tag, and the same archive is published to oan-helm afterwards.
+    // ---------------------- Helm chart package (same name as the image) ----------------------
+    stage('Package chart') {
+      when { branch 'develop' }
+      steps {
+        withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
+          script {
+            env.IMAGE_TAG = env.IMMUTABLE_TAG
+            env.SOURCE_COMMIT = sh(returnStdout: true, script: 'git rev-parse --verify HEAD').trim()
+            env.COMMIT_SUBJECT = sh(returnStdout: true, script: 'git log -1 --pretty=%s').trim()
+            env.IMAGE_REPOSITORY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+          }
+          sh 'python3 ci/package_chart.py package'
         }
       }
     }
@@ -149,7 +173,7 @@ pipeline {
             chmod +x ci/deploy-ec2.sh
             AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID} SSH_KEY=${SSH_KEY} SSH_USER=${SSH_USER} \
             BACKEND_IP=${BACKEND_IP} BUILD_NUMBER=${BUILD_NUMBER} \
-            ECR_REPO=${ECR_REPO} AWS_REGION=${AWS_REGION} \
+            ECR_REPO=${ECR_REPO} IMMUTABLE_TAG=${IMMUTABLE_TAG} AWS_REGION=${AWS_REGION} \
             ENCRYPTION_KEY="${ENCRYPTION_KEY}" SECRET_KEY="${SECRET_KEY}" \
             JWT_SECRETS="${JWT_SECRETS}" OPENG2P_PASSWORD="${OPENG2P_PASSWORD}" \
             bash ci/deploy-ec2.sh
@@ -160,7 +184,7 @@ pipeline {
 
     // staging_aws -> a SEPARATE docker-compose stack on the SAME backend box.
     // Same image build as develop (layered Containerfile bakes assets), pushed to
-    // oan/a2c:<staging_aws-build>. Deploys into ${STAGING_APP_DIR} (compose project
+    // a2c-service:staging-aws-<build>. Deploys into ${STAGING_APP_DIR} (compose project
     // oan_a2c_staging) so it coexists with develop's /opt/oan_a2c stack — provided
     // that dir is pre-provisioned with its own .env + DISTINCT host ports (see header).
     // Assets are baked into the image and symlinked by the entrypoint, so we do NOT
@@ -319,6 +343,20 @@ SSHEOF
             ci/update-kustomize-ati.sh staging oan-a2c \
               "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${IMMUTABLE_TAG}"
           '''
+        }
+      }
+    }
+    // ---------------------- Helm chart publish (same name as the image) ----------------------
+    // Adds the archive built by 'Package chart' to repository/develop/ of oan-helm, only after
+    // the EC2 deploy succeeded.
+    stage('Publish chart') {
+      when { branch 'develop' }
+      steps {
+        // UNSTABLE, not failed: the image is already deployed.
+        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+          withCredentials([usernamePassword(credentialsId: 'oan-helm-fork-token', usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
+            sh 'python3 ci/package_chart.py publish'
+          }
         }
       }
     }

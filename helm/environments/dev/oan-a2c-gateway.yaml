@@ -1,0 +1,69 @@
+# Values for the oan-a2c-gateway chart (oan_a2c/apisix/k8s).
+# Target: the gateway cluster, namespace `a2c`, next to the grievance routes. The routes
+# reach A2C Frappe in the A2C app cluster through the node port of gatewayAccess in
+# oan-a2c-service.yaml. See docs/apisix-gateway.md and docs/a2c.md.
+#
+# Set at install, not here:
+# - web.externalHosts: the private addresses of the A2C app nodes, from the gateway
+#   cluster's network. One entry per node; APISIX balances across them and drops a node
+#   that fails its health check.
+
+ingressClassName: apisix
+
+# Namespace of the APISIX release, which owns the consumers shared by several apps
+# (the IVR vendor). Routes whitelist them as `<this>_<name>`.
+sharedConsumerNamespace: apisix
+
+# The public host; routes match it, so A2C and grievance (which share /v1/auth/*) stay
+# apart on one gateway.
+hosts:
+  - a2c-backend.development.oanstaging.com
+
+# APISIX terminates TLS for `hosts` with this Secret (tls.crt, tls.key) in namespace
+# `a2c`. Dev: written by cert-manager. Local: a locally generated certificate.
+tls:
+  secretName: oan-a2c-tls
+
+# Frappe site name, sent as Host because Frappe selects the site from it. Must equal
+# siteName in oan-a2c-service.yaml.
+siteName: a2c-backend.development.oanstaging.com
+
+# With externalHosts set, serviceName only names the ApisixUpstream, and port is the node
+# port of oan-a2c-service.yaml gatewayAccess. Without it, serviceName and port are a Service in
+# this namespace (APISIX and Frappe in one cluster).
+web:
+  serviceName: a2c-frappe-gunicorn
+  externalHosts: []
+  port: 30810
+  # Probe each node's port through the Service. Without this, APISIX keeps sending
+  # requests to a node that is down. `host` is the Frappe site name.
+  healthCheck:
+    active:
+      type: http
+      httpPath: /api/method/ping
+      host: a2c-backend.development.oanstaging.com
+      timeout: 3
+      healthy:
+        interval: 5s
+        successes: 2
+        httpCodes: [200]
+      unhealthy:
+        interval: 5s
+        httpFailures: 3
+        tcpFailures: 3
+        timeout: 3
+        httpCodes: [500, 502, 503, 504]
+
+
+# Source addresses allowed on the partner webhook routes. Development defaults; narrow to
+# the partners' egress CIDRs (OpenG2P, telco IVR) before go-live.
+ipAllowlist:
+  - 127.0.0.1/32
+  - ::1/128
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+
+# Localhost only until the A2C UI hosts are confirmed.
+corsOriginRegexes:
+  - https?://localhost(:[0-9]+)?

@@ -1,0 +1,6 @@
+dependencies:
+- name: frappe-service
+  repository: ""
+  version: 8.0.91-oan.1
+digest: sha256:ad5d801306cb229226c8e7855694f4bdf801bac22ba1a1a7535b56b095dfbdf2
+generated: "2026-11-11T09:20:11.103511+05:30"
