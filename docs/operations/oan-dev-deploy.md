@@ -6,21 +6,23 @@ kubeconfig, not an SSH key. Stages `develop → oan_dev (helm)` and `develop →
 
 ## The identity
 
-`ci/cluster/oan-dev-deployer.yaml` creates ServiceAccount `jenkins-a2c-deployer` in namespace `a2c`:
+`cluster/bootstrap-oan-dev.sh` in oan-service-helm creates the ServiceAccount (here `jenkins-a2c-deployer` in
+namespace `a2c`, shared with the grievance service):
 
 | Namespace       | Access                                 | Used for                             |
 | --------------- | -------------------------------------- | ------------------------------------ |
 | `a2c`           | built-in `admin` role                  | the `a2c` and `a2c-gateway` releases |
+| `grievance`     | built-in `admin` role                  | the grievance releases               |
 | `api6-gateway`  | get/list Services                      | find the APISIX release's Redis      |
 | `frappe-common` | get Secret `oan-frappe-common-db` only | copy the Postgres password           |
 
-It cannot create namespaces or touch anything else. If a chart adds cluster-wide objects (CRDs,
+It cannot touch anything else. If a chart adds cluster-wide objects (CRDs,
 ClusterRoles), the deploy fails with a forbidden error; grant that one thing in the manifest.
 
 ## Set up (once per cluster)
 
-1. On the node (`ssh oan_dev`), with this repo checked out or `ci/cluster/` copied over:
-   `bash ci/cluster/bootstrap-oan-dev.sh /tmp/oan-dev.kubeconfig [https://<api-address>:6443]`.
+1. On the node (`ssh oan_dev`), with oan-service-helm checked out (see `cluster/README.md` there):
+   `API_SERVER=https://<api-address>:6443 SA_NAMESPACE=a2c SA_NAME=jenkins-a2c-deployer bash cluster/bootstrap-oan-dev.sh /tmp/oan-dev.kubeconfig a2c grievance`.
    The address must be reachable from the agent and be in the k3s certificate's names.
 2. Jenkins → Manage Jenkins → Credentials, in a scope the `oan-package` folder can see → Add →
    **Secret file**, ID `oan-dev-kubeconfig`, upload the file. Note the creation and rotation dates in the
@@ -31,9 +33,9 @@ ClusterRoles), the deploy fails with a forbidden error; grant that one thing in 
 
 ## Rotate or revoke
 
-- Rotate: delete Secret `jenkins-a2c-deployer-token` in `a2c`, rerun the bootstrap script, replace the
+- Rotate: delete Secret `jenkins-a2c-deployer-token` in `a2c`, rerun the bootstrap script (same command), replace the
   Jenkins credential.
-- Revoke: delete the Jenkins credential and `kubectl delete -f ci/cluster/oan-dev-deployer.yaml`.
+- Revoke: delete the Jenkins credential and ServiceAccount `jenkins-a2c-deployer` in `a2c`.
 
 Never commit the kubeconfig, its token or `ca.crt`.
 

@@ -2,7 +2,7 @@
 # deploy-helm-dev.sh - Install or upgrade the `a2c` Helm release on the oan_dev k3s node
 # Called by Jenkins for develop branch deployments, after "Package chart"
 #
-# Runs on the deploy agent with the kubeconfig of ci/cluster/oan-dev-deployer.yaml (Jenkins binds it as
+# Runs on the deploy agent with the kubeconfig of the shared deployer ServiceAccount (oan-service-helm cluster/; Jenkins binds it as
 # KUBECONFIG); the agent needs helm and kubectl, no AWS access: the node pulls from ECR with its own IAM role
 # (kubelet ecr-credential-provider, see docs/operations/oan-dev-deploy.md). `helm upgrade --install` makes
 # the first install and every upgrade. The chart generates the admin, secret-key and JWT Secrets once and keeps them
