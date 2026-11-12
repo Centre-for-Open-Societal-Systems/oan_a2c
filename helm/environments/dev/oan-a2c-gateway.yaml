@@ -1,12 +1,14 @@
 # Values for the oan-a2c-gateway chart (oan_a2c/apisix/k8s).
-# Target: the gateway cluster, namespace `a2c`, next to the grievance routes. The routes
-# reach A2C Frappe in the A2C app cluster through the node port of gatewayAccess in
-# oan-a2c-service.yaml. See docs/apisix-gateway.md and docs/a2c.md.
+# Target: the oan_dev k3s node, namespace `a2c`, installed by the Jenkins stage
+# "develop → gateway (apisix)" (ci/deploy-gateway.sh). APISIX and its Ingress Controller run
+# in namespace api6-gateway on the same node, so the routes reach the A2C Frappe Service
+# directly. See apisix/README.md.
 #
 # Set at install, not here:
-# - web.externalHosts: the private addresses of the A2C app nodes, from the gateway
-#   cluster's network. One entry per node; APISIX balances across them and drops a node
-#   that fails its health check.
+# - redis.host: the Redis Service of the APISIX release (ci/deploy-gateway.sh looks it up)
+#
+# For a gateway in another cluster set web.externalHosts to the app nodes' private addresses and
+# web.port to the node port of gatewayAccess in oan-a2c-service.yaml.
 
 ingressClassName: apisix
 
@@ -34,11 +36,11 @@ siteName: a2c-service.{{ .Values.global.baseDomain }}
 
 # With externalHosts set, serviceName only names the ApisixUpstream, and port is the node
 # port of oan-a2c-service.yaml gatewayAccess. Without it, serviceName and port are a Service in
-# this namespace (APISIX and Frappe in one cluster).
+# this namespace (APISIX and Frappe in one cluster): the Frappe gunicorn Service, port 8000.
 web:
   serviceName: a2c-frappe-gunicorn
   externalHosts: []
-  port: 30810
+  port: 8000
   # Probe each node's port through the Service. Without this, APISIX keeps sending
   # requests to a node that is down. `host` is the Frappe site name.
   healthCheck:
