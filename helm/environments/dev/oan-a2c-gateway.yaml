@@ -14,10 +14,14 @@ ingressClassName: apisix
 # (the IVR vendor). Routes whitelist them as `<this>_<name>`.
 sharedConsumerNamespace: apisix
 
+# Domain of this environment; hosts below are built from it (the chart runs them through tpl).
+global:
+  baseDomain: development.oanstaging.com
+
 # The public host; routes match it, so A2C and grievance (which share /v1/auth/*) stay
 # apart on one gateway.
 hosts:
-  - a2c-backend.development.oanstaging.com
+  - a2c-service.{{ .Values.global.baseDomain }}
 
 # APISIX terminates TLS for `hosts` with this Secret (tls.crt, tls.key) in namespace
 # `a2c`. Dev: written by cert-manager. Local: a locally generated certificate.
@@ -26,7 +30,7 @@ tls:
 
 # Frappe site name, sent as Host because Frappe selects the site from it. Must equal
 # siteName in oan-a2c-service.yaml.
-siteName: a2c-backend.development.oanstaging.com
+siteName: a2c-service.{{ .Values.global.baseDomain }}
 
 # With externalHosts set, serviceName only names the ApisixUpstream, and port is the node
 # port of oan-a2c-service.yaml gatewayAccess. Without it, serviceName and port are a Service in
@@ -41,7 +45,7 @@ web:
     active:
       type: http
       httpPath: /api/method/ping
-      host: a2c-backend.development.oanstaging.com
+      host: a2c-service.{{ .Values.global.baseDomain }}
       timeout: 3
       healthy:
         interval: 5s

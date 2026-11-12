@@ -13,7 +13,7 @@ spec:
   ingressClassName: {{ .Values.ingressClassName | quote }}
   hosts:
 {{- range (required "hosts is required with tls.secretName" .Values.hosts) }}
-  - {{ . | quote }}
+  - {{ tpl . $ | quote }}
 {{- end }}
   secret:
     name: {{ .Values.tls.secretName | quote }}

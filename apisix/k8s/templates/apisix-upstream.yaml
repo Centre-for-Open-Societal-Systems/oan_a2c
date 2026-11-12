@@ -19,12 +19,12 @@ spec:
 {{- end }}
 {{- with .Values.web.healthCheck }}
   healthCheck:
-{{- toYaml . | nindent 4 }}
+{{- tpl (toYaml .) $ | nindent 4 }}
 {{- end }}
 {{- end }}
   scheme: http
   passHost: rewrite
-  upstreamHost: {{ required "siteName is required" .Values.siteName | quote }}
+  upstreamHost: {{ tpl (required "siteName is required" .Values.siteName) . | quote }}
   retries: 2
   timeout:
     connect: 5s

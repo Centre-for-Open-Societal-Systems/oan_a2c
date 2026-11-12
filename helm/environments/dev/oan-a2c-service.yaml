@@ -23,7 +23,7 @@ frappe:
 
   siteConfig:
     values:
-      host_name: https://a2c-backend.development.oanstaging.com
+      host_name: https://a2c-service.development.oanstaging.com
     # Demo data. Build and push from oan-service-helm: seed/Dockerfile with SERVICE=a2c.
     seed:
       enabled: true
@@ -41,9 +41,9 @@ frappe:
 
   jobs:
     configure:
-      # The NFS export maps every client to uid/gid 1000 (all_squash), so the volume is
-      # already owned by the Frappe user. The upstream root `chown -R` only races with Pods
-      # that write into sites/ while the jobs run, and its failure fails the job.
+      # nfs-csi creates each volume directory with mode 0777 (mountPermissions), so the
+      # Frappe user can write it. The upstream root `chown -R` only races with Pods that
+      # write into sites/ while the jobs run, and its failure fails the job.
       fixVolume: false
     createSite:
-      siteName: a2c-backend.development.oanstaging.com
+      siteName: a2c-service.development.oanstaging.com
