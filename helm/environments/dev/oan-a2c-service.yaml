@@ -27,11 +27,11 @@ frappe:
   siteConfig:
     values:
       host_name: https://a2c-service.development.oanstaging.com
-    # Demo data. Build and push from oan-service-helm: seed/Dockerfile with SERVICE=a2c.
+    # Demo data. Built and pushed alongside the service image from ci/seed.
     seed:
       enabled: true
       image:
-        repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/a2c-seed
+        repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan-a2c-service/a2c-seed
         tag: demo-20261108
 
   # The central APISIX gateway runs in another cluster and reaches Frappe on this node port
