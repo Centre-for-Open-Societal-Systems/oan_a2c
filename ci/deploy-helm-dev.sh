@@ -32,6 +32,7 @@ kubectl -n "${NS}" create secret generic oan-frappe-common-db \
 # No --atomic: a failed first install would uninstall the release, generated Secrets included.
 if ! helm upgrade --install a2c "${CHART_TGZ}" --namespace "${NS}" -f "${VALUES}" \
   --set frappe.image.tag="${IMMUTABLE_TAG}" \
+  --set frappe.siteConfig.seed.image.tag="${IMMUTABLE_TAG}" \
   --wait --wait-for-jobs --timeout 30m; then
   echo "=== helm upgrade failed ==="
   helm -n "${NS}" history a2c --max 3 || true

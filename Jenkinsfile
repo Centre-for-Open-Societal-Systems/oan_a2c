@@ -62,6 +62,7 @@ pipeline {
           // develop tag = chart version = <__version__>-develop.<build_number>, e.g. 0.0.0-develop.57
           // (ci/package_chart.py version). staging_aws / staging_ati keep <prefix>-<build>.
           env.ECR_REPO      = 'oan/oan-a2c-service/a2c-service'
+          env.ECR_SEED_REPO = 'oan/oan-a2c-service/a2c-seed'
           def tagPrefix     = (env.BRANCH_NAME == 'staging_ati') ? 'staging-ati'
                             : (env.BRANCH_NAME == 'staging_aws') ? 'staging-aws'
                             : env.BRANCH_NAME
@@ -70,7 +71,7 @@ pipeline {
             env.IMMUTABLE_TAG = sh(returnStdout: true, script: 'python3 ci/package_chart.py version').trim()
           }
           env.MOVING_TAG    = "${tagPrefix}-latest"
-          echo "branch=${env.BRANCH_NAME}  repo=${env.ECR_REPO}  tag=${env.IMMUTABLE_TAG}"
+          echo "branch=${env.BRANCH_NAME}  repo=${env.ECR_REPO}  seed_repo=${env.ECR_SEED_REPO}  tag=${env.IMMUTABLE_TAG}"
         }
       }
     }
@@ -82,6 +83,14 @@ pipeline {
           sh '''#!/usr/bin/env bash
             set -euo pipefail
             IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
+            SEED_IMAGE_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_SEED_REPO}"
+
+            # Build seed container (carries demo data from openg2p-data and load.py)
+            DOCKER_BUILDKIT=1 docker buildx build \
+              --tag ${SEED_IMAGE_URI}:${IMMUTABLE_TAG} \
+              --tag ${SEED_IMAGE_URI}:${MOVING_TAG} \
+              --load ci/seed
+            echo "Built ${SEED_IMAGE_URI}:${IMMUTABLE_TAG}"
 
             rm -rf frappe_docker
             git clone --depth 1 https://github.com/frappe/frappe_docker.git frappe_docker
@@ -119,21 +128,29 @@ pipeline {
             set -euo pipefail
             REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
             IMAGE_URI="${REGISTRY}/${ECR_REPO}"
+            SEED_IMAGE_URI="${REGISTRY}/${ECR_SEED_REPO}"
 
             aws ecr get-login-password --region ${AWS_REGION} \
               | docker login --username AWS --password-stdin "${REGISTRY}"
 
-            # The repository is named after the Helm chart; create it on the first build.
+            # Create repositories if missing
             aws ecr describe-repositories --region ${AWS_REGION} --repository-names "${ECR_REPO}" >/dev/null 2>&1 \
               || aws ecr create-repository --region ${AWS_REGION} --repository-name "${ECR_REPO}" >/dev/null
+
+            aws ecr describe-repositories --region ${AWS_REGION} --repository-names "${ECR_SEED_REPO}" >/dev/null 2>&1 \
+              || aws ecr create-repository --region ${AWS_REGION} --repository-name "${ECR_SEED_REPO}" >/dev/null
 
             docker push ${IMAGE_URI}:${IMMUTABLE_TAG}
             docker push ${IMAGE_URI}:${MOVING_TAG}       # same digest -> ECR dedups
 
+            docker push ${SEED_IMAGE_URI}:${IMMUTABLE_TAG}
+            docker push ${SEED_IMAGE_URI}:${MOVING_TAG}
+
             # Scoped cleanup ONLY. Never `docker system prune -f` on a shared agent:
             # it wipes other jobs' caches/images and can break concurrent builds.
-            docker rmi ${IMAGE_URI}:${IMMUTABLE_TAG} ${IMAGE_URI}:${MOVING_TAG} || true
-            echo "Pushed ${IMAGE_URI}:${IMMUTABLE_TAG} (+ ${MOVING_TAG})"
+            docker rmi ${IMAGE_URI}:${IMMUTABLE_TAG} ${IMAGE_URI}:${MOVING_TAG} \
+                       ${SEED_IMAGE_URI}:${IMMUTABLE_TAG} ${SEED_IMAGE_URI}:${MOVING_TAG} || true
+            echo "Pushed ${IMAGE_URI}:${IMMUTABLE_TAG} and ${SEED_IMAGE_URI}:${IMMUTABLE_TAG}"
           '''
         }
       }
