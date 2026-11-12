@@ -83,11 +83,9 @@ def version_build(env, work):
 
 def package_build(env, work):
 	generic = load_generic(work)
-	version = generic.derive_version(env["BRANCH_NAME"])
-	if not env["IMAGE_TAG"].startswith(version + "."):
-		raise ValueError(
-			"image tag %s does not start with the chart version %s" % (env["IMAGE_TAG"], version)
-		)
+	version = chart_version(env)
+	if env["IMAGE_TAG"] != version:
+		raise ValueError("image tag %s is not the chart version %s" % (env["IMAGE_TAG"], version))
 	chart = work / CHART
 	shutil.copytree(str(ROOT / "helm" / CHART), str(chart))
 	values = chart / "values.yaml"
