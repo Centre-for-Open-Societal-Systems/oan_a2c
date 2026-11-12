@@ -28,6 +28,7 @@ import json
 import mimetypes
 import os
 import re
+import threading
 from collections.abc import Callable
 from functools import lru_cache, wraps
 from typing import Any
@@ -352,6 +353,7 @@ _LEGACY_RPC_API_KEY_PATHS = (
 
 
 _REGISTERED = False
+_REGISTRATION_LOCK = threading.Lock()
 
 
 def ensure_routes_registered() -> None:
@@ -365,31 +367,39 @@ def ensure_routes_registered() -> None:
 	if _REGISTERED:
 		return
 
-	import frappe.api
+	# This runs on the first request and gunicorn's gthread workers serve several
+	# requests at once. Two requests arriving together both found _REGISTERED
+	# unset, both walked the list, and the second add raised "url rule already
+	# bound" and answered 500.
+	with _REGISTRATION_LOCK:
+		if _REGISTERED:
+			return
 
-	if "oan_a2c" not in frappe.get_installed_apps():
-		return
+		import frappe.api
 
-	_register_spec_routes()
+		if "oan_a2c" not in frappe.get_installed_apps():
+			return
 
-	for rule in _rules:
-		if rule not in frappe.api.API_URL_MAP._rules:
-			frappe.api.API_URL_MAP.add(rule)
+		_register_spec_routes()
 
-	# Every other path in the namespace takes a JWT. `<param>` templates in the
-	# public paths (the chart ids) are matched by the middleware.
-	register_namespace(
-		prefix=NAMESPACE,
-		exempt_paths=sorted(_exempt_paths),
-		api_key_paths=sorted({p for gw in _API_KEY_PATHS for p in (gw, f"/api{gw}")}),
-	)
+		for rule in _rules:
+			if rule not in frappe.api.API_URL_MAP._rules:
+				frappe.api.API_URL_MAP.add(rule)
 
-	# Legacy RPC paths keep the JWT check they had before auth moved to oan_auth_service.
-	register_namespace(
-		prefix="/api/method/oan_a2c.",
-		api_key_paths=list(_LEGACY_RPC_API_KEY_PATHS),
-	)
-	_REGISTERED = True
+		# Every other path in the namespace takes a JWT. `<param>` templates in the
+		# public paths (the chart ids) are matched by the middleware.
+		register_namespace(
+			prefix=NAMESPACE,
+			exempt_paths=sorted(_exempt_paths),
+			api_key_paths=sorted({p for gw in _API_KEY_PATHS for p in (gw, f"/api{gw}")}),
+		)
+
+		# Legacy RPC paths keep the JWT check they had before auth moved to oan_auth_service.
+		register_namespace(
+			prefix="/api/method/oan_a2c.",
+			api_key_paths=list(_LEGACY_RPC_API_KEY_PATHS),
+		)
+		_REGISTERED = True
 
 
 def build_url_map() -> Map:
