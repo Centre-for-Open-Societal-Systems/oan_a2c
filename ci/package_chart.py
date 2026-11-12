@@ -104,7 +104,7 @@ def package_build(env, work):
 				"oan.org/source-commit": env["SOURCE_COMMIT"],
 				"oan.org/source-subject": env.get("COMMIT_SUBJECT", "")[:200],
 				"oan.org/release-name": "a2c",
-				"oan.org/release-namespace": "a2c-develop",
+				"oan.org/release-namespace": "a2c",
 				"oan.org/values-overlay": "helm/environments/dev/oan-a2c-service.yaml",
 			},
 		),

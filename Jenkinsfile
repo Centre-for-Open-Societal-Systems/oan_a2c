@@ -5,6 +5,10 @@
 //  Per branch (all publish to the ECR repo `oan/oan-a2c-service/a2c-service`):
 //    develop     -> build + push + ci/deploy-ec2.sh
 //                   (EC2 docker-compose deploy to BACKEND_IP:/opt/oan_a2c)
+//                   + ci/deploy-helm-dev.sh (helm upgrade --install of release `a2c`,
+//                   namespace A2C_NAMESPACE, on the oan_dev k3s node OAN_DEV_IP)
+//                   + ci/deploy-gateway.sh (APISIX routes, chart apisix/k8s, only when the spec,
+//                   apisix/ or the gateway values changed; same SSH path as the helm deploy)
 //    staging_aws -> build + push + SSH docker-compose deploy to a SEPARATE stack on
 //                   the SAME box (BACKEND_IP:${STAGING_APP_DIR}, compose project
 //                   oan_a2c_staging). Coexists with develop's /opt/oan_a2c stack.
@@ -28,7 +32,8 @@
 //         <branch>-latest                  moving alias (convenience)
 //
 //  Agent needs: docker(+buildx), aws cli v2, git, kustomize.
-//  Credentials: AWS_ACCOUNT_ID (string), backend-ssh-key (ssh), oan-deployer (GitHub App).
+//  Credentials: AWS_ACCOUNT_ID (string), backend-ssh-key (ssh), oan-dev-ssh-key (ssh, oan_dev),
+//               oan-deployer (GitHub App).
 //  NOTE: `aws ecr get-login-password` uses the agent's ambient AWS identity, which
 //        must have ECR push on `oan/oan-a2c-service/a2c-service`.
 // =============================================================================
@@ -48,6 +53,8 @@ pipeline {
     FRAPPE_PATH     = 'https://github.com/frappe/frappe'
     BACKEND_IP      = '10.0.2.100'
     STAGING_APP_DIR = '/opt/oan_a2c_staging'   // staging_aws stack (separate from /opt/oan_a2c)
+    OAN_DEV_IP      = '10.0.1.131'             // oan_dev k3s node (helm + kubectl), private address
+    A2C_NAMESPACE   = 'a2c'
   }
 
   stages {
@@ -89,7 +96,7 @@ pipeline {
               AUTH_BRANCH="main"
             fi
 
-            printf '[{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_auth_service.git","branch":"%s"},{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_a2c.git","branch":"%s"}]' \
+            printf '[{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_auth_service.git","branch":"%s"},{"url":"https://github.com/Centre-for-Open-Societal-Systems/oan_a2c_service.git","branch":"%s"}]' \
               "${AUTH_BRANCH}" "${BRANCH_NAME}" > /tmp/apps.json
 
             cd frappe_docker
@@ -178,6 +185,44 @@ pipeline {
             JWT_SECRETS="${JWT_SECRETS}" OPENG2P_PASSWORD="${OPENG2P_PASSWORD}" \
             bash ci/deploy-ec2.sh
           '''
+        }
+      }
+    }
+
+    // develop -> Helm release `a2c` on the oan_dev k3s node, from the archive 'Package chart' built.
+    // First run installs, later runs upgrade; the chart generates its admin, secret-key and JWT Secrets.
+    stage('develop → oan_dev (helm)') {
+      when { branch 'develop' }
+      steps {
+        withCredentials([
+          string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
+          sshUserPrivateKey(credentialsId: 'oan-dev-ssh-key',
+                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+        ]) {
+          sh 'bash ci/deploy-helm-dev.sh'
+        }
+      }
+    }
+
+    // develop -> APISIX routes (chart apisix/k8s) on the oan_dev node, after the app deploy.
+    // Runs only when the spec, the generated routes or the gateway values changed.
+    stage('develop → gateway (apisix)') {
+      when {
+        allOf {
+          branch 'develop'
+          anyOf {
+            changeset 'apisix/**'
+            changeset 'openapi/**'
+            changeset 'helm/environments/dev/oan-a2c-gateway.yaml'
+          }
+        }
+      }
+      steps {
+        withCredentials([
+          sshUserPrivateKey(credentialsId: 'oan-dev-ssh-key',
+                            keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')
+        ]) {
+          sh 'bash ci/deploy-gateway.sh'
         }
       }
     }
@@ -348,7 +393,7 @@ SSHEOF
     }
     // ---------------------- Helm chart publish (same name as the image) ----------------------
     // Adds the archive built by 'Package chart' to repository/develop/ of oan-helm, only after
-    // the EC2 deploy succeeded.
+    // the EC2, oan_dev and gateway deploys succeeded.
     stage('Publish chart') {
       when { branch 'develop' }
       steps {
