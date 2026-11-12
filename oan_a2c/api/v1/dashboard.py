@@ -411,6 +411,8 @@ def chart_loan_products(scope: Scope) -> list[dict]:
 def chart_loan_trend(scope: Scope) -> list[dict]:
 	months: dict[str, dict] = {}
 	for row in _application_facts(scope):
+		if not row.month or str(row.month).lower() in ("none", ""):
+			continue
 		start = str(row.month)
 		m = months.setdefault(
 			start,
