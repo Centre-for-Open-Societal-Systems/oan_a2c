@@ -55,6 +55,10 @@ iamServices:
   base_url: "https://bene-iam.{{ .Values.global.baseDomain }}"
   provider_id: 11
   issuer: "https://esignet.{{ .Values.global.baseDomain }}"
+  # eSignet tokens carry no client roles, and the DocType refuses a row with neither an application
+  # nor a default role. Everyone who signs in with a national ID is a farmer.
+  default_roles:
+  - A2C Farmer
 
 # Fields of `A2C OpenG2P Settings` (the consent integration), written into the DB by the same Job.
 # Field names are the DocType's; values are templates. Empty values are skipped, so the DB keeps
