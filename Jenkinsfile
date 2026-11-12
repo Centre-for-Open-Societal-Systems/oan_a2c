@@ -166,15 +166,12 @@ pipeline {
     // First run installs, later runs upgrade; the chart generates its admin, secret-key and JWT Secrets.
     stage('develop → oan_dev (helm)') {
       when { beforeAgent true; branch 'develop' }
-      agent { label 'oan-ci-deploy' }   // VPN agent with helm, kubectl and aws that reaches the oan_dev API
+      agent { label 'oan-ci-deploy' }   // VPN agent with helm and kubectl that reaches the oan_dev API
       options { timeout(time: 45, unit: 'MINUTES') }
       steps {
         checkout scm
         unstash 'built-chart'
-        withCredentials([
-          string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID'),
-          file(credentialsId: 'oan-dev-kubeconfig', variable: 'KUBECONFIG')
-        ]) {
+        withCredentials([file(credentialsId: 'oan-dev-kubeconfig', variable: 'KUBECONFIG')]) {
           sh 'bash ci/deploy-helm-dev.sh'
         }
       }
