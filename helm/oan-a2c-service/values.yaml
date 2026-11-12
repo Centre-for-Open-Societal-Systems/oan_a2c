@@ -6,13 +6,26 @@
 # - frappe.image.tag: the Jenkins tag `develop-<build>` (locally: `develop`)
 # - frappe.dbHost: the PostgreSQL server (set in the environment file)
 # Image repositories, the seed image and dbRootUser are per environment.
+# Secrets the chart generates once and keeps across upgrades (templates/secrets.yaml), see `secrets` below:
+# - oan-a2c-admin (key `password`): Frappe Administrator password
+# - oan-a2c-jwt (key `jwt_v1.pem`): RSA private key that signs access tokens
+# - oan-a2c-secret-key (key `secret_key`): signs consent receipts
 # Secrets created outside Git, in the release namespace:
 # - oan-frappe-common-db (key `password`): the `postgres` password, copied from the frappe-common namespace
-# - oan-a2c-admin (key `password`): Frappe Administrator password
-# - oan-a2c-jwt (key `jwt_v1.pem`): unencrypted RSA private key, at least 2048 bits
-# - oan-a2c-secret-key (key `secret_key`): signs consent receipts
 # - oan-a2c-sentry (key `dsn`): Sentry DSN. Optional.
 # - oan-a2c-seed (key `password`): password for the demo users. Optional.
+
+# Set create=false to bring your own Secret with the same name and keys.
+secrets:
+  admin:
+    create: true
+    name: oan-a2c-admin
+  secretKey:
+    create: true
+    name: oan-a2c-secret-key
+  jwt:
+    create: true
+    name: oan-a2c-jwt
 
 frappe:
   image:
