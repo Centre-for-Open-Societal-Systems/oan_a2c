@@ -8,8 +8,13 @@
 # - frappe.dbHost: set below, the shared PostgreSQL of the oan-frappe-common release (namespace frappe-common)
 
 global:
-  # The hosts of the iamServices login options (chart values.yaml) follow it.
+  # The hosts of iamServices and openg2pSettings (chart values.yaml) follow it.
   baseDomain: development.oanstaging.com
+
+openg2pSettings:
+  # The dev partner client has no service account: it logs in with the username and password
+  # of Secret oan-a2c-openg2p-partner.
+  partner_grant_type: password
 
 frappe:
   image:
