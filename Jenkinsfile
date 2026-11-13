@@ -2,7 +2,7 @@
 //  Jenkinsfile — oan_a2c (Frappe app). Single pipeline for the `oan-package`
 //  GitHub Organization folder (multibranch).
 //
-//  Per branch (all publish to the ECR repo `oan/oan-a2c-service/a2c-service`):
+//  Per branch (all publish to the ECR repo `eoan/oan-a2c-service/a2c-service`):
 //    develop     -> build + push + ci/deploy-helm-dev.sh (helm upgrade --install of release `a2c`,
 //                   namespace A2C_NAMESPACE, on the oan_dev k3s node, from a VPN deploy agent)
 //                   + ci/deploy-gateway.sh (APISIX routes, chart apisix/k8s, only when the spec,
@@ -13,7 +13,7 @@
 //    staging_ati -> build + push + ci/update-kustomize-ati.sh
 //                   (GitOps: bump oan-kustomize `staging` overlay; ArgoCD on node 41 syncs)
 //
-//  develop + staging_aws were migrated off the legacy `oan-a2c` repo onto `oan/oan-a2c-service/a2c-service`
+//  develop + staging_aws were migrated off the legacy `oan-a2c` repo onto `eoan/oan-a2c-service/a2c-service`
 //  (staging_ati was already there). Both deploy scripts rewrite the WHOLE ECR_IMAGE
 //  line in the box `.env`, so the first build after this change repoints the stack
 //  automatically — no manual .env edit needed.
@@ -21,11 +21,11 @@
 //
 //  NOTE (staging_aws prereq): ${STAGING_APP_DIR} must be provisioned on BACKEND_IP
 //  before the first staging_aws build — a copy of /opt/oan_a2c with its own .env
-//  (ECR_IMAGE on oan/oan-a2c-service/a2c-service) and DISTINCT host ports (dev uses frontend 8080 and
+//  (ECR_IMAGE on eoan/oan-a2c-service/a2c-service) and DISTINCT host ports (dev uses frontend 8080 and
 //  kong 8000-8001; give staging e.g. 8090 and 8010-8011) plus its own site, so the
 //  two stacks don't collide. Same box, different image tag + different compose app.
 //
-//  Tags:  develop: <__version__>-develop.<build>, e.g. 0.0.0-develop.57 (= chart version)
+//  Tags:  develop: <__version__>-develop.<build>, e.g. 0.0.1-develop.57 (= chart version)
 //         staging_*: <branch>-<build>      immutable, pinned by oan-kustomize / deploy-ec2.sh
 //         <branch>-latest                  moving alias (convenience)
 //
@@ -33,7 +33,7 @@
 //  Credentials: AWS_ACCOUNT_ID (string), backend-ssh-key (ssh), oan-dev-kubeconfig (file, oan-service-helm cluster/),
 //               oan-deployer (GitHub App).
 //  NOTE: `aws ecr get-login-password` uses the agent's ambient AWS identity, which
-//        must have ECR push on `oan/oan-a2c-service/a2c-service`.
+//        must have ECR push on `eoan/oan-a2c-service/a2c-service`.
 // =============================================================================
 pipeline {
   agent any
@@ -58,11 +58,11 @@ pipeline {
     stage('Resolve') {
       steps {
         script {
-          // One ECR repo for every branch: oan/oan-a2c-service/a2c-service (must exist in ECR).
-          // develop tag = chart version = <__version__>-develop.<build_number>, e.g. 0.0.0-develop.57
+          // One ECR repo for every branch: eoan/oan-a2c-service/a2c-service (must exist in ECR).
+          // develop tag = chart version = <__version__>-develop.<build_number>, e.g. 0.0.1-develop.57
           // (ci/package_chart.py version). staging_aws / staging_ati keep <prefix>-<build>.
-          env.ECR_REPO      = 'oan/oan-a2c-service/a2c-service'
-          env.ECR_SEED_REPO = 'oan/oan-a2c-service/a2c-seed'
+          env.ECR_REPO      = 'eoan/oan-a2c-service/a2c-service'
+          env.ECR_SEED_REPO = 'eoan/oan-a2c-service/a2c-seed'
           def tagPrefix     = (env.BRANCH_NAME == 'staging_ati') ? 'staging-ati'
                             : (env.BRANCH_NAME == 'staging_aws') ? 'staging-aws'
                             : env.BRANCH_NAME

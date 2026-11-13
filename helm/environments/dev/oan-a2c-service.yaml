@@ -18,9 +18,9 @@ openg2pSettings:
 
 frappe:
   image:
-    # Jenkinsfile ECR_REPO `oan/oan-a2c-service/a2c-service`. A local build tagged with this name
+    # Jenkinsfile ECR_REPO `eoan/oan-a2c-service/a2c-service`. A local build tagged with this name
     # is used without a pull (pullPolicy IfNotPresent).
-    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan-a2c-service/a2c-service
+    repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/eoan/oan-a2c-service/a2c-service
 
   # No imagePullSecrets on oan_dev: the node pulls from ECR with its IAM role (kubelet
   # ecr-credential-provider, docs/operations/oan-dev-deploy.md). Locally, a locally built image needs no pull.
@@ -40,7 +40,7 @@ frappe:
     seed:
       enabled: true
       image:
-        repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/oan/oan-a2c-service/a2c-seed
+        repository: 379220350808.dkr.ecr.ap-south-1.amazonaws.com/eoan/oan-a2c-service/a2c-seed
         tag: demo-20261108
 
   # The central APISIX gateway runs in another cluster and reaches Frappe on this node port

@@ -3,12 +3,12 @@
 Run by the Jenkins stages "Package chart" and "Publish chart" of every develop build:
 
     package_chart.py version   prints the chart version, which is also the image tag of the build:
-                               <__version__ of oan_a2c>-develop.<BUILD_NUMBER>, e.g. 0.0.0-develop.57 (develop only)
+                               <__version__ of oan_a2c>-develop.<BUILD_NUMBER>, e.g. 0.0.1-develop.57 (develop only)
     package_chart.py package   writes built-chart/oan-a2c-service-<version>.tgz
     package_chart.py publish   adds that archive to repository/develop/ of oan-helm
 
 The Chart.yaml annotations and the publisher come from scripts/ci of oan-helm, so this chart is listed like the registry
-charts. The version is 0.0.0-develop.N, which publish_chart.py sends to repository/develop/. The chart keeps its frappe-service dependency vendored in helm/oan-a2c-service/charts,
+charts. The version is 0.0.1-develop.N, which publish_chart.py sends to repository/develop/. The chart keeps its frappe-service dependency vendored in helm/oan-a2c-service/charts,
 so, unlike the registry charts, nothing is downloaded.
 
 version needs BRANCH_NAME (develop) and BUILD_NUMBER. package needs IMAGE_REPOSITORY (registry/repository, no tag), IMAGE_TAG, SOURCE_COMMIT, BRANCH_NAME and COMMIT_SUBJECT.
