@@ -3,3 +3,6 @@ name: oan-a2c-gateway
 description: APISIX Ingress Controller routes for the A2C REST API
 type: application
 version: 0.1.0
+annotations:
+  oan.org/owner: OpenAgriNet (OAN)
+  oan.org/chart-source: https://github.com/Centre-for-Open-Societal-Systems/oan_a2c/tree/develop/apisix/k8s

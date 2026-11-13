@@ -183,6 +183,26 @@ pipeline {
       }
     }
 
+    // The routes chart (apisix/k8s) is packaged and published like the app chart, but only for a build that
+    // changed the spec, the routes or the gateway values: those are the builds that install it.
+    stage('Package gateway chart') {
+      when {
+        beforeAgent true
+        allOf {
+          branch 'develop'
+          anyOf {
+            changeset 'apisix/**'
+            changeset 'openapi/**'
+            changeset 'helm/environments/dev/oan-a2c-gateway.yaml'
+          }
+        }
+      }
+      steps {
+        sh 'python3 ci/package_chart.py gateway-package'
+        stash name: 'built-gateway-chart', includes: 'built-gateway-chart/**'
+      }
+    }
+
     // ---------------------- per-branch deploy ----------------------
 
     // develop -> Helm release `a2c` on the oan_dev k3s node, from the archive 'Package chart' built.
@@ -218,6 +238,7 @@ pipeline {
       options { timeout(time: 15, unit: 'MINUTES') }
       steps {
         checkout scm
+        unstash 'built-gateway-chart'
         withCredentials([file(credentialsId: 'oan-dev-kubeconfig', variable: 'KUBECONFIG')]) {
           sh 'bash ci/deploy-gateway.sh'
         }
@@ -398,6 +419,28 @@ SSHEOF
         catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
           withCredentials([usernamePassword(credentialsId: 'oan-helm-fork-token', usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
             sh 'python3 ci/package_chart.py publish'
+          }
+        }
+      }
+    }
+
+    stage('Publish gateway chart') {
+      when {
+        beforeAgent true
+        allOf {
+          branch 'develop'
+          anyOf {
+            changeset 'apisix/**'
+            changeset 'openapi/**'
+            changeset 'helm/environments/dev/oan-a2c-gateway.yaml'
+          }
+        }
+      }
+      steps {
+        // UNSTABLE, not failed: the routes are already installed.
+        catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+          withCredentials([usernamePassword(credentialsId: 'oan-helm-fork-token', usernameVariable: 'GH_USER', passwordVariable: 'GH_TOKEN')]) {
+            sh 'python3 ci/package_chart.py gateway-publish'
           }
         }
       }
