@@ -61,7 +61,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:authenticated-core:bearer
   - name: oan-a2c-authenticated-core-bearer-get
     description: Identity/profile/notifications -- any signed-in caller, low cost per call.
     labels:
@@ -93,7 +92,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:authenticated-core:bearer
   - name: oan-a2c-authenticated-core-bearer-patch
     description: Identity/profile/notifications -- any signed-in caller, low cost per call.
     labels:
@@ -122,7 +120,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:authenticated-core:bearer
   - name: oan-a2c-bank-partner-standard-bearer-get
     description: Bank/partner integration traffic -- onboarding, cataloging, underwriting reads.
     labels:
@@ -163,7 +160,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:bank-partner-standard:bearer
   - name: oan-a2c-bank-partner-standard-bearer-patch
     description: Bank/partner integration traffic -- onboarding, cataloging, underwriting reads.
     labels:
@@ -194,7 +190,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:bank-partner-standard:bearer
   - name: oan-a2c-bank-partner-standard-bearer-post
     description: Bank/partner integration traffic -- onboarding, cataloging, underwriting reads.
     labels:
@@ -228,7 +223,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:bank-partner-standard:bearer
   - name: oan-a2c-bank-partner-standard-bearer-put
     description: Bank/partner integration traffic -- onboarding, cataloging, underwriting reads.
     labels:
@@ -258,7 +252,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:bank-partner-standard:bearer
   - name: oan-a2c-crm-internal-bearer-delete
     description: Development Agent / internal CRM tooling -- trusted, higher-volume, still capped.
     labels:
@@ -284,7 +277,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:crm-internal:bearer
   - name: oan-a2c-crm-internal-bearer-get
     description: Development Agent / internal CRM tooling -- trusted, higher-volume, still capped.
     labels:
@@ -321,7 +313,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:crm-internal:bearer
   - name: oan-a2c-crm-internal-bearer-patch
     description: Development Agent / internal CRM tooling -- trusted, higher-volume, still capped.
     labels:
@@ -353,7 +344,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:crm-internal:bearer
   - name: oan-a2c-crm-internal-bearer-post
     description: Development Agent / internal CRM tooling -- trusted, higher-volume, still capped.
     labels:
@@ -386,7 +376,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:crm-internal:bearer
   - name: oan-a2c-farmer-app-bearer-delete
     description: 'Consumer-facing app traffic: catalog browse, farmer applications, consent capture.'
     labels:
@@ -412,7 +401,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
   - name: oan-a2c-farmer-app-bearer-get
     description: 'Consumer-facing app traffic: catalog browse, farmer applications, consent capture.'
     labels:
@@ -444,7 +432,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
   - name: oan-a2c-farmer-app-bearer-patch
     description: 'Consumer-facing app traffic: catalog browse, farmer applications, consent capture.'
     labels:
@@ -470,7 +457,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
   - name: oan-a2c-farmer-app-bearer-post
     description: 'Consumer-facing app traffic: catalog browse, farmer applications, consent capture.'
     labels:
@@ -497,7 +483,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
   - name: oan-a2c-farmer-app-bearer-put
     description: 'Consumer-facing app traffic: catalog browse, farmer applications, consent capture.'
     labels:
@@ -523,7 +508,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
   - name: oan-a2c-public-auth-public-post
     description: Login/registration/password-recovery. Tight, IP-keyed, to blunt credential stuffing before
       it reaches Frappe's own lockout logic.
@@ -556,7 +540,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:public-auth:public
   - name: oan-a2c-public-dashboards-dashboard-key-get
     description: 'Programme dashboard charts: aggregate-only reads by the OAN dashboards, the one consumer
       holding a dashboard key. It calls on behalf of every viewer and caches each chart for 15 minutes,
@@ -584,7 +567,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:public-dashboards:dashboard-key
       key-auth:
         header: apikey
         hide_credentials: true
@@ -619,7 +601,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:uploads:bearer
   - name: oan-a2c-webhooks-inbound-partner-key-post-openg2p-consent-webhook
     description: Server-to-server receivers (OpenG2P, telco IVR). IP-allowlisted separately; the cap here
       protects against a misbehaving upstream, not abuse.
@@ -646,7 +627,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:webhooks-inbound:partner-key
       key-auth:
         header: apikey
         hide_credentials: true
@@ -693,7 +673,6 @@ services:
         redis_host: redis
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:webhooks-inbound:partner-key
       key-auth:
         header: apikey
         hide_credentials: true
