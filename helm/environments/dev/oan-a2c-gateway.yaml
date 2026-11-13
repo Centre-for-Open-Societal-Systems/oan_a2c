@@ -25,10 +25,8 @@ global:
 hosts:
   - a2c-service.{{ .Values.global.baseDomain }}
 
-# APISIX terminates TLS for `hosts` with this Secret (tls.crt, tls.key) in namespace
-# `a2c`. Dev: written by cert-manager. Local: a locally generated certificate.
-tls:
-  secretName: oan-a2c-tls
+# No `tls`: in dev APISIX terminates TLS for every *.development.oanstaging.com host with one wildcard
+# (oan-helm environments/dev/manifests/apisix-edge.yaml), so this chart creates no ApisixTls.
 
 # Frappe site name, sent as Host because Frappe selects the site from it. Must equal
 # siteName in oan-a2c-service.yaml.
