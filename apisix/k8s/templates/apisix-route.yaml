@@ -63,7 +63,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:authenticated-core:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -129,7 +128,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:authenticated-core:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -192,7 +190,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:authenticated-core:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -267,7 +264,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:bank-partner-standard:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -332,7 +328,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:bank-partner-standard:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -400,7 +395,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:bank-partner-standard:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -464,7 +458,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:bank-partner-standard:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -524,7 +517,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:crm-internal:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -595,7 +587,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:crm-internal:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -661,7 +652,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:crm-internal:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -728,7 +718,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:crm-internal:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -788,7 +777,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -854,7 +842,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -914,7 +901,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -975,7 +961,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -1035,7 +1020,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:farmer-app:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -1101,7 +1085,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:public-auth:public
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -1161,7 +1144,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:public-dashboards:dashboard-key
     - name: key-auth
       enable: true
       config:
@@ -1233,7 +1215,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:uploads:bearer
 {{- if .Values.web.externalHosts }}
     upstreams:
     - name: {{ required "web.serviceName is required" .Values.web.serviceName | quote }}
@@ -1296,7 +1277,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:webhooks-inbound:partner-key
     - name: key-auth
       enable: true
       config:
@@ -1376,7 +1356,6 @@ spec:
         redis_host: {{ required "redis.host is required" .Values.redis.host | quote }}
         redis_port: 6379
         allow_degradation: true
-        group: oan-a2c:webhooks-inbound:partner-key
     - name: key-auth
       enable: true
       config:
